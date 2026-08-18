@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { supabaseConfigurat } from "@/lib/supabase/configurat";
 
 /** Rute care nu cer sesiune. */
 const RUTE_PUBLICE = ["/", "/login", "/register", "/auth"];
@@ -16,6 +17,9 @@ function estePublica(pathname: string) {
  *  - utilizator logat pe /login sau /register   -> /dashboard
  */
 export async function updateSession(request: NextRequest) {
+  // Fara credentiale Supabase, lasam totul accesibil (mod previzualizare UI).
+  if (!supabaseConfigurat) return NextResponse.next({ request });
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
