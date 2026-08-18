@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseConfigurat } from "@/lib/supabase/configurat";
 import { genereazaIban } from "@/lib/iban";
 import {
   normalizeazaTelefon,
@@ -157,9 +158,11 @@ export async function trimiteResetareParola(email: string): Promise<RezultatAuth
 /* -------------------------------------------------------------------------- */
 
 export async function deconecteaza() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
+  if (supabaseConfigurat) {
+    const supabase = await createClient();
+    await supabase.auth.signOut();
+    revalidatePath("/", "layout");
+  }
 
-  revalidatePath("/", "layout");
   redirect("/login");
 }
