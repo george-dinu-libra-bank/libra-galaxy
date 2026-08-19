@@ -77,6 +77,11 @@ const MESAJE_CORE_BANKING: Record<string, string> = {
   CONT_SURSA_STRAIN: "Nu poti plati dintr-un cont care nu este al tau.",
   AUTOTRANSFER: "Nu poti trimite bani in acelasi cont din care platesti.",
   FONDURI_INSUFICIENTE: "Nu ai fonduri suficiente in cont.",
+  // Ridicate de core_banking_groups (0009_core_banking_groups.sql).
+  GRUP_INEXISTENT: "Grupul nu exista.",
+  NU_ESTI_MEMBRU: "Nu faci parte din acest grup.",
+  FONDURI_INSUFICIENTE_GRUP: "Grupul nu are fonduri suficiente.",
+  DIRECTIE_INVALIDA: "Nu am putut trimite banii. Incearca din nou.",
 };
 
 /**
@@ -95,6 +100,8 @@ export async function trimiteTransfer(input: {
   detalii: string;
   /** Contul din care se plateste; lipsa lui inseamna contul principal. */
   idContSursa?: string;
+  /** Grupul din care se plateste. Exclusiv fata de `idContSursa`. */
+  idGrupSursa?: number;
 }): Promise<RezultatTransfer> {
   const supabase = await createClient();
 
@@ -114,13 +121,27 @@ export async function trimiteTransfer(input: {
 
   const supabaseAdmin = createAdminClient();
 
-  const { error } = await supabaseAdmin.rpc("core_banking", {
-    p_iban_dest: iban,
-    p_suma: suma,
-    p_descriere: input.detalii.trim() || null,
-    p_id_cont_send: input.idContSursa ?? null,
-    p_id_user: user.id,
-  });
+  const descriere = input.detalii.trim() || null;
+
+  // Doua functii, aceleasi garantii: banii din punga comuna pleaca prin
+  // core_banking_groups, care verifica in plus ca esti membru al grupului.
+  const { error } =
+    input.idGrupSursa != null
+      ? await supabaseAdmin.rpc("core_banking_groups", {
+          p_id_group: input.idGrupSursa,
+          p_suma: suma,
+          p_directie: "plata",
+          p_descriere: descriere,
+          p_iban_dest: iban,
+          p_id_user: user.id,
+        })
+      : await supabaseAdmin.rpc("core_banking", {
+          p_iban_dest: iban,
+          p_suma: suma,
+          p_descriere: descriere,
+          p_id_cont_send: input.idContSursa ?? null,
+          p_id_user: user.id,
+        });
 
   if (error) {
     const mesaj = MESAJE_CORE_BANKING[error.message];
@@ -135,6 +156,12 @@ export async function trimiteTransfer(input: {
   revalidatePath("/carduri");
   revalidatePath("/istoric");
   revalidatePath("/transfer");
+
+  // Plata dintr-un grup ii schimba soldul, deci si ecranele lui.
+  if (input.idGrupSursa != null) {
+    revalidatePath("/grupuri");
+    revalidatePath(`/grupuri/${input.idGrupSursa}`);
+  }
 
   return {};
 }

@@ -52,7 +52,11 @@ export function TransferForm({
       return;
     }
     if (sumaNumerica > contSursa.sold) {
-      setEroare("Nu ai fonduri suficiente in cont.");
+      setEroare(
+        contSursa.tip === "grup"
+          ? "Grupul nu are fonduri suficiente."
+          : "Nu ai fonduri suficiente in cont.",
+      );
       return;
     }
     setEroare(null);
@@ -69,7 +73,11 @@ export function TransferForm({
         ibanDestinatar: beneficiar.iban,
         suma: sumaNumerica,
         detalii,
-        idContSursa: contSursa.id,
+        // Din grup banii pleaca prin core_banking_groups; din cont, prin
+        // core_banking. Actiunea alege dupa care dintre id-uri primeste.
+        ...(contSursa.tip === "grup"
+          ? { idGrupSursa: Number(contSursa.id) }
+          : { idContSursa: contSursa.id }),
       });
 
       if (rezultat.eroare) {
