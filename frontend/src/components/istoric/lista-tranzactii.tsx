@@ -1,35 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  Car,
-  Film,
-  HeartPulse,
-  MoreHorizontal,
-  ShoppingBag,
-  ShoppingCart,
-  Wallet,
-  Zap,
-  ArrowLeftRight,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
-import type { CategorieTranzactie, Tranzactie } from "@/lib/mock-data";
-import { ETICHETE_CATEGORII } from "@/lib/mock-data";
+import type { TranzactieAfisata } from "@/lib/data/tranzactii";
 import { cn, formateazaSuma } from "@/lib/utils";
 import { FiltreDrawer, type Filtre } from "@/components/istoric/filtre-drawer";
-
-const ICOANE_CATEGORII: Record<CategorieTranzactie, LucideIcon> = {
-  alimente: ShoppingCart,
-  transport: Car,
-  utilitati: Zap,
-  divertisment: Film,
-  shopping: ShoppingBag,
-  sanatate: HeartPulse,
-  salariu: Wallet,
-  transfer: ArrowLeftRight,
-  altele: MoreHorizontal,
-};
 
 const ZI_MS = 24 * 60 * 60 * 1000;
 
@@ -51,21 +27,21 @@ function trecePerioada(data: Date, perioada: Filtre["perioada"]) {
   return Date.now() - data.getTime() <= zile * ZI_MS;
 }
 
-export function ListaTranzactii({ tranzactii }: { tranzactii: Tranzactie[] }) {
+export function ListaTranzactii({ tranzactii }: { tranzactii: TranzactieAfisata[] }) {
   const [filtre, setFiltre] = useState<Filtre>({ perioada: "30z", tip: "toate" });
-  const [selectata, setSelectata] = useState<Tranzactie | null>(null);
+  const [selectata, setSelectata] = useState<TranzactieAfisata | null>(null);
 
   const filtrate = useMemo(() => {
     return tranzactii.filter((t) => {
       if (filtre.tip !== "toate" && t.tip !== filtre.tip) return false;
-      return trecePerioada(new Date(t.data), filtre.perioada);
+      return trecePerioada(new Date(t.creatLa), filtre.perioada);
     });
   }, [tranzactii, filtre]);
 
   const grupuri = useMemo(() => {
-    const map = new Map<string, Tranzactie[]>();
+    const map = new Map<string, TranzactieAfisata[]>();
     for (const t of filtrate) {
-      const cheie = etichetaZi(new Date(t.data));
+      const cheie = etichetaZi(new Date(t.creatLa));
       if (!map.has(cheie)) map.set(cheie, []);
       map.get(cheie)!.push(t);
     }
@@ -85,7 +61,9 @@ export function ListaTranzactii({ tranzactii }: { tranzactii: Tranzactie[] }) {
 
       {grupuri.length === 0 ? (
         <p className="mt-16 text-center text-[15px] text-ink-faint">
-          Nicio tranzactie in perioada selectata.
+          {tranzactii.length === 0
+            ? "Nu ai nicio tranzactie inca."
+            : "Nicio tranzactie in perioada selectata."}
         </p>
       ) : (
         <div className="mt-6 flex flex-col gap-6">
@@ -114,8 +92,8 @@ export function ListaTranzactii({ tranzactii }: { tranzactii: Tranzactie[] }) {
         }}
       >
         <DrawerContent
-          title={selectata?.comerciant ?? ""}
-          description={selectata ? ETICHETE_CATEGORII[selectata.categorie] : ""}
+          title={selectata ? (selectata.tip === "primita" ? "Tranzactie primita" : "Tranzactie trimisa") : ""}
+          description={selectata?.descriere ?? ""}
         >
           {selectata ? <DetaliuTranzactie tranzactie={selectata} /> : null}
         </DrawerContent>
@@ -129,12 +107,12 @@ function RandTranzactie({
   ultimul,
   onClick,
 }: {
-  tranzactie: Tranzactie;
+  tranzactie: TranzactieAfisata;
   ultimul: boolean;
   onClick: () => void;
 }) {
-  const Icoana = ICOANE_CATEGORII[tranzactie.categorie];
-  const incasare = tranzactie.tip === "incasare";
+  const primita = tranzactie.tip === "primita";
+  const Icoana = primita ? ArrowDownLeft : ArrowUpRight;
 
   return (
     <button
@@ -150,30 +128,31 @@ function RandTranzactie({
       </span>
 
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] text-ink">{tranzactie.comerciant}</span>
+        <span className="block truncate text-[15px] text-ink">
+          {tranzactie.descriere || (primita ? "Transfer primit" : "Transfer trimis")}
+        </span>
         <span className="block text-[12.5px] text-ink-faint">
-          {new Date(tranzactie.data).toLocaleTimeString("ro-RO", {
+          {new Date(tranzactie.creatLa).toLocaleTimeString("ro-RO", {
             hour: "2-digit",
             minute: "2-digit",
           })}
-          {tranzactie.stare === "in_asteptare" ? " · In asteptare" : ""}
         </span>
       </span>
 
       <span
         className={cn(
           "tabular shrink-0 text-[15px] font-semibold",
-          incasare ? "text-success" : "text-ink",
+          primita ? "text-success" : "text-ink",
         )}
       >
-        {incasare ? "+" : "−"} {formateazaSuma(tranzactie.suma, tranzactie.valuta)}
+        {primita ? "+" : "−"} {formateazaSuma(tranzactie.suma, tranzactie.valuta)}
       </span>
     </button>
   );
 }
 
-function DetaliuTranzactie({ tranzactie }: { tranzactie: Tranzactie }) {
-  const incasare = tranzactie.tip === "incasare";
+function DetaliuTranzactie({ tranzactie }: { tranzactie: TranzactieAfisata }) {
+  const primita = tranzactie.tip === "primita";
 
   return (
     <div className="flex flex-col gap-4">
@@ -181,22 +160,19 @@ function DetaliuTranzactie({ tranzactie }: { tranzactie: Tranzactie }) {
         <span
           className={cn(
             "tabular text-[32px] font-bold leading-[38px]",
-            incasare ? "text-success" : "text-ink",
+            primita ? "text-success" : "text-ink",
           )}
         >
-          {incasare ? "+" : "−"} {formateazaSuma(tranzactie.suma, tranzactie.valuta)}
+          {primita ? "+" : "−"} {formateazaSuma(tranzactie.suma, tranzactie.valuta)}
         </span>
-        <span className="text-[13px] text-ink-faint">
-          {tranzactie.stare === "in_asteptare" ? "In asteptare" : "Finalizata"}
-        </span>
+        <span className="text-[13px] text-ink-faint">{primita ? "Primita" : "Trimisa"}</span>
       </div>
 
       <div>
-        <Rand eticheta="Descriere" valoare={tranzactie.descriere} />
-        <Rand eticheta="Categorie" valoare={ETICHETE_CATEGORII[tranzactie.categorie]} />
+        <Rand eticheta="Descriere" valoare={tranzactie.descriere || "—"} />
         <Rand
           eticheta="Data"
-          valoare={new Date(tranzactie.data).toLocaleString("ro-RO", {
+          valoare={new Date(tranzactie.creatLa).toLocaleString("ro-RO", {
             day: "numeric",
             month: "long",
             year: "numeric",

@@ -8,10 +8,12 @@ import {
   History,
   Users,
 } from "lucide-react";
+import { AdaugaCardDrawer } from "@/components/carduri/adauga-card-drawer";
 import { DetaliiContDrawer } from "@/components/dashboard/detalii-cont-drawer";
+import { obtineCarduriUtilizator } from "@/lib/data/carduri";
 import { createClient } from "@/lib/supabase/server";
-import { obtineConturi } from "@/lib/mock-data";
-import { formateazaIban, formateazaSuma } from "@/lib/utils";
+import { ETICHETE_STIL_CARD, GRADIENTE_STIL_CARD } from "@/lib/stil-card";
+import { formateazaSuma } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Contul meu · Libra",
@@ -40,8 +42,8 @@ export default async function DashboardPage() {
     .single();
 
   const prenume = profil?.nume?.split(" ").at(-1) ?? "";
-  const conturi = await obtineConturi();
-  const contCurent = conturi.find((c) => c.tip === "curent");
+  const carduri = await obtineCarduriUtilizator();
+  const cardPrincipal = carduri[0];
 
   return (
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
@@ -60,16 +62,36 @@ export default async function DashboardPage() {
 
       {profil ? (
         <>
-          <section className="hero-gradient mt-6 animate-fade-up rounded-card p-6 text-white shadow-lg">
-            <p className="text-[13px] text-primary-100">Cont curent</p>
-            <p className="tabular mt-1 text-[15px] tracking-[0.02em]">
-              {formateazaIban(profil.iban_cont)}
-            </p>
-            <p className="tabular mt-6 text-[32px] font-bold leading-[38px]">
-              {formateazaSuma(contCurent?.sold ?? 0)}
-            </p>
-            <p className="mt-1 text-[13px] text-primary-100">Disponibil</p>
-          </section>
+          {cardPrincipal ? (
+            <section
+              className="mt-6 animate-fade-up rounded-card p-6 text-white shadow-lg"
+              style={{ background: GRADIENTE_STIL_CARD[cardPrincipal.stil] }}
+            >
+              <p className="text-[13px] text-white/75">Card {ETICHETE_STIL_CARD[cardPrincipal.stil]}</p>
+              <p className="tabular mt-1 text-[15px] tracking-[0.08em]">
+                {cardPrincipal.numarMascat}
+              </p>
+              <p className="tabular mt-6 text-[32px] font-bold leading-[38px]">
+                {formateazaSuma(cardPrincipal.soldCurent)}
+              </p>
+              <p className="mt-1 text-[13px] text-white/75">
+                {cardPrincipal.blocat ? "Card blocat" : "Disponibil"}
+              </p>
+            </section>
+          ) : (
+            <section className="mt-6 flex animate-fade-up flex-col items-center gap-4 rounded-card border border-dashed border-line bg-surface p-6 text-center shadow-sm">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-50">
+                <CreditCard size={26} strokeWidth={1.75} aria-hidden className="text-primary-600" />
+              </span>
+              <div>
+                <p className="text-[15px] font-semibold text-ink">Nu ai niciun card încă</p>
+                <p className="mt-1 text-[13px] text-ink-faint">
+                  Adaugă primul tău card Libra ca să poți trimite și primi bani.
+                </p>
+              </div>
+              <AdaugaCardDrawer />
+            </section>
+          )}
 
           <div className="mt-4">
             <DetaliiContDrawer profil={profil} />
