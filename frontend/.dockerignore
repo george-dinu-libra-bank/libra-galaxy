@@ -1,4 +1,4 @@
-node_modules/
-.next/
-.env*
-npm-debug.log*
+node_modules
+.next
+.git
+npm-debug.log

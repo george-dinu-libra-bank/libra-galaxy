@@ -1,0 +1,140 @@
+"use client";
+
+import Link from "next/link";
+import { useState, useTransition, type ReactNode } from "react";
+import { Bell, ChevronRight, LogOut, ShieldCheck, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { EditeazaTelefonDrawer } from "@/components/setari/editeaza-telefon-drawer";
+import { deconecteaza } from "@/lib/actions/auth";
+import { cn, mascheazaCnp } from "@/lib/utils";
+
+type Profil = {
+  nume: string;
+  cnp: string;
+  telefon: string;
+  email: string;
+};
+
+function initiale(nume: string) {
+  return nume
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((parte) => parte[0]?.toUpperCase())
+    .join("");
+}
+
+function Comutator({ activ, onChange, eticheta }: { activ: boolean; onChange: () => void; eticheta: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={activ}
+      aria-label={eticheta}
+      onClick={onChange}
+      className={cn(
+        "relative h-7 w-12 shrink-0 rounded-full transition-colors duration-150 ease-soft",
+        "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25",
+        activ ? "bg-primary-600" : "bg-line",
+      )}
+    >
+      <span
+        className={cn(
+          "absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-150 ease-soft",
+          activ ? "translate-x-6" : "translate-x-1",
+        )}
+      />
+    </button>
+  );
+}
+
+function Rand({
+  eticheta,
+  valoare,
+  mono,
+  actiune,
+}: {
+  eticheta: string;
+  valoare: string;
+  mono?: boolean;
+  actiune?: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-line py-3 last:border-0">
+      <span className="text-[13px] text-ink-faint">{eticheta}</span>
+      <div className="flex items-center gap-3">
+        <span className={cn("text-right text-[15px] text-ink", mono && "tabular")}>{valoare}</span>
+        {actiune}
+      </div>
+    </div>
+  );
+}
+
+export function SetariClient({ profil }: { profil: Profil }) {
+  const [telefon, setTelefon] = useState(profil.telefon);
+  const [notificari, setNotificari] = useState(true);
+  const [seIese, startTransition] = useTransition();
+
+  return (
+    <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
+      <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Setări</h1>
+
+      <div className="mt-6 flex items-center gap-4 rounded-card bg-surface p-4 shadow-sm">
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[18px] font-semibold text-primary-700">
+          {initiale(profil.nume)}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-[17px] font-semibold text-ink">{profil.nume}</p>
+          <p className="truncate text-[13px] text-ink-faint">{profil.email}</p>
+        </div>
+      </div>
+
+      <h2 className="mb-2 mt-8 text-[13px] font-medium text-ink-faint">Date personale</h2>
+      <div className="rounded-card bg-surface px-4 shadow-sm">
+        <Rand eticheta="CNP" valoare={mascheazaCnp(profil.cnp)} mono />
+        <Rand
+          eticheta="Telefon"
+          valoare={telefon}
+          mono
+          actiune={<EditeazaTelefonDrawer telefon={telefon} onSalvat={setTelefon} />}
+        />
+      </div>
+
+      <h2 className="mb-2 mt-6 text-[13px] font-medium text-ink-faint">Preferințe</h2>
+      <div className="flex flex-col gap-2">
+        <Link
+          href="/beneficiari"
+          className="flex items-center gap-3 rounded-card bg-surface px-4 py-3.5 shadow-sm transition-colors hover:bg-muted"
+        >
+          <Users size={20} strokeWidth={1.75} aria-hidden className="text-ink-faint" />
+          <span className="flex-1 text-[15px] text-ink">Beneficiari</span>
+          <ChevronRight size={18} strokeWidth={1.75} aria-hidden className="text-ink-faint" />
+        </Link>
+
+        <div className="flex items-center gap-3 rounded-card bg-surface px-4 py-3.5 shadow-sm">
+          <Bell size={20} strokeWidth={1.75} aria-hidden className="text-ink-faint" />
+          <span className="flex-1 text-[15px] text-ink">Notificări push</span>
+          <Comutator activ={notificari} onChange={() => setNotificari((v) => !v)} eticheta="Notificări push" />
+        </div>
+
+        <div className="flex items-center gap-3 rounded-card bg-surface px-4 py-3.5 shadow-sm">
+          <ShieldCheck size={20} strokeWidth={1.75} aria-hidden className="text-ink-faint" />
+          <span className="flex-1 text-[15px] text-ink">Securitate</span>
+          <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-ink-faint">
+            În curând
+          </span>
+        </div>
+      </div>
+
+      <Button
+        varianta="ghost"
+        loading={seIese}
+        onClick={() => startTransition(async () => { await deconecteaza(); })}
+        iconaStanga={!seIese ? <LogOut size={18} strokeWidth={1.75} aria-hidden /> : undefined}
+        className="mt-8 w-full"
+      >
+        Deconectează-te
+      </Button>
+    </div>
+  );
+}
