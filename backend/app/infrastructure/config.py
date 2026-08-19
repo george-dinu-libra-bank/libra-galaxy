@@ -21,9 +21,21 @@ class Settings(BaseSettings):
         validation_alias="CORS_ORIGINS",
     )
 
+    # Layer-ul de agenti. Fara cheie, rutele /agents raspund 503 in loc sa cada.
+    anthropic_api_key: str = ""
+    agent_model: str = "claude-opus-5"
+    agent_effort: str = "high"
+    agent_max_tokens: int = 16000
+    # Plafon de siguranta pentru bucla agentului (un pas = un raspuns al modelului).
+    agent_max_pasi: int = 8
+
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins_raw.split(",") if origin.strip()]
+
+    @property
+    def agenti_activi(self) -> bool:
+        return bool(self.anthropic_api_key)
 
 
 @lru_cache

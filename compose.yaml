@@ -10,6 +10,8 @@ services:
       SUPABASE_URL: http://host.docker.internal:54321
       SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?Porneste prin scripts/dev-up.ps1}
       CORS_ORIGINS: http://localhost:3000
+      # Fara cheie, /api/v1/agents raspunde 503; restul API-ului merge normal.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
