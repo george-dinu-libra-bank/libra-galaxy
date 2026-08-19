@@ -93,6 +93,9 @@ function Rand({
           )}
         </span>
         <span className="block truncate text-[12.5px] text-ink-faint">
+          {tranzactie.grup?.directie === "din"
+            ? `din grupul ${tranzactie.grup.nume} · `
+            : ""}
           {tranzactie.descriere ? `${tranzactie.descriere} · ` : ""}
           {new Date(tranzactie.creatLa).toLocaleDateString("ro-RO", {
             day: "numeric",
