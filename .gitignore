@@ -1,0 +1,4 @@
+.env
+.venv/
+supabase/.branches/
+supabase/.temp/
