@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 # Compose validates this interpolation even for `down`, although the value is
 # not used while containers are being removed.
