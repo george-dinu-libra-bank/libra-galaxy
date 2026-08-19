@@ -155,6 +155,10 @@ function RandTranzactie({
           )}
         </span>
         <span className="block truncate text-[12.5px] text-ink-faint">
+          {/* Banii au plecat din punga comuna, nu din contul tau — se spune. */}
+          {tranzactie.grup?.directie === "din"
+            ? `din grupul ${tranzactie.grup.nume} · `
+            : ""}
           {tranzactie.descriere ? `${tranzactie.descriere} · ` : ""}
           {new Date(tranzactie.creatLa).toLocaleTimeString("ro-RO", {
             hour: "2-digit",
@@ -209,6 +213,9 @@ function DetaliuTranzactie({ tranzactie }: { tranzactie: TranzactieAfisata }) {
 
       <div>
         <Rand eticheta={primita ? "Expeditor" : "Beneficiar"} valoare={nume} />
+        {tranzactie.grup?.directie === "din" ? (
+          <Rand eticheta="Sursă" valoare={`Grupul ${tranzactie.grup.nume}`} />
+        ) : null}
         <Rand eticheta="Descriere" valoare={tranzactie.descriere || "—"} />
         <Rand
           eticheta="Data"

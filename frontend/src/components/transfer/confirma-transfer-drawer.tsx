@@ -65,8 +65,16 @@ export function ConfirmaTransferDrawer({
           {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}
 
           <div>
-            <Rand eticheta="Din cont" valoare={contSursa.nume} />
-            <Rand eticheta="IBAN" valoare={contSursa.numarMascat} mono />
+            {/* Sursa poate fi un cont propriu sau soldul comun al unui grup —
+                grupul n-are IBAN, deci randul cu IBAN-ul sursei dispare. */}
+            {contSursa.tip === "grup" ? (
+              <Rand eticheta="Din grup" valoare={contSursa.nume} />
+            ) : (
+              <>
+                <Rand eticheta="Din cont" valoare={contSursa.nume} />
+                <Rand eticheta="IBAN" valoare={contSursa.numarMascat} mono />
+              </>
+            )}
             <Rand eticheta="Către" valoare={beneficiar.nume} />
             <Rand eticheta="IBAN beneficiar" valoare={formateazaIban(beneficiar.iban)} mono />
             {detalii ? <Rand eticheta="Detalii" valoare={detalii} /> : null}

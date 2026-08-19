@@ -1,4 +1,5 @@
 import { obtineConturiUtilizator } from "@/lib/data/conturi";
+import { obtineGrupurileMele } from "@/lib/data/grupuri";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -6,18 +7,24 @@ import { createClient } from "@/lib/supabase/server";
  * Datele ecranului de transfer. Dupa 0007_conturi_bancare.sql, si sursa si
  * destinatia sunt conturi bancare: utilizatorul alege din care dintre conturile
  * lui plateste, iar IBAN-ul introdus identifica un cont al beneficiarului.
+ *
+ * De la 0009_core_banking_groups.sql sursa poate fi si soldul unui grup din
+ * care faci parte — destinatia ramane mereu un cont, dupa IBAN.
  */
 
 export const BANCA_INTERNA = "Libra Bank";
 export const VALUTA_IMPLICITA = "RON";
 
 export type ContSursa = {
+  /** Uuid-ul contului, sau id-ul grupului ca text cand `tip` e „grup". */
   id: string;
   nume: string;
+  /** IBAN-ul mascat la conturi, numarul de membri la grupuri. */
   numarMascat: string;
   sold: number;
   valuta: string;
   blocat: boolean;
+  tip: "cont" | "grup";
 };
 
 export type BeneficiarTransfer = {
@@ -28,18 +35,39 @@ export type BeneficiarTransfer = {
   banca: string;
 };
 
-/** Conturile din care utilizatorul curent poate trimite bani. */
+/**
+ * Sursele din care utilizatorul curent poate trimite bani: intai conturile
+ * lui, apoi soldurile grupurilor din care face parte.
+ *
+ * Grupurile vin la urma pentru ca plata din punga comuna e cazul mai rar —
+ * si pentru ca prima sursa din lista e cea preselectata in formular.
+ */
 export async function obtineConturiTransfer(): Promise<ContSursa[]> {
-  const conturi = await obtineConturiUtilizator();
+  const [conturi, grupuri] = await Promise.all([
+    obtineConturiUtilizator(),
+    obtineGrupurileMele(),
+  ]);
 
-  return conturi.map((cont) => ({
-    id: cont.id,
-    nume: cont.nume,
-    numarMascat: cont.ibanMascat,
-    sold: cont.sold,
-    valuta: VALUTA_IMPLICITA,
-    blocat: false,
-  }));
+  return [
+    ...conturi.map((cont) => ({
+      id: cont.id,
+      nume: cont.nume,
+      numarMascat: cont.ibanMascat,
+      sold: cont.sold,
+      valuta: VALUTA_IMPLICITA,
+      blocat: false,
+      tip: "cont" as const,
+    })),
+    ...grupuri.map((grup) => ({
+      id: String(grup.id),
+      nume: grup.nume,
+      numarMascat: grup.membri === 1 ? "1 membru" : `${grup.membri} membri`,
+      sold: grup.sold,
+      valuta: VALUTA_IMPLICITA,
+      blocat: false,
+      tip: "grup" as const,
+    })),
+  ];
 }
 
 /**
