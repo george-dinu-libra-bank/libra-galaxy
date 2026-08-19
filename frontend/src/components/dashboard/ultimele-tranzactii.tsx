@@ -82,9 +82,18 @@ function Rand({
       </span>
 
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] text-ink">{nume}</span>
+        <span className="block truncate text-[15px] text-ink">
+          {tranzactie.intreConturiProprii ? (
+            "Între conturile tale"
+          ) : (
+            <>
+              {primita ? "Primit de la" : "Trimis către"}{" "}
+              <span className="font-semibold">{nume}</span>
+            </>
+          )}
+        </span>
         <span className="block truncate text-[12.5px] text-ink-faint">
-          {tranzactie.descriere || (primita ? "Transfer primit" : "Transfer trimis")} ·{" "}
+          {tranzactie.descriere ? `${tranzactie.descriere} · ` : ""}
           {new Date(tranzactie.creatLa).toLocaleDateString("ro-RO", {
             day: "numeric",
             month: "short",

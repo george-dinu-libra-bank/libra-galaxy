@@ -10,11 +10,12 @@ import {
 } from "lucide-react";
 import { AvatarUtilizator } from "@/components/dashboard/avatar-utilizator";
 import { DetaliiContDrawer } from "@/components/dashboard/detalii-cont-drawer";
+import { ListaConturi } from "@/components/dashboard/lista-conturi";
 import { SoldAnimat } from "@/components/dashboard/sold-animat";
 import { UltimeleTranzactii } from "@/components/dashboard/ultimele-tranzactii";
+import { obtineConturiUtilizator, totalSold } from "@/lib/data/conturi";
 import { obtineTranzactiiUtilizator } from "@/lib/data/tranzactii";
 import { createClient } from "@/lib/supabase/server";
-import { formateazaIban } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Contul meu · Libra",
@@ -41,22 +42,33 @@ export default async function DashboardPage() {
 
   const { data: profil } = await supabase
     .from("profiles")
-    .select("nume, cnp, telefon, email, iban_cont, creat_la, sold_curent, avatar_url")
+    .select("nume, cnp, telefon, email, iban_cont, creat_la, avatar_url")
     .eq("id", user.id)
     .single();
 
   const prenume = profil?.nume?.split(" ").at(-1) ?? "";
-  const sold = Number(profil?.sold_curent ?? 0);
+  const conturi = await obtineConturiUtilizator();
   const tranzactii = await obtineTranzactiiUtilizator(TRANZACTII_REZUMAT);
+
+  // Totalul se aduna aici, pe server — cifra ajunge gata calculata in HTML.
+  const total = totalSold(conturi);
 
   return (
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
-      <header className="flex items-center gap-3">
+      <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-[13px] text-ink-faint">Salut,</p>
           <h1 className="truncate text-xl font-bold tracking-[-0.02em] text-ink">
             {prenume || "client Libra"}
           </h1>
+
+          <p className="mt-3 text-[13px] text-ink-faint">
+            Total în {conturi.length === 1 ? "cont" : `${conturi.length} conturi`}
+          </p>
+          <SoldAnimat
+            sold={total}
+            className="tabular text-[30px] font-bold leading-[36px] text-ink"
+          />
         </div>
 
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface text-ink-soft shadow-sm">
@@ -71,19 +83,7 @@ export default async function DashboardPage() {
 
       {profil ? (
         <>
-          {/* Banii stau pe cont, nu pe card (0004_core_banking.sql), deci
-              dashboardul arata doar soldul; cardurile cu datele lor sunt
-              pe /carduri. */}
-          <section className="hero-gradient mt-6 animate-fade-up rounded-card p-6 text-white shadow-lg">
-            <p className="text-[13px] text-white/75">Sold curent</p>
-            <SoldAnimat
-              sold={sold}
-              className="tabular mt-1 text-[34px] font-bold leading-[40px]"
-            />
-            <p className="tabular mt-4 text-[13px] tracking-[0.02em] text-white/70">
-              {formateazaIban(profil.iban_cont)}
-            </p>
-          </section>
+          <ListaConturi conturi={conturi} />
 
           <div className="mt-4">
             <DetaliiContDrawer profil={profil} />

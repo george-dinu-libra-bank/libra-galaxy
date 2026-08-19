@@ -16,6 +16,8 @@ export type TranzactieAfisata = {
   creatLa: string;
   tip: "trimisa" | "primita";
   contraparte: Contraparte | null;
+  /** Mutare intre doua conturi ale aceleiasi persoane — nu a plecat niciun ban. */
+  intreConturiProprii: boolean;
 };
 
 /**
@@ -91,6 +93,7 @@ export async function obtineTranzactiiUtilizator(
       creatLa: tranzactie.creat_la as string,
       tip: trimisa ? ("trimisa" as const) : ("primita" as const),
       contraparte: contraparti.get(idContraparte as string) ?? null,
+      intreConturiProprii: tranzactie.id_user_send === tranzactie.id_user_recieve,
     };
   });
 }

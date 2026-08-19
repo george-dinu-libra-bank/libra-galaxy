@@ -69,6 +69,7 @@ export function TransferForm({
         ibanDestinatar: beneficiar.iban,
         suma: sumaNumerica,
         detalii,
+        idContSursa: contSursa.id,
       });
 
       if (rezultat.eroare) {

@@ -71,8 +71,6 @@ export async function salveazaAvatar(formData: FormData): Promise<RezultatAvatar
   if (!extensie) return { eroare: "Poza trebuie să fie JPG, PNG sau WebP." };
   if (poza.size > MAX_OCTETI) return { eroare: "Poza este prea mare (maxim 4 MB)." };
 
-  // Nume nou la fiecare salvare: URL-ul public se schimba, deci nu ramane
-  // poza veche in cache-ul browserului.
   const cale = `${user.id}/avatar-${Date.now()}.${extensie}`;
 
   const { error: eroareIncarcare } = await supabaseAdmin.storage

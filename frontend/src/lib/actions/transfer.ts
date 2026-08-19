@@ -36,21 +36,26 @@ export async function cautaBeneficiarDupaIban(
 
   const supabaseAdmin = createAdminClient();
 
+  // IBAN-ul identifica un cont, nu un om (0007_conturi_bancare.sql).
   const { data, error } = await supabaseAdmin
-    .from("profiles")
-    .select("id, nume, iban_cont")
-    .eq("iban_cont", iban)
+    .from("conturi_bancare")
+    .select("id, iban, id_user, profiles ( nume )")
+    .eq("iban", iban)
     .maybeSingle();
 
   if (error) return { eroare: "Nu am putut cauta beneficiarul. Incearca din nou." };
   if (!data) return { eroare: "Nu exista niciun cont Libra cu acest IBAN." };
-  if (data.id === user.id) return { eroare: "Nu poti trimite bani catre propriul cont." };
+
+  const relatie = data.profiles as { nume: string } | { nume: string }[] | null;
+  const proprietar = Array.isArray(relatie) ? relatie[0] : relatie;
 
   return {
     beneficiar: {
       id: data.id as string,
-      nume: data.nume as string,
-      iban: data.iban_cont as string,
+      // Un cont propriu ramane o destinatie valida: se pot muta bani intre
+      // conturile aceleiasi persoane. Doar acelasi cont e respins, in RPC.
+      nume: proprietar?.nume ?? "Cont Libra",
+      iban: data.iban as string,
       banca: BANCA_INTERNA,
     },
   };
@@ -68,7 +73,9 @@ const MESAJE_CORE_BANKING: Record<string, string> = {
   IBAN_INVALID: "IBAN-ul beneficiarului este invalid.",
   BENEFICIAR_INEXISTENT: "Nu exista niciun cont Libra cu acest IBAN.",
   PROFIL_INEXISTENT: "Contul tau nu a fost gasit.",
-  AUTOTRANSFER: "Nu poti trimite bani catre propriul cont.",
+  CONT_SURSA_INEXISTENT: "Contul din care vrei sa platesti nu exista.",
+  CONT_SURSA_STRAIN: "Nu poti plati dintr-un cont care nu este al tau.",
+  AUTOTRANSFER: "Nu poti trimite bani in acelasi cont din care platesti.",
   FONDURI_INSUFICIENTE: "Nu ai fonduri suficiente in cont.",
 };
 
@@ -86,6 +93,8 @@ export async function trimiteTransfer(input: {
   ibanDestinatar: string;
   suma: number;
   detalii: string;
+  /** Contul din care se plateste; lipsa lui inseamna contul principal. */
+  idContSursa?: string;
 }): Promise<RezultatTransfer> {
   const supabase = await createClient();
 
@@ -109,6 +118,7 @@ export async function trimiteTransfer(input: {
     p_iban_dest: iban,
     p_suma: suma,
     p_descriere: input.detalii.trim() || null,
+    p_id_cont_send: input.idContSursa ?? null,
     p_id_user: user.id,
   });
 

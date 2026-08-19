@@ -1,3 +1,4 @@
+import { obtineConturiUtilizator, totalSold } from "@/lib/data/conturi";
 import { createClient } from "@/lib/supabase/server";
 
 export type StilCard = "standard" | "silver" | "gold";
@@ -7,15 +8,15 @@ export type CardAfisat = {
   stil: StilCard;
   numarMascat: string;
   dataExpirare: string;
-  /** Soldul contului — toate cardurile dau acces la aceiasi bani. */
+  /** Totalul din conturi — cardul e instrument, nu portofel. */
   soldCurent: number;
   blocat: boolean;
 };
 
 /**
  * Cardurile utilizatorului curent. Un profil nou nu are niciun card.
- * Banii nu stau pe card, ci pe cont (public.profiles.sold_curent), asa ca
- * fiecare card afiseaza soldul contului — vezi 0004_core_banking.sql.
+ * Banii nu stau pe card, ci pe conturile bancare, asa ca fiecare card afiseaza
+ * totalul din conturi — vezi 0007_conturi_bancare.sql.
  */
 export async function obtineCarduriUtilizator(): Promise<CardAfisat[]> {
   const supabase = await createClient();
@@ -26,19 +27,18 @@ export async function obtineCarduriUtilizator(): Promise<CardAfisat[]> {
 
   if (!user) return [];
 
-  const [{ data, error }, { data: profil, error: eroareProfil }] = await Promise.all([
+  const [{ data, error }, conturi] = await Promise.all([
     supabase
       .from("carduri")
       .select("id, numar_card, data_expirare, card_style, is_blocked, creat_la")
       .eq("id_user", user.id)
       .order("creat_la", { ascending: true }),
-    supabase.from("profiles").select("sold_curent").eq("id", user.id).maybeSingle(),
+    obtineConturiUtilizator(),
   ]);
 
   if (error) throw error;
-  if (eroareProfil) throw eroareProfil;
 
-  const sold = Number(profil?.sold_curent ?? 0);
+  const sold = totalSold(conturi);
 
   return (data ?? []).map((card) => ({
     id: card.id as string,
