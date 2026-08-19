@@ -13,6 +13,18 @@ Edge Runtime nu este pornit, deoarece proiectul nu contine Edge Functions.
 .\scripts\dev-up.ps1
 ```
 
+## Variante de pornire
+
+| Comanda | Supabase | Backend | Cand o folosesti |
+|---|---|---|---|
+| `.\scripts\dev-up.ps1` | local, in Docker | container | fara cont Supabase, totul izolat |
+| `.\scripts\dev-up-cloud.ps1` | proiectul din `.env` | container | date comune cu echipa |
+| `.\scripts\dev-local.ps1` | proiectul din `.env` | pe masina | cand lucrezi la backend sau agenti |
+
+`dev-local.ps1` ruleaza backend-ul direct pe masina, cu reincarcare la salvare, si foloseste
+Entra (`az login`) pentru Azure — deci nicio cheie pe disc. Frontend-ul ramane in container,
+fiindca cere Node.js. Detalii in [docs/AGENTS.md](docs/AGENTS.md).
+
 Servicii:
 
 - frontend: `http://localhost:3000`;
