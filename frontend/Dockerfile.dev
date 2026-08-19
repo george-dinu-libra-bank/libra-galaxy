@@ -9,4 +9,7 @@ RUN npm install
 COPY . .
 
 EXPOSE 3000
-CMD ["npm", "run", "dev", "--", "-H", "0.0.0.0", "-p", "3000"]
+# --webpack: Turbopack nu suporta watch prin polling, iar pe bind mount de
+# Windows evenimentele inotify nu ajung in container. Webpack + WATCHPACK_POLLING
+# detecteaza modificarile.
+CMD ["npm", "run", "dev", "--", "--webpack", "-H", "0.0.0.0", "-p", "3000"]

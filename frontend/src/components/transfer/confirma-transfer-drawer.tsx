@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
-import type { Beneficiar, Cont } from "@/lib/mock-data";
+import type { BeneficiarTransfer, ContSursa } from "@/lib/data/transfer";
 import { formateazaIban, formateazaSuma } from "@/lib/utils";
 
 function Rand({ eticheta, valoare, mono }: { eticheta: string; valoare: string; mono?: boolean }) {
@@ -22,26 +22,20 @@ export function ConfirmaTransferDrawer({
   beneficiar,
   suma,
   detalii,
-  onConfirmat,
+  seTrimite,
+  eroare,
+  onConfirma,
 }: {
   deschis: boolean;
   onOpenChange: (deschis: boolean) => void;
-  contSursa: Cont;
-  beneficiar: Beneficiar;
+  contSursa: ContSursa;
+  beneficiar: BeneficiarTransfer;
   suma: number;
   detalii: string;
-  onConfirmat: () => void;
+  seTrimite: boolean;
+  eroare: string | null;
+  onConfirma: () => void;
 }) {
-  const [seTrimite, setSeTrimite] = useState(false);
-
-  async function trimite() {
-    setSeTrimite(true);
-    await new Promise((resolve) => setTimeout(resolve, 900));
-    setSeTrimite(false);
-    onOpenChange(false);
-    onConfirmat();
-  }
-
   return (
     <Drawer
       open={deschis}
@@ -55,7 +49,7 @@ export function ConfirmaTransferDrawer({
         description="Verifica datele inainte de a trimite banii."
         cuInchidere={!seTrimite}
         footer={
-          <Button className="w-full" loading={seTrimite} onClick={trimite}>
+          <Button className="w-full" loading={seTrimite} onClick={onConfirma}>
             Trimite {formateazaSuma(suma)}
           </Button>
         }
@@ -68,9 +62,11 @@ export function ConfirmaTransferDrawer({
             </p>
           </div>
 
+          {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}
+
           <div>
             <Rand eticheta="Din cont" valoare={contSursa.nume} />
-            <Rand eticheta="IBAN sursă" valoare={formateazaIban(contSursa.iban)} mono />
+            <Rand eticheta="IBAN" valoare={contSursa.numarMascat} mono />
             <Rand eticheta="Către" valoare={beneficiar.nume} />
             <Rand eticheta="IBAN beneficiar" valoare={formateazaIban(beneficiar.iban)} mono />
             {detalii ? <Rand eticheta="Detalii" valoare={detalii} /> : null}

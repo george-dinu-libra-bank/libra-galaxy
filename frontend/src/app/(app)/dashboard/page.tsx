@@ -8,10 +8,14 @@ import {
   History,
   Users,
 } from "lucide-react";
+import { AvatarUtilizator } from "@/components/dashboard/avatar-utilizator";
 import { DetaliiContDrawer } from "@/components/dashboard/detalii-cont-drawer";
+import { ListaConturi } from "@/components/dashboard/lista-conturi";
+import { SoldAnimat } from "@/components/dashboard/sold-animat";
+import { UltimeleTranzactii } from "@/components/dashboard/ultimele-tranzactii";
+import { obtineConturiUtilizator, totalSold } from "@/lib/data/conturi";
+import { obtineTranzactiiUtilizator } from "@/lib/data/tranzactii";
 import { createClient } from "@/lib/supabase/server";
-import { obtineConturi } from "@/lib/mock-data";
-import { formateazaIban, formateazaSuma } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Contul meu · Libra",
@@ -24,6 +28,9 @@ const ACTIUNI = [
   { eticheta: "Beneficiari", href: "/beneficiari", icoana: Users },
 ];
 
+/** Cate miscari incap in rezumatul de pe dashboard; restul stau in /istoric. */
+const TRANZACTII_REZUMAT = 5;
+
 export default async function DashboardPage() {
   const supabase = await createClient();
 
@@ -35,41 +42,48 @@ export default async function DashboardPage() {
 
   const { data: profil } = await supabase
     .from("profiles")
-    .select("nume, cnp, telefon, email, iban_cont, creat_la")
+    .select("nume, cnp, telefon, email, iban_cont, creat_la, avatar_url")
     .eq("id", user.id)
     .single();
 
   const prenume = profil?.nume?.split(" ").at(-1) ?? "";
-  const conturi = await obtineConturi();
-  const contCurent = conturi.find((c) => c.tip === "curent");
+  const conturi = await obtineConturiUtilizator();
+  const tranzactii = await obtineTranzactiiUtilizator(TRANZACTII_REZUMAT);
+
+  // Totalul se aduna aici, pe server — cifra ajunge gata calculata in HTML.
+  const total = totalSold(conturi);
 
   return (
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
-      <header className="flex items-center justify-between">
-        <div>
+      <header className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
           <p className="text-[13px] text-ink-faint">Salut,</p>
-          <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">
+          <h1 className="truncate text-xl font-bold tracking-[-0.02em] text-ink">
             {prenume || "client Libra"}
           </h1>
+
+          <p className="mt-3 text-[13px] text-ink-faint">
+            Total în {conturi.length === 1 ? "cont" : `${conturi.length} conturi`}
+          </p>
+          <SoldAnimat
+            sold={total}
+            className="tabular text-[30px] font-bold leading-[36px] text-ink"
+          />
         </div>
 
-        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-surface text-ink-soft shadow-sm">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface text-ink-soft shadow-sm">
           <Bell size={20} strokeWidth={1.75} aria-hidden />
         </span>
+
+        <AvatarUtilizator
+          avatarUrl={profil?.avatar_url ?? null}
+          nume={profil?.nume ?? "client Libra"}
+        />
       </header>
 
       {profil ? (
         <>
-          <section className="hero-gradient mt-6 animate-fade-up rounded-card p-6 text-white shadow-lg">
-            <p className="text-[13px] text-primary-100">Cont curent</p>
-            <p className="tabular mt-1 text-[15px] tracking-[0.02em]">
-              {formateazaIban(profil.iban_cont)}
-            </p>
-            <p className="tabular mt-6 text-[32px] font-bold leading-[38px]">
-              {formateazaSuma(contCurent?.sold ?? 0)}
-            </p>
-            <p className="mt-1 text-[13px] text-primary-100">Disponibil</p>
-          </section>
+          <ListaConturi conturi={conturi} />
 
           <div className="mt-4">
             <DetaliiContDrawer profil={profil} />
@@ -103,6 +117,8 @@ export default async function DashboardPage() {
           </Link>
         ))}
       </div>
+
+      <UltimeleTranzactii tranzactii={tranzactii} />
     </div>
   );
 }

@@ -11,7 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export type Perioada = "7z" | "30z" | "3l" | "tot";
-export type TipFiltru = "toate" | "incasare" | "plata";
+export type TipFiltru = "toate" | "primita" | "trimisa";
 
 export type Filtre = { perioada: Perioada; tip: TipFiltru };
 
@@ -24,8 +24,8 @@ const PERIOADE: { valoare: Perioada; eticheta: string }[] = [
 
 const TIPURI: { valoare: TipFiltru; eticheta: string }[] = [
   { valoare: "toate", eticheta: "Toate" },
-  { valoare: "incasare", eticheta: "Incasari" },
-  { valoare: "plata", eticheta: "Plati" },
+  { valoare: "primita", eticheta: "Primite" },
+  { valoare: "trimisa", eticheta: "Trimise" },
 ];
 
 function Chip({

@@ -8,6 +8,7 @@
 --
 --   0001_profiles.sql            profiles + trigger pe auth.users + IBAN
 --   0002_carduri_tranzactii.sql  carduri + tranzactii + generator de card
+--   0003_card_style.sql          coloana card_style (standard | silver | gold)
 --
 -- Relatii:
 --   auth.users 1 ── 1 profiles 1 ── N carduri 1 ── N tranzactii
@@ -46,9 +47,10 @@ create index profiles_email_idx on public.profiles (email);
 create table public.carduri (
   id            uuid          primary key default gen_random_uuid(),
   id_user       uuid          not null references public.profiles (id) on delete cascade,
-  numar_card    text          not null unique,          -- 16 cifre, valid Luhn
-  data_expirare text          not null,                 -- MM/YY (ex. 08/30)
-  ccv           text          not null,                 -- 3 cifre
+  numar_card    text          not null unique,          -- 16 cifre, valid Luhn — generat in trigger
+  data_expirare text          not null,                 -- MM/YY (ex. 08/30) — generat in trigger
+  ccv           text          not null,                 -- 3 cifre — generat in trigger
+  card_style    text          not null default 'standard', -- standard | silver | gold
   sold_curent   numeric(14,2) not null default 0,       -- RON
   is_blocked    boolean       not null default false,
   creat_la      timestamptz   not null default now(),
@@ -64,14 +66,19 @@ create table public.carduri (
   constraint carduri_numar_check    check (numar_card ~ '^[0-9]{16}$'),
   constraint carduri_expirare_check check (data_expirare ~ '^(0[1-9]|1[0-2])/[0-9]{2}$'),
   constraint carduri_ccv_check      check (ccv ~ '^[0-9]{3}$'),
-  constraint carduri_sold_check     check (sold_curent >= 0)
+  constraint carduri_sold_check     check (sold_curent >= 0),
+  constraint carduri_stil_check     check (card_style in ('standard', 'silver', 'gold'))
 );
 
 create index carduri_id_user_idx on public.carduri (id_user);
 
--- numar_card, ccv si data_expirare se genereaza in trigger la insert.
+-- Un profil nou nu are niciun card — se creeaza doar la cererea utilizatorului
+-- (alege tematica; numar_card, ccv, data_expirare se genereaza in trigger la
+-- insert, indiferent ce trimite clientul).
 -- RLS: select/insert/update pe cardurile proprii; delete nu e permis (se
--- foloseste is_blocked). sold_curent se schimba doar din backend.
+-- foloseste is_blocked). sold_curent, numar_card, ccv, data_expirare si
+-- card_style sunt imutabile din client dupa creare; sold_curent se seteaza
+-- doar din backend (service_role) si la insert.
 
 
 -- -----------------------------------------------------------------------------
