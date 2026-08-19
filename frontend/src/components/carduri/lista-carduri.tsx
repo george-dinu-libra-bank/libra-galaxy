@@ -2,11 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Lock, Unlock } from "lucide-react";
+import { Eye, EyeOff, Lock, Unlock } from "lucide-react";
 import { AdaugaCardDrawer } from "@/components/carduri/adauga-card-drawer";
+import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerContent } from "@/components/ui/drawer";
-import { comutaBlocareCard } from "@/lib/actions/carduri";
+import { Drawer, DrawerContent, DrawerNested } from "@/components/ui/drawer";
+import {
+  comutaBlocareCard,
+  obtineDateSensibileCard,
+  type DateSensibileCard,
+} from "@/lib/actions/carduri";
 import type { CardAfisat } from "@/lib/data/carduri";
 import { ETICHETE_STIL_CARD, GRADIENTE_STIL_CARD } from "@/lib/stil-card";
 import { cn, formateazaSuma } from "@/lib/utils";
@@ -111,7 +116,7 @@ export function ListaCarduri({ carduri }: { carduri: CardAfisat[] }) {
             ) : undefined
           }
         >
-          {selectat ? <DetaliuCard card={selectat} /> : null}
+          {selectat ? <DetaliuCard key={selectat.id} card={selectat} /> : null}
         </DrawerContent>
       </Drawer>
     </div>
@@ -119,13 +124,90 @@ export function ListaCarduri({ carduri }: { carduri: CardAfisat[] }) {
 }
 
 function DetaliuCard({ card }: { card: CardAfisat }) {
+  const [dateSensibile, setDateSensibile] = useState<DateSensibileCard | null>(null);
+  const [confirmareDeschisa, setConfirmareDeschisa] = useState(false);
+  const [eroare, setEroare] = useState<string | null>(null);
+  const [seIncarca, startTransition] = useTransition();
+
+  function confirmaAfisarea() {
+    setEroare(null);
+    startTransition(async () => {
+      const rezultat = await obtineDateSensibileCard(card.id);
+      if (rezultat.eroare || !rezultat.date) {
+        setEroare(rezultat.eroare ?? "Nu am putut afisa datele cardului.");
+        return;
+      }
+      setDateSensibile(rezultat.date);
+      setConfirmareDeschisa(false);
+    });
+  }
+
   return (
     <div>
       <Rand eticheta="Tematica" valoare={ETICHETE_STIL_CARD[card.stil]} />
-      <Rand eticheta="Numar" valoare={card.numarMascat} mono />
+      <Rand eticheta="Numar" valoare={dateSensibile?.numar ?? card.numarMascat} mono />
+      <Rand eticheta="CCV" valoare={dateSensibile?.ccv ?? "•••"} mono />
       <Rand eticheta="Expira" valoare={card.dataExpirare} mono />
       <Rand eticheta="Sold" valoare={formateazaSuma(card.soldCurent)} mono />
       <Rand eticheta="Stare" valoare={card.blocat ? "Blocat" : "Activ"} />
+
+      <Button
+        varianta="secondary"
+        marime="sm"
+        className="mt-4 w-full"
+        iconaStanga={
+          dateSensibile ? (
+            <EyeOff size={18} strokeWidth={1.75} aria-hidden />
+          ) : (
+            <Eye size={18} strokeWidth={1.75} aria-hidden />
+          )
+        }
+        onClick={() => {
+          if (dateSensibile) {
+            setDateSensibile(null);
+            return;
+          }
+          setEroare(null);
+          setConfirmareDeschisa(true);
+        }}
+      >
+        {dateSensibile ? "Ascunde datele sensibile" : "Afiseaza datele sensibile"}
+      </Button>
+
+      <DrawerNested
+        open={confirmareDeschisa}
+        onOpenChange={(deschis) => {
+          setConfirmareDeschisa(deschis);
+          if (!deschis) setEroare(null);
+        }}
+      >
+        <DrawerContent
+          title="Afisezi datele sensibile?"
+          description="Numarul complet si CCV-ul vor fi vizibile pe ecran. Asigura-te ca nu te vede nimeni."
+          footer={
+            <div className="flex flex-col gap-2">
+              <Button className="w-full" loading={seIncarca} onClick={confirmaAfisarea}>
+                Da, afiseaza datele
+              </Button>
+              <Button
+                varianta="ghost"
+                className="w-full"
+                disabled={seIncarca}
+                onClick={() => setConfirmareDeschisa(false)}
+              >
+                Renunta
+              </Button>
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}
+            <p className="text-[15px] leading-[22px] text-ink-soft">
+              Cardul {ETICHETE_STIL_CARD[card.stil]} — {card.numarMascat}
+            </p>
+          </div>
+        </DrawerContent>
+      </DrawerNested>
     </div>
   );
 }

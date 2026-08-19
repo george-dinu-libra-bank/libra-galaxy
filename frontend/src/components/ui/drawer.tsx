@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
  */
 
 export const Drawer = Vaul.Root;
+/** Drawer deschis peste alt drawer (vaul se ocupa de stivuire). */
+export const DrawerNested = Vaul.NestedRoot;
 export const DrawerTrigger = Vaul.Trigger;
 export const DrawerClose = Vaul.Close;
 
