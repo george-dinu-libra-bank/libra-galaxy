@@ -11,8 +11,14 @@ services:
       SUPABASE_URL: ${SUPABASE_INTERNAL_URL:-http://host.docker.internal:54321}
       SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?Porneste prin scripts/dev-up.ps1 sau completeaza .env}
       CORS_ORIGINS: http://localhost:3000
-      # Fara cheie, /api/v1/agents raspunde 503; restul API-ului merge normal.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Layer-ul de agenti. Fara endpoint si cheie, /api/v1/agents/chat da 503;
+      # /api/v1/alerte merge oricum, nu trece prin niciun model.
+      LLM_PROVIDER: ${LLM_PROVIDER:-azure}
+      AZURE_AI_ENDPOINT: ${AZURE_AI_ENDPOINT:-}
+      AZURE_AI_AUTH: ${AZURE_AI_AUTH:-key}
+      AZURE_AI_API_KEY: ${AZURE_AI_API_KEY:-}
+      AZURE_AI_CHAT_DEPLOYMENT: ${AZURE_AI_CHAT_DEPLOYMENT:-gpt-5-mini}
+      AZURE_AI_EMBEDDING_DEPLOYMENT: ${AZURE_AI_EMBEDDING_DEPLOYMENT:-text-embedding-3-small}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -37,7 +43,10 @@ services:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?Porneste prin scripts/dev-up.ps1 sau completeaza .env}
       # URL-ul pe care il vede containerul; difera de cel de sus doar la Supabase local.
       SUPABASE_INTERNAL_URL: ${SUPABASE_INTERNAL_URL:-http://host.docker.internal:54321}
-      BACKEND_INTERNAL_URL: http://backend:8000
+      # Ceruta de lib/supabase/admin.js. Nu are prefixul NEXT_PUBLIC_, deci
+      # ramane pe server si nu intra in bundle-ul din browser.
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Completeaza .env}
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
