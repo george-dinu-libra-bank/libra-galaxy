@@ -1,15 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Check, FileText } from "lucide-react";
+import { useState, useTransition } from "react";
+import { Check, CreditCard, FileText } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
 import { AlegeBeneficiarDrawer } from "@/components/transfer/alege-beneficiar-drawer";
 import { AlegeContDrawer } from "@/components/transfer/alege-cont-drawer";
 import { ConfirmaTransferDrawer } from "@/components/transfer/confirma-transfer-drawer";
-import type { Beneficiar, Cont } from "@/lib/mock-data";
+import { trimiteTransfer } from "@/lib/actions/transfer";
+import type { BeneficiarTransfer, ContSursa } from "@/lib/data/transfer";
 import { formateazaSuma } from "@/lib/utils";
 
 export function TransferForm({
@@ -17,22 +19,34 @@ export function TransferForm({
   beneficiari,
   beneficiarInitial = null,
 }: {
-  conturi: Cont[];
-  beneficiari: Beneficiar[];
-  beneficiarInitial?: Beneficiar | null;
+  conturi: ContSursa[];
+  beneficiari: BeneficiarTransfer[];
+  beneficiarInitial?: BeneficiarTransfer | null;
 }) {
   const router = useRouter();
-  const [contSursa, setContSursa] = useState<Cont>(conturi[0]);
-  const [beneficiar, setBeneficiar] = useState<Beneficiar | null>(beneficiarInitial);
+  const [contSursa, setContSursa] = useState<ContSursa | null>(
+    conturi.find((c) => !c.blocat) ?? conturi[0] ?? null,
+  );
+  const [beneficiar, setBeneficiar] = useState<BeneficiarTransfer | null>(beneficiarInitial);
   const [suma, setSuma] = useState("");
   const [detalii, setDetalii] = useState("");
   const [eroare, setEroare] = useState<string | null>(null);
+  const [eroareTrimitere, setEroareTrimitere] = useState<string | null>(null);
   const [confirmDeschis, setConfirmDeschis] = useState(false);
   const [trimis, setTrimis] = useState(false);
+  const [seTrimite, startTransition] = useTransition();
 
   const sumaNumerica = Number(suma.replace(",", "."));
 
   function continua() {
+    if (!contSursa) {
+      setEroare("Nu ai niciun card din care sa trimiti bani.");
+      return;
+    }
+    if (contSursa.blocat) {
+      setEroare("Cardul selectat este blocat. Deblocheaza-l sau alege alt card.");
+      return;
+    }
     if (!beneficiar) {
       setEroare("Alege beneficiarul catre care trimiti banii.");
       return;
@@ -42,11 +56,58 @@ export function TransferForm({
       return;
     }
     if (sumaNumerica > contSursa.sold) {
-      setEroare("Nu ai fonduri suficiente in contul selectat.");
+      setEroare("Nu ai fonduri suficiente in cardul selectat.");
       return;
     }
     setEroare(null);
+    setEroareTrimitere(null);
     setConfirmDeschis(true);
+  }
+
+  function trimite() {
+    if (!contSursa || !beneficiar) return;
+
+    setEroareTrimitere(null);
+    startTransition(async () => {
+      const rezultat = await trimiteTransfer({
+        idCardSursa: contSursa.id,
+        ibanDestinatar: beneficiar.iban,
+        suma: sumaNumerica,
+        detalii,
+      });
+
+      if (rezultat.eroare) {
+        setEroareTrimitere(rezultat.eroare);
+        return;
+      }
+
+      setConfirmDeschis(false);
+      setTrimis(true);
+      // Solduri, istoric si beneficiari recenti — reincarcate din Supabase.
+      router.refresh();
+    });
+  }
+
+  if (conturi.length === 0) {
+    return (
+      <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
+        <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Transfer</h1>
+        <p className="mt-1 text-[15px] text-ink-soft">Trimite bani catre un cont Libra.</p>
+
+        <section className="mt-6 flex flex-col items-center gap-4 rounded-card border border-dashed border-line bg-surface p-6 text-center shadow-sm">
+          <p className="text-[15px] leading-[22px] text-ink-soft">
+            Nu ai niciun card. Adauga unul ca sa poti trimite bani.
+          </p>
+          <Link
+            href="/carduri"
+            className="flex h-[52px] w-full items-center justify-center gap-2 rounded-field bg-primary-600 text-[15px] font-semibold text-white shadow-btn transition-colors hover:bg-primary-700"
+          >
+            <CreditCard size={18} strokeWidth={1.75} aria-hidden />
+            Mergi la carduri
+          </Link>
+        </section>
+      </div>
+    );
   }
 
   if (trimis && beneficiar) {
@@ -84,10 +145,12 @@ export function TransferForm({
   return (
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
       <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Transfer</h1>
-      <p className="mt-1 text-[15px] text-ink-soft">Trimite bani catre un cont din Romania.</p>
+      <p className="mt-1 text-[15px] text-ink-soft">Trimite bani catre un cont Libra.</p>
 
       <div className="mt-6 flex flex-col gap-4">
-        <AlegeContDrawer conturi={conturi} selectat={contSursa} onSelect={setContSursa} />
+        {contSursa ? (
+          <AlegeContDrawer conturi={conturi} selectat={contSursa} onSelect={setContSursa} />
+        ) : null}
         <AlegeBeneficiarDrawer
           beneficiari={beneficiari}
           selectat={beneficiar}
@@ -100,7 +163,11 @@ export function TransferForm({
           placeholder="0,00"
           value={suma}
           onChange={(e) => setSuma(e.target.value.replace(/[^0-9,.]/g, ""))}
-          ajutor={`Disponibil: ${formateazaSuma(contSursa.sold, contSursa.valuta)}`}
+          ajutor={
+            contSursa
+              ? `Disponibil: ${formateazaSuma(contSursa.sold, contSursa.valuta)}`
+              : undefined
+          }
         />
 
         <Camp
@@ -119,7 +186,7 @@ export function TransferForm({
         </Button>
       </div>
 
-      {beneficiar ? (
+      {contSursa && beneficiar ? (
         <ConfirmaTransferDrawer
           deschis={confirmDeschis}
           onOpenChange={setConfirmDeschis}
@@ -127,7 +194,9 @@ export function TransferForm({
           beneficiar={beneficiar}
           suma={sumaNumerica}
           detalii={detalii}
-          onConfirmat={() => setTrimis(true)}
+          seTrimite={seTrimite}
+          eroare={eroareTrimitere}
+          onConfirma={trimite}
         />
       ) : null}
     </div>

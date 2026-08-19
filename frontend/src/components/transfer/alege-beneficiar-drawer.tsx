@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Check, ChevronRight, Plus, Search, Star, User } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Check, ChevronRight, Plus, Search, User } from "lucide-react";
+import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
 import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
-import { ibanEsteValid } from "@/lib/iban";
-import type { Beneficiar } from "@/lib/mock-data";
+import { cautaBeneficiarDupaIban } from "@/lib/actions/transfer";
+import type { BeneficiarTransfer } from "@/lib/data/transfer";
 import { cn, formateazaIban } from "@/lib/utils";
 
 function initiale(nume: string) {
@@ -23,17 +24,16 @@ export function AlegeBeneficiarDrawer({
   selectat,
   onSelect,
 }: {
-  beneficiari: Beneficiar[];
-  selectat: Beneficiar | null;
-  onSelect: (beneficiar: Beneficiar) => void;
+  beneficiari: BeneficiarTransfer[];
+  selectat: BeneficiarTransfer | null;
+  onSelect: (beneficiar: BeneficiarTransfer) => void;
 }) {
   const [deschis, setDeschis] = useState(false);
   const [modNou, setModNou] = useState(false);
   const [cautare, setCautare] = useState("");
-  const [numeNou, setNumeNou] = useState("");
   const [ibanNou, setIbanNou] = useState("");
-  const [eroareNume, setEroareNume] = useState<string | null>(null);
   const [eroareIban, setEroareIban] = useState<string | null>(null);
+  const [seCauta, startTransition] = useTransition();
 
   const filtrati = useMemo(() => {
     const q = cautare.trim().toLowerCase();
@@ -46,37 +46,26 @@ export function AlegeBeneficiarDrawer({
   function reseteaza() {
     setModNou(false);
     setCautare("");
-    setNumeNou("");
     setIbanNou("");
-    setEroareNume(null);
     setEroareIban(null);
   }
 
-  function alege(b: Beneficiar) {
+  function alege(b: BeneficiarTransfer) {
     onSelect(b);
     setDeschis(false);
     reseteaza();
   }
 
-  function adaugaSiContinua() {
-    const iban = ibanNou.replace(/\s+/g, "").toUpperCase();
-    setEroareNume(null);
+  /** Beneficiarul se confirma pe server: IBAN-ul trebuie sa fie al unui cont Libra real. */
+  function cautaSiContinua() {
     setEroareIban(null);
-
-    if (numeNou.trim().length < 3) {
-      setEroareNume("Introdu numele beneficiarului");
-      return;
-    }
-    if (!ibanEsteValid(iban)) {
-      setEroareIban("IBAN invalid");
-      return;
-    }
-    alege({
-      id: `nou-${Date.now()}`,
-      nume: numeNou.trim(),
-      iban,
-      banca: "Cont extern",
-      favorit: false,
+    startTransition(async () => {
+      const rezultat = await cautaBeneficiarDupaIban(ibanNou);
+      if (rezultat.eroare || !rezultat.beneficiar) {
+        setEroareIban(rezultat.eroare ?? "Nu am gasit beneficiarul.");
+        return;
+      }
+      alege(rezultat.beneficiar);
     });
   }
 
@@ -117,13 +106,13 @@ export function AlegeBeneficiarDrawer({
           title={modNou ? "Beneficiar nou" : "Alege beneficiarul"}
           description={
             modNou
-              ? "Introdu datele contului catre care trimiti banii."
-              : "Cauta in lista sau adauga un cont nou."
+              ? "Introdu IBAN-ul contului Libra catre care trimiti banii."
+              : "Cauta printre transferurile recente sau adauga un cont nou."
           }
           footer={
             modNou ? (
-              <Button className="w-full" onClick={adaugaSiContinua}>
-                Adauga si continua
+              <Button className="w-full" loading={seCauta} onClick={cautaSiContinua}>
+                Cauta si continua
               </Button>
             ) : undefined
           }
@@ -131,21 +120,13 @@ export function AlegeBeneficiarDrawer({
           {modNou ? (
             <div className="flex flex-col gap-4">
               <Camp
-                eticheta="Nume beneficiar"
-                icoana={User}
-                value={numeNou}
-                onChange={(e) => setNumeNou(e.target.value)}
-                placeholder="Ex. Andrei Popescu"
-                autoComplete="off"
-                eroare={eroareNume}
-              />
-              <Camp
                 eticheta="IBAN"
                 value={ibanNou}
                 onChange={(e) => setIbanNou(e.target.value.toUpperCase())}
-                placeholder="RO49 AAAA 1B31 0075 9384 0000"
+                placeholder="RO49 LIBR 1B31 0075 9384 0000"
                 autoComplete="off"
                 eroare={eroareIban}
+                ajutor="Numele beneficiarului se completeaza automat din contul Libra."
               />
             </div>
           ) : (
@@ -187,18 +168,10 @@ export function AlegeBeneficiarDrawer({
                       {initiale(b.nume)}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5">
-                        <span className="truncate text-[15px] text-ink">{b.nume}</span>
-                        {b.favorit ? (
-                          <Star
-                            size={13}
-                            strokeWidth={1.75}
-                            aria-hidden
-                            className="shrink-0 fill-warning text-warning"
-                          />
-                        ) : null}
+                      <span className="block truncate text-[15px] text-ink">{b.nume}</span>
+                      <span className="tabular block truncate text-[12.5px] text-ink-faint">
+                        {formateazaIban(b.iban)}
                       </span>
-                      <span className="block truncate text-[12.5px] text-ink-faint">{b.banca}</span>
                     </span>
                     {selectat?.id === b.id ? (
                       <Check size={18} strokeWidth={1.75} aria-hidden className="shrink-0 text-primary-600" />
@@ -206,7 +179,11 @@ export function AlegeBeneficiarDrawer({
                   </button>
                 ))}
 
-                {filtrati.length === 0 ? (
+                {beneficiari.length === 0 ? (
+                  <Banda ton="info">
+                    Nu ai transferuri recente. Adauga un beneficiar dupa IBAN.
+                  </Banda>
+                ) : filtrati.length === 0 ? (
                   <p className="py-4 text-center text-[13px] text-ink-faint">
                     Niciun beneficiar gasit.
                   </p>
