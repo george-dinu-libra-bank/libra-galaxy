@@ -1,0 +1,5 @@
+Documente Markdown create: 65
+Directoare: banca, carduri, conformitate, conturi, credite, economii, faq, mobile-banking, plati, securitate, suport, taxe-si-comisioane, valuta
+Frontmatter verificat: 252/252 câmpuri obligatorii prezente
+Fișiere solicitate prezente: 62/62
+Verificare de consistență: valorile canonice au fost folosite la generarea documentelor; nu au fost detectate contradicții deliberate în valorile principale.

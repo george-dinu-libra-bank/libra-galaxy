@@ -1,5 +1,6 @@
 services:
   frontend:
+    container_name: libra-frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
