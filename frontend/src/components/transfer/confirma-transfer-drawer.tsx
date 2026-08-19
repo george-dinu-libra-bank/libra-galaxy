@@ -65,8 +65,8 @@ export function ConfirmaTransferDrawer({
           {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}
 
           <div>
-            <Rand eticheta="Din card" valoare={contSursa.nume} />
-            <Rand eticheta="Numar card" valoare={contSursa.numarMascat} mono />
+            <Rand eticheta="Din cont" valoare={contSursa.nume} />
+            <Rand eticheta="IBAN" valoare={contSursa.numarMascat} mono />
             <Rand eticheta="Către" valoare={beneficiar.nume} />
             <Rand eticheta="IBAN beneficiar" valoare={formateazaIban(beneficiar.iban)} mono />
             {detalii ? <Rand eticheta="Detalii" valoare={detalii} /> : null}

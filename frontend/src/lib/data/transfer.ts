@@ -1,13 +1,11 @@
-import type { StilCard } from "@/lib/data/carduri";
-import { ETICHETE_STIL_CARD } from "@/lib/stil-card";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 /**
  * Datele ecranului de transfer, luate din Supabase:
- *  - „contul sursa" e un card propriu (public.carduri, cu sold_curent);
+ *  - „contul sursa" e contul propriu (public.profiles, cu sold_curent si IBAN);
  *  - beneficiarii sunt profiluri reale (public.profiles), identificate prin IBAN.
- * Nu exista conturi IBAN separate in schema — vezi supabase/migrations.
+ * Cardurile nu au sold propriu — vezi 0004_core_banking.sql.
  */
 
 export const BANCA_INTERNA = "Libra Bank";
@@ -29,7 +27,11 @@ export type BeneficiarTransfer = {
   banca: string;
 };
 
-/** Cardurile din care utilizatorul curent poate trimite bani. */
+/**
+ * Contul din care utilizatorul curent trimite bani. E unul singur — contul
+ * curent al profilului; ramane lista ca sa nu schimbam ecranul de transfer daca
+ * apar mai multe conturi pe viitor.
+ */
 export async function obtineConturiTransfer(): Promise<ContSursa[]> {
   const supabase = await createClient();
 
@@ -40,21 +42,24 @@ export async function obtineConturiTransfer(): Promise<ContSursa[]> {
   if (!user) return [];
 
   const { data, error } = await supabase
-    .from("carduri")
-    .select("id, numar_card, card_style, sold_curent, is_blocked, creat_la")
-    .eq("id_user", user.id)
-    .order("creat_la", { ascending: true });
+    .from("profiles")
+    .select("id, iban_cont, sold_curent")
+    .eq("id", user.id)
+    .maybeSingle();
 
   if (error) throw error;
+  if (!data) return [];
 
-  return (data ?? []).map((card) => ({
-    id: card.id as string,
-    nume: `Card ${ETICHETE_STIL_CARD[card.card_style as StilCard]}`,
-    numarMascat: `•••• ${(card.numar_card as string).slice(-4)}`,
-    sold: Number(card.sold_curent),
-    valuta: VALUTA_IMPLICITA,
-    blocat: card.is_blocked as boolean,
-  }));
+  return [
+    {
+      id: data.id as string,
+      nume: "Cont curent",
+      numarMascat: `•••• ${(data.iban_cont as string).slice(-4)}`,
+      sold: Number(data.sold_curent),
+      valuta: VALUTA_IMPLICITA,
+      blocat: false,
+    },
+  ];
 }
 
 /**

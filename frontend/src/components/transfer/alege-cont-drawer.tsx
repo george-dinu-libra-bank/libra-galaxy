@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, CreditCard, Lock } from "lucide-react";
+import { Check, ChevronRight, Lock, Wallet } from "lucide-react";
 import {
   Drawer,
   DrawerClose,
@@ -21,11 +21,11 @@ export function AlegeContDrawer({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[13px] font-medium text-ink-soft">Din card</span>
+      <span className="text-[13px] font-medium text-ink-soft">Din cont</span>
 
       <Drawer>
         <DrawerTrigger className="flex h-[52px] w-full items-center gap-3 rounded-field border border-line bg-surface px-4 text-left transition-colors duration-150 ease-soft hover:border-primary-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/12">
-          <CreditCard size={18} strokeWidth={1.75} aria-hidden className="shrink-0 text-ink-faint" />
+          <Wallet size={18} strokeWidth={1.75} aria-hidden className="shrink-0 text-ink-faint" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[15px] text-ink">{selectat.nume}</span>
             <span className="tabular block truncate text-[12.5px] text-ink-faint">
@@ -38,7 +38,7 @@ export function AlegeContDrawer({
           <ChevronRight size={18} strokeWidth={1.75} aria-hidden className="shrink-0 text-ink-faint" />
         </DrawerTrigger>
 
-        <DrawerContent title="Alege cardul sursa" description="Din ce card trimiti banii.">
+        <DrawerContent title="Alege contul sursa" description="Din ce cont trimiti banii.">
           <div className="flex flex-col gap-2">
             {conturi.map((cont) => (
               <DrawerClose key={cont.id} asChild>

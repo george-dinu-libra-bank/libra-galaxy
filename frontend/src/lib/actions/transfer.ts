@@ -65,30 +65,24 @@ const MESAJE_CORE_BANKING: Record<string, string> = {
   NEAUTORIZAT: "Nu poti initia o plata in numele altui utilizator.",
   SUMA_INVALIDA: "Introdu o suma valida.",
   VALUTA_NESUPORTATA: "Momentan se pot trimite doar transferuri in RON.",
-  DESTINATIE_INVALIDA: "IBAN-ul beneficiarului este invalid.",
-  CARD_SURSA_LIPSA: "Alege cardul din care trimiti banii.",
-  CARD_SURSA_INVALID: "Cardul din care trimiti nu a fost gasit.",
-  CARD_BLOCAT: "Cardul selectat este blocat.",
-  CARD_EXPIRAT: "Cardul selectat este expirat.",
+  IBAN_INVALID: "IBAN-ul beneficiarului este invalid.",
   BENEFICIAR_INEXISTENT: "Nu exista niciun cont Libra cu acest IBAN.",
-  BENEFICIAR_FARA_CARD: "Beneficiarul nu are un card activ.",
-  CARD_DEST_INEXISTENT: "Nu exista niciun card cu datele introduse.",
-  CARD_DEST_BLOCAT: "Cardul beneficiarului este blocat si nu poate primi bani.",
+  PROFIL_INEXISTENT: "Contul tau nu a fost gasit.",
   AUTOTRANSFER: "Nu poti trimite bani catre propriul cont.",
-  FONDURI_INSUFICIENTE: "Nu ai fonduri suficiente in cardul selectat.",
+  FONDURI_INSUFICIENTE: "Nu ai fonduri suficiente in cont.",
 };
 
 /**
- * Muta bani dintr-un card propriu in cardul beneficiarului si scrie tranzactia.
+ * Muta bani din contul propriu in contul beneficiarului (dupa IBAN) si scrie
+ * tranzactia. Cardurile nu sunt implicate — soldul e pe cont.
  *
  * Toata logica bancara sta in functia public.core_banking
  * (0004_core_banking.sql): verificarile, debitarea, creditarea si istoricul se
- * fac intr-o singura tranzactie, cu lock pe randurile de card — deci nu mai e
+ * fac intr-o singura tranzactie, cu lock pe randurile de profil — deci nu mai e
  * nevoie de pasi conditionati si rollback manual din TypeScript. Aici raman
  * doar validarile ieftine de formular si traducerea codurilor de eroare.
  */
 export async function trimiteTransfer(input: {
-  idCardSursa: string;
   ibanDestinatar: string;
   suma: number;
   detalii: string;
@@ -112,9 +106,8 @@ export async function trimiteTransfer(input: {
   const supabaseAdmin = createAdminClient();
 
   const { error } = await supabaseAdmin.rpc("core_banking", {
-    p_id_card_send: input.idCardSursa,
-    p_suma: suma,
     p_iban_dest: iban,
+    p_suma: suma,
     p_descriere: input.detalii.trim() || null,
     p_id_user: user.id,
   });
