@@ -46,6 +46,9 @@ async function origine() {
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const protocol = h.get("x-forwarded-proto") ?? "http";
 
+  if (!process.env.NEXT_PUBLIC_SITE_URL && !host)
+    console.error("[auth/origine] lipseste NEXT_PUBLIC_SITE_URL si headerul host");
+
   return process.env.NEXT_PUBLIC_SITE_URL ?? `${protocol}://${host}`;
 }
 
@@ -60,8 +63,10 @@ export async function autentifica(date: {
 }): Promise<RezultatAuth> {
   const email = date.email.trim().toLowerCase();
 
-  if (validEmail(email) || !date.parola)
+  if (validEmail(email) || !date.parola) {
+    console.error("[auth/autentifica] date incomplete", { email });
     return { eroare: "Completeaza emailul si parola." };
+  }
 
   const supabase = await createClient();
 
@@ -70,7 +75,15 @@ export async function autentifica(date: {
     password: date.parola,
   });
 
-  if (error) return { eroare: traduEroare(error.message) };
+  if (error) {
+    console.error("[auth/autentifica] signInWithPassword", {
+      email,
+      status: error.status,
+      code: error.code,
+      message: error.message,
+    });
+    return { eroare: traduEroare(error.message) };
+  }
 
   revalidatePath("/", "layout");
   redirect(date.redirectTo || "/dashboard");
@@ -100,7 +113,10 @@ export async function inregistreaza(date: {
     validEmail(email) ||
     validParola(date.parola);
 
-  if (eroare) return { eroare };
+  if (eroare) {
+    console.error("[auth/inregistreaza] validare esuata", { email, eroare });
+    return { eroare };
+  }
 
   const supabase = await createClient();
 
@@ -117,7 +133,15 @@ export async function inregistreaza(date: {
     },
   });
 
-  if (error) return { eroare: traduEroare(error.message) };
+  if (error) {
+    console.error("[auth/inregistreaza] signUp", {
+      email,
+      status: error.status,
+      code: error.code,
+      message: error.message,
+    });
+    return { eroare: traduEroare(error.message) };
+  }
 
   // Fara sesiune => in proiectul Supabase e activata confirmarea pe email.
   if (!data.session) {
@@ -138,7 +162,10 @@ export async function trimiteResetareParola(email: string): Promise<RezultatAuth
   const adresa = email.trim().toLowerCase();
   const eroare = validEmail(adresa);
 
-  if (eroare) return { eroare };
+  if (eroare) {
+    console.error("[auth/trimiteResetareParola] email invalid", { adresa, eroare });
+    return { eroare };
+  }
 
   const supabase = await createClient();
 
@@ -146,7 +173,15 @@ export async function trimiteResetareParola(email: string): Promise<RezultatAuth
     redirectTo: `${await origine()}/auth/callback?next=/dashboard`,
   });
 
-  if (error) return { eroare: traduEroare(error.message) };
+  if (error) {
+    console.error("[auth/trimiteResetareParola] resetPasswordForEmail", {
+      adresa,
+      status: error.status,
+      code: error.code,
+      message: error.message,
+    });
+    return { eroare: traduEroare(error.message) };
+  }
 
   return {
     mesaj: `Daca exista un cont pentru ${adresa}, vei primi un email cu instructiuni de resetare.`,
@@ -160,7 +195,16 @@ export async function trimiteResetareParola(email: string): Promise<RezultatAuth
 export async function deconecteaza() {
   if (supabaseConfigurat) {
     const supabase = await createClient();
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      console.error("[auth/deconecteaza] signOut", {
+        status: error.status,
+        code: error.code,
+        message: error.message,
+      });
+    }
+
     revalidatePath("/", "layout");
   }
 
