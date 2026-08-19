@@ -27,7 +27,7 @@ export function AuthShell({
   children,
 }: Props) {
   return (
-    <div className="min-h-dvh bg-bg lg:flex lg:items-center lg:justify-center lg:gap-20 lg:p-10">
+    <div className="min-h-dvh lg:flex lg:items-center lg:justify-center lg:gap-20 lg:p-10">
       {/* Panou de brand — doar pe ecrane mari */}
       <aside className="hidden max-w-sm lg:block">
         <div className="mb-6 flex items-center gap-3">

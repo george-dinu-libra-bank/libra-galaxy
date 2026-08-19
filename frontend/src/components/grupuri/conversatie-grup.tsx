@@ -7,25 +7,7 @@ import { AvatarProfil } from "@/components/ui/avatar-profil";
 import { Banda } from "@/components/ui/banda";
 import type { MesajGrup } from "@/lib/data/grupuri";
 import { trimiteMesaj } from "@/lib/actions/grupuri";
-import { cn } from "@/lib/utils";
-
-/** 12:05 — ora mesajului, fara data (ziua se vede din separatoare). */
-function ora(data: string) {
-  return new Date(data).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" });
-}
-
-function etichetaZi(data: string) {
-  const ziua = new Date(data);
-  const astazi = new Date();
-
-  if (ziua.toDateString() === astazi.toDateString()) return "Astăzi";
-
-  const ieri = new Date(astazi);
-  ieri.setDate(ieri.getDate() - 1);
-  if (ziua.toDateString() === ieri.toDateString()) return "Ieri";
-
-  return ziua.toLocaleDateString("ro-RO", { day: "numeric", month: "long" });
-}
+import { cn, etichetaZi, formateazaOra as ora } from "@/lib/utils";
 
 /**
  * Conversatia din grup: mesajele existente si campul de scris.

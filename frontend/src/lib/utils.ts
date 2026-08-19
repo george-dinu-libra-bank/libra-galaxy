@@ -25,3 +25,37 @@ export function formateazaSuma(suma: number, valuta = "RON") {
   }).format(suma);
   return `${numar} ${valuta}`;
 }
+
+// Fus orar fixat explicit: serverul (container, de regula UTC) si browserul
+// clientului (ora locala a utilizatorului) calculeaza altfel ora/ziua daca
+// lasam Intl sa foloseasca fusul sistemului, ceea ce produce hydration
+// mismatch la SSR (ora afisata difera intre randarea server si client).
+const FUS_ORAR = "Europe/Bucharest";
+
+/** 2024-05-01T12:05:00Z -> "12:05" (Europe/Bucharest) */
+export function formateazaOra(data: string | Date) {
+  return new Date(data).toLocaleTimeString("ro-RO", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: FUS_ORAR,
+  });
+}
+
+/** Ziua calendaristica in Europe/Bucharest, ca sir "AAAA-LL-ZZ" comparabil. */
+function ziISO(data: string | Date) {
+  return new Date(data).toLocaleDateString("en-CA", { timeZone: FUS_ORAR });
+}
+
+/** Eticheteaza o data drept "Astăzi" / "Ieri" sau "1 mai", relativ la Europe/Bucharest. */
+export function etichetaZi(data: string | Date) {
+  const ziua = new Date(data);
+  const astazi = new Date();
+
+  if (ziISO(ziua) === ziISO(astazi)) return "Astăzi";
+
+  const ieri = new Date(astazi);
+  ieri.setDate(ieri.getDate() - 1);
+  if (ziISO(ziua) === ziISO(ieri)) return "Ieri";
+
+  return ziua.toLocaleDateString("ro-RO", { day: "numeric", month: "long", timeZone: FUS_ORAR });
+}

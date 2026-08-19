@@ -5,22 +5,10 @@ import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { AvatarProfil } from "@/components/ui/avatar-profil";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import type { TranzactieAfisata } from "@/lib/data/tranzactii";
-import { cn, formateazaSuma } from "@/lib/utils";
+import { cn, etichetaZi, formateazaOra, formateazaSuma } from "@/lib/utils";
 import { FiltreDrawer, type Filtre } from "@/components/istoric/filtre-drawer";
 
 const ZI_MS = 24 * 60 * 60 * 1000;
-
-function etichetaZi(data: Date) {
-  const astazi = new Date();
-  astazi.setHours(0, 0, 0, 0);
-  const ziua = new Date(data);
-  ziua.setHours(0, 0, 0, 0);
-  const diferenta = Math.round((astazi.getTime() - ziua.getTime()) / ZI_MS);
-
-  if (diferenta === 0) return "Astăzi";
-  if (diferenta === 1) return "Ieri";
-  return ziua.toLocaleDateString("ro-RO", { day: "numeric", month: "long" });
-}
 
 function trecePerioada(data: Date, perioada: Filtre["perioada"]) {
   if (perioada === "tot") return true;
@@ -121,7 +109,8 @@ function RandTranzactie({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted",
+        "rand-hover flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted",
+        "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25",
         !ultimul && "border-b border-line",
       )}
     >
@@ -160,10 +149,7 @@ function RandTranzactie({
             ? `din grupul ${tranzactie.grup.nume} · `
             : ""}
           {tranzactie.descriere ? `${tranzactie.descriere} · ` : ""}
-          {new Date(tranzactie.creatLa).toLocaleTimeString("ro-RO", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+          {formateazaOra(tranzactie.creatLa)}
         </span>
       </span>
 

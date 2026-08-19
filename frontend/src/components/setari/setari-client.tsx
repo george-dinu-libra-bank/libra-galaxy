@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition, type ReactNode } from "react";
-import { Bell, ChevronRight, LogOut, ShieldCheck, Users } from "lucide-react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { Bell, ChevronRight, LogOut, Moon, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EditeazaTelefonDrawer } from "@/components/setari/editeaza-telefon-drawer";
 import { deconecteaza } from "@/lib/actions/auth";
+import { aplicaTema, citesteTema } from "@/lib/tema";
 import { cn, mascheazaCnp } from "@/lib/utils";
 
 type Profil = {
@@ -40,8 +41,8 @@ function Comutator({ activ, onChange, eticheta }: { activ: boolean; onChange: ()
     >
       <span
         className={cn(
-          "absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-150 ease-soft",
-          activ ? "translate-x-6" : "translate-x-1",
+          "absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-150 ease-soft",
+          activ ? "translate-x-5" : "translate-x-0",
         )}
       />
     </button>
@@ -73,7 +74,21 @@ function Rand({
 export function SetariClient({ profil }: { profil: Profil }) {
   const [telefon, setTelefon] = useState(profil.telefon);
   const [notificari, setNotificari] = useState(true);
+  const [temaIntunecata, setTemaIntunecata] = useState(false);
   const [seIese, startTransition] = useTransition();
+
+  // Clasa .dark e aplicata de scriptul din <head> inainte de hidratare (vezi
+  // lib/tema.ts) — citim starea reala abia dupa montare, ca sa nu depindem
+  // de randarea pe server (care nu stie preferinta utilizatorului).
+  useEffect(() => {
+    setTemaIntunecata(citesteTema() === "dark");
+  }, []);
+
+  function comutaTema() {
+    const noua = temaIntunecata ? "light" : "dark";
+    aplicaTema(noua);
+    setTemaIntunecata(noua === "dark");
+  }
 
   return (
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
@@ -115,6 +130,12 @@ export function SetariClient({ profil }: { profil: Profil }) {
           <Bell size={20} strokeWidth={1.75} aria-hidden className="text-ink-faint" />
           <span className="flex-1 text-[15px] text-ink">Notificări push</span>
           <Comutator activ={notificari} onChange={() => setNotificari((v) => !v)} eticheta="Notificări push" />
+        </div>
+
+        <div className="flex items-center gap-3 rounded-card bg-surface px-4 py-3.5 shadow-sm">
+          <Moon size={20} strokeWidth={1.75} aria-hidden className="text-ink-faint" />
+          <span className="flex-1 text-[15px] text-ink">Temă întunecată</span>
+          <Comutator activ={temaIntunecata} onChange={comutaTema} eticheta="Temă întunecată" />
         </div>
 
         <div className="flex items-center gap-3 rounded-card bg-surface px-4 py-3.5 shadow-sm">
