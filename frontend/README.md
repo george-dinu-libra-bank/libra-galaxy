@@ -35,6 +35,8 @@ src/
     register/             # inregistrare (nume, CNP, telefon, email, parola)
     dashboard/            # ecran protejat, citeste public.profiles
     auth/callback/        # schimba codul din emailurile Supabase pe sesiune
+    api/backend/          # proxy autentificat catre FastAPI
+    api/health/           # healthcheck agregat frontend + backend
   components/
     auth/                 # AuthShell, formulare, drawere de auth
     dashboard/            # drawerul cu detaliile contului
@@ -55,6 +57,19 @@ Regulile de design (culori, componente, cand se foloseste un drawer vaul) sunt i
 
 Copiaza `.env.example` in `.env.local` si completeaza cheile din Supabase
 (Project Settings → API).
+
+## FastAPI
+
+Apelurile din browser folosesc `apiFetch()` si merg prin `/api/backend/*`.
+Route handler-ul valideaza sesiunea Supabase si adauga access token-ul server-side;
+browserul nu apeleaza direct containerul backend. Exemplu:
+
+```ts
+apiFetch<Profil>("/api/v1/me/profile");
+```
+
+`BACKEND_INTERNAL_URL` este `http://localhost:8000` la rulare locala si
+`http://backend:8000` in Compose.
 
 ## Supabase
 
