@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Check, CreditCard, FileText } from "lucide-react";
+import { Check, FileText, Wallet } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
@@ -40,11 +40,7 @@ export function TransferForm({
 
   function continua() {
     if (!contSursa) {
-      setEroare("Nu ai niciun card din care sa trimiti bani.");
-      return;
-    }
-    if (contSursa.blocat) {
-      setEroare("Cardul selectat este blocat. Deblocheaza-l sau alege alt card.");
+      setEroare("Contul tau nu a fost gasit.");
       return;
     }
     if (!beneficiar) {
@@ -56,7 +52,7 @@ export function TransferForm({
       return;
     }
     if (sumaNumerica > contSursa.sold) {
-      setEroare("Nu ai fonduri suficiente in cardul selectat.");
+      setEroare("Nu ai fonduri suficiente in cont.");
       return;
     }
     setEroare(null);
@@ -70,10 +66,10 @@ export function TransferForm({
     setEroareTrimitere(null);
     startTransition(async () => {
       const rezultat = await trimiteTransfer({
-        idCardSursa: contSursa.id,
         ibanDestinatar: beneficiar.iban,
         suma: sumaNumerica,
         detalii,
+        idContSursa: contSursa.id,
       });
 
       if (rezultat.eroare) {
@@ -96,14 +92,14 @@ export function TransferForm({
 
         <section className="mt-6 flex flex-col items-center gap-4 rounded-card border border-dashed border-line bg-surface p-6 text-center shadow-sm">
           <p className="text-[15px] leading-[22px] text-ink-soft">
-            Nu ai niciun card. Adauga unul ca sa poti trimite bani.
+            Contul tau nu a fost gasit. Reincarca pagina sau autentifica-te din nou.
           </p>
           <Link
-            href="/carduri"
+            href="/dashboard"
             className="flex h-[52px] w-full items-center justify-center gap-2 rounded-field bg-primary-600 text-[15px] font-semibold text-white shadow-btn transition-colors hover:bg-primary-700"
           >
-            <CreditCard size={18} strokeWidth={1.75} aria-hidden />
-            Mergi la carduri
+            <Wallet size={18} strokeWidth={1.75} aria-hidden />
+            Mergi la cont
           </Link>
         </section>
       </div>

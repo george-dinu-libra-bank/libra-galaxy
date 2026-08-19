@@ -36,21 +36,26 @@ export async function cautaBeneficiarDupaIban(
 
   const supabaseAdmin = createAdminClient();
 
+  // IBAN-ul identifica un cont, nu un om (0007_conturi_bancare.sql).
   const { data, error } = await supabaseAdmin
-    .from("profiles")
-    .select("id, nume, iban_cont")
-    .eq("iban_cont", iban)
+    .from("conturi_bancare")
+    .select("id, iban, id_user, profiles ( nume )")
+    .eq("iban", iban)
     .maybeSingle();
 
   if (error) return { eroare: "Nu am putut cauta beneficiarul. Incearca din nou." };
   if (!data) return { eroare: "Nu exista niciun cont Libra cu acest IBAN." };
-  if (data.id === user.id) return { eroare: "Nu poti trimite bani catre propriul cont." };
+
+  const relatie = data.profiles as { nume: string } | { nume: string }[] | null;
+  const proprietar = Array.isArray(relatie) ? relatie[0] : relatie;
 
   return {
     beneficiar: {
       id: data.id as string,
-      nume: data.nume as string,
-      iban: data.iban_cont as string,
+      // Un cont propriu ramane o destinatie valida: se pot muta bani intre
+      // conturile aceleiasi persoane. Doar acelasi cont e respins, in RPC.
+      nume: proprietar?.nume ?? "Cont Libra",
+      iban: data.iban as string,
       banca: BANCA_INTERNA,
     },
   };
@@ -65,33 +70,31 @@ const MESAJE_CORE_BANKING: Record<string, string> = {
   NEAUTORIZAT: "Nu poti initia o plata in numele altui utilizator.",
   SUMA_INVALIDA: "Introdu o suma valida.",
   VALUTA_NESUPORTATA: "Momentan se pot trimite doar transferuri in RON.",
-  DESTINATIE_INVALIDA: "IBAN-ul beneficiarului este invalid.",
-  CARD_SURSA_LIPSA: "Alege cardul din care trimiti banii.",
-  CARD_SURSA_INVALID: "Cardul din care trimiti nu a fost gasit.",
-  CARD_BLOCAT: "Cardul selectat este blocat.",
-  CARD_EXPIRAT: "Cardul selectat este expirat.",
+  IBAN_INVALID: "IBAN-ul beneficiarului este invalid.",
   BENEFICIAR_INEXISTENT: "Nu exista niciun cont Libra cu acest IBAN.",
-  BENEFICIAR_FARA_CARD: "Beneficiarul nu are un card activ.",
-  CARD_DEST_INEXISTENT: "Nu exista niciun card cu datele introduse.",
-  CARD_DEST_BLOCAT: "Cardul beneficiarului este blocat si nu poate primi bani.",
-  AUTOTRANSFER: "Nu poti trimite bani catre propriul cont.",
-  FONDURI_INSUFICIENTE: "Nu ai fonduri suficiente in cardul selectat.",
+  PROFIL_INEXISTENT: "Contul tau nu a fost gasit.",
+  CONT_SURSA_INEXISTENT: "Contul din care vrei sa platesti nu exista.",
+  CONT_SURSA_STRAIN: "Nu poti plati dintr-un cont care nu este al tau.",
+  AUTOTRANSFER: "Nu poti trimite bani in acelasi cont din care platesti.",
+  FONDURI_INSUFICIENTE: "Nu ai fonduri suficiente in cont.",
 };
 
 /**
- * Muta bani dintr-un card propriu in cardul beneficiarului si scrie tranzactia.
+ * Muta bani din contul propriu in contul beneficiarului (dupa IBAN) si scrie
+ * tranzactia. Cardurile nu sunt implicate — soldul e pe cont.
  *
  * Toata logica bancara sta in functia public.core_banking
  * (0004_core_banking.sql): verificarile, debitarea, creditarea si istoricul se
- * fac intr-o singura tranzactie, cu lock pe randurile de card — deci nu mai e
+ * fac intr-o singura tranzactie, cu lock pe randurile de profil — deci nu mai e
  * nevoie de pasi conditionati si rollback manual din TypeScript. Aici raman
  * doar validarile ieftine de formular si traducerea codurilor de eroare.
  */
 export async function trimiteTransfer(input: {
-  idCardSursa: string;
   ibanDestinatar: string;
   suma: number;
   detalii: string;
+  /** Contul din care se plateste; lipsa lui inseamna contul principal. */
+  idContSursa?: string;
 }): Promise<RezultatTransfer> {
   const supabase = await createClient();
 
@@ -112,10 +115,10 @@ export async function trimiteTransfer(input: {
   const supabaseAdmin = createAdminClient();
 
   const { error } = await supabaseAdmin.rpc("core_banking", {
-    p_id_card_send: input.idCardSursa,
-    p_suma: suma,
     p_iban_dest: iban,
+    p_suma: suma,
     p_descriere: input.detalii.trim() || null,
+    p_id_cont_send: input.idContSursa ?? null,
     p_id_user: user.id,
   });
 

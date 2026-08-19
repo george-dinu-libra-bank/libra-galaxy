@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { AvatarProfil } from "@/components/ui/avatar-profil";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import type { TranzactieAfisata } from "@/lib/data/tranzactii";
 import { cn, formateazaSuma } from "@/lib/utils";
@@ -92,8 +93,8 @@ export function ListaTranzactii({ tranzactii }: { tranzactii: TranzactieAfisata[
         }}
       >
         <DrawerContent
-          title={selectata ? (selectata.tip === "primita" ? "Tranzactie primita" : "Tranzactie trimisa") : ""}
-          description={selectata?.descriere ?? ""}
+          title={selectata ? (selectata.tip === "primita" ? "Bani primiți" : "Bani trimiși") : ""}
+          description={selectata?.descriere || "Transfer între conturi Libra."}
         >
           {selectata ? <DetaliuTranzactie tranzactie={selectata} /> : null}
         </DrawerContent>
@@ -113,6 +114,7 @@ function RandTranzactie({
 }) {
   const primita = tranzactie.tip === "primita";
   const Icoana = primita ? ArrowDownLeft : ArrowUpRight;
+  const nume = tranzactie.contraparte?.nume ?? "Cont Libra";
 
   return (
     <button
@@ -123,15 +125,37 @@ function RandTranzactie({
         !ultimul && "border-b border-line",
       )}
     >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50">
-        <Icoana size={18} strokeWidth={1.75} aria-hidden className="text-primary-600" />
+      <span className="relative h-10 w-10 shrink-0">
+        <AvatarProfil
+          url={tranzactie.contraparte?.avatarUrl ?? null}
+          nume={nume}
+          marimeIcoana={18}
+        />
+
+        {/* Directia ramane vizibila si cand avem poza. */}
+        <span
+          className={cn(
+            "absolute -bottom-0.5 -right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-surface",
+            primita ? "bg-success" : "bg-primary-600",
+          )}
+        >
+          <Icoana size={10} strokeWidth={2.5} aria-hidden className="text-white" />
+        </span>
       </span>
 
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[15px] text-ink">
-          {tranzactie.descriere || (primita ? "Transfer primit" : "Transfer trimis")}
+          {tranzactie.intreConturiProprii ? (
+            "Între conturile tale"
+          ) : (
+            <>
+              {primita ? "Primit de la" : "Trimis către"}{" "}
+              <span className="font-semibold">{nume}</span>
+            </>
+          )}
         </span>
-        <span className="block text-[12.5px] text-ink-faint">
+        <span className="block truncate text-[12.5px] text-ink-faint">
+          {tranzactie.descriere ? `${tranzactie.descriere} · ` : ""}
           {new Date(tranzactie.creatLa).toLocaleTimeString("ro-RO", {
             hour: "2-digit",
             minute: "2-digit",
@@ -153,10 +177,19 @@ function RandTranzactie({
 
 function DetaliuTranzactie({ tranzactie }: { tranzactie: TranzactieAfisata }) {
   const primita = tranzactie.tip === "primita";
+  const nume = tranzactie.contraparte?.nume ?? "Cont Libra";
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col items-center gap-1 py-2 text-center">
+      <div className="flex flex-col items-center gap-2 py-2 text-center">
+        <div className="h-16 w-16 overflow-hidden rounded-full border border-line">
+          <AvatarProfil
+            url={tranzactie.contraparte?.avatarUrl ?? null}
+            nume={nume}
+            marimeIcoana={28}
+          />
+        </div>
+
         <span
           className={cn(
             "tabular text-[32px] font-bold leading-[38px]",
@@ -165,10 +198,17 @@ function DetaliuTranzactie({ tranzactie }: { tranzactie: TranzactieAfisata }) {
         >
           {primita ? "+" : "−"} {formateazaSuma(tranzactie.suma, tranzactie.valuta)}
         </span>
-        <span className="text-[13px] text-ink-faint">{primita ? "Primita" : "Trimisa"}</span>
+        <span className="text-[13px] text-ink-faint">
+          {tranzactie.intreConturiProprii
+            ? "Mutare între conturile tale"
+            : primita
+              ? `Primit de la ${nume}`
+              : `Trimis către ${nume}`}
+        </span>
       </div>
 
       <div>
+        <Rand eticheta={primita ? "Expeditor" : "Beneficiar"} valoare={nume} />
         <Rand eticheta="Descriere" valoare={tranzactie.descriere || "—"} />
         <Rand
           eticheta="Data"
