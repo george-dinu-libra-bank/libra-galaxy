@@ -21,21 +21,30 @@ class Settings(BaseSettings):
         validation_alias="CORS_ORIGINS",
     )
 
-    # Layer-ul de agenti. Fara cheie, rutele /agents raspund 503 in loc sa cada.
-    anthropic_api_key: str = ""
-    agent_model: str = "claude-opus-5"
-    agent_effort: str = "high"
-    agent_max_tokens: int = 16000
-    # Plafon de siguranta pentru bucla agentului (un pas = un raspuns al modelului).
-    agent_max_pasi: int = 8
+    # Layer-ul de agenti. Fara credentiale, chatul raspunde 503; alertele merg.
+    llm_provider: str = "azure"
+    azure_ai_endpoint: str = ""
+    # 'key' merge oriunde, inclusiv in container. 'identity' foloseste Entra prin
+    # DefaultAzureCredential: az login local, sau managed identity cand rulezi in Azure.
+    azure_ai_auth: str = "key"
+    azure_ai_api_key: str = ""
+    azure_ai_chat_deployment: str = "gpt-5-mini"
+    azure_ai_embedding_deployment: str = "text-embedding-3-small"
+    agent_max_tokens: int = 4000
+    # Un pas = un raspuns al modelului. Plasa de siguranta, nu tinta.
+    agent_max_pasi: int = 10
+    # Cate tranzactii se citesc cel mult pentru o analiza.
+    analiza_limita_randuri: int = 1000
+
+    @property
+    def agenti_activi(self) -> bool:
+        if not self.azure_ai_endpoint:
+            return False
+        return self.azure_ai_auth.lower() == "identity" or bool(self.azure_ai_api_key)
 
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins_raw.split(",") if origin.strip()]
-
-    @property
-    def agenti_activi(self) -> bool:
-        return bool(self.anthropic_api_key)
 
 
 @lru_cache
