@@ -2,3 +2,4 @@
 .venv/
 supabase/.branches/
 supabase/.temp/
+__pycache__/
