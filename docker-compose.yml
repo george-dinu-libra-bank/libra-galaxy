@@ -18,7 +18,12 @@ services:
       - CHOKIDAR_USEPOLLING=true
       # In compose, frontend-ul vorbeste cu backend-ul prin numele serviciului
       # (DNS intern Docker), nu prin localhost — suprascrie valoarea din .env.
+      # Trei nume diferite in cod pentru aceeasi adresa (asistent.ts, proxy-ul
+      # din app/api/backend, identitate.ts) — le setam pe toate ca sa nu cada
+      # vreunul pe fallback-ul localhost:8000, care in container e el insusi.
       - BACKEND_API_URL=http://backend:8000
+      - BACKEND_URL=http://backend:8000
+      - BACKEND_INTERNAL_URL=http://backend:8000
     depends_on:
       - backend
     stdin_open: true

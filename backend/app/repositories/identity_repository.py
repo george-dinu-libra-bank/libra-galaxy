@@ -7,7 +7,7 @@ def descarca_imagine(bucket: str, cale: str) -> bytes:
 
 
 def gaseste_id_user_dupa_email(email: str) -> str | None:
-    client = get_admin_client()
+    client = get_service_client()
     raspuns = (
         client.table("profiles")
         .select("id")
@@ -23,7 +23,7 @@ def gaseste_id_user_dupa_email(email: str) -> str | None:
 def gaseste_selfie_verificat(id_user: str) -> str | None:
     """Ultima poza selfie cu status 'verified' a userului — singura acceptata
     ca referinta pentru login biometric (nu 'pending_review'/'rejected')."""
-    client = get_admin_client()
+    client = get_service_client()
     raspuns = (
         client.table("identity_verifications")
         .select("selfie_image_path")
