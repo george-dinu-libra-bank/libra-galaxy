@@ -12,3 +12,6 @@ venv/
 
 # greutati de model descarcate de DeepFace la runtime/build
 .deepface/
+
+# Artefact antrenat, se regenereaza cu python -m app.ml.antrenare
+app/ml/model.joblib

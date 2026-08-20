@@ -14,6 +14,7 @@ se arata utilizatorului decide `AlerteService`.
 import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,37 @@ PRAG_COMERCIANT_NOU_SUMA = 300.0
 PRAG_COMERCIANT_NOU_MULTIPLU = 5.0
 # Doua plati identice la acelasi comerciant in acest interval arata a dubla debitare.
 FEREASTRA_DUBLARE = timedelta(minutes=15)
+# Atatea plati la acelasi comerciant intr-o zi ies din ritmul obisnuit, chiar
+# daca fiecare suma in parte e normala si nu sunt identice intre ele.
+FEREASTRA_RAFALA = timedelta(hours=24)
+PRAG_RAFALA = 4
+# decision_function al IsolationForest sta aproximativ in [-0.5, 0.5]. Inmultit cu
+# atat, o constatare de model ajunge intre PRAG_SCOR si ~8.5 — deci sub cele 10 ale
+# unei dublari confirmate: o certitudine aritmetica trebuie sa bata o banuiala.
+SCALA_MODEL = 10.0
+
+
+@lru_cache(maxsize=1)
+def incarca_model() -> Any | None:
+    """Artefactul, citit o singura data per proces.
+
+    Fara cache s-ar reciti la fiecare cerere: sunt cateva sute de milisecunde
+    pentru un fisier de cativa MB, platite degeaba. Modelul e doar citit la
+    inferenta, deci poate fi impartit intre cereri.
+
+    Consecinta: dupa o reantrenare, procesul trebuie repornit ca sa vada noul
+    artefact. Pentru un artefact regenerat manual, e schimbul corect.
+    """
+    if not CALE_MODEL.exists():
+        logger.info("model.joblib lipseste; folosesc doar baza statistica")
+        return None
+    try:
+        import joblib
+
+        return joblib.load(CALE_MODEL)
+    except Exception:
+        logger.exception("model.joblib nu a putut fi incarcat; raman pe baza statistica")
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,16 +93,7 @@ class DetectorNeregularitati:
 
     @classmethod
     def cu_model_de_pe_disc(cls) -> "DetectorNeregularitati":
-        if not CALE_MODEL.exists():
-            logger.info("model.joblib lipseste; folosesc doar baza statistica")
-            return cls(model=None)
-        try:
-            import joblib
-
-            return cls(model=joblib.load(CALE_MODEL))
-        except Exception:
-            logger.exception("model.joblib nu a putut fi incarcat; raman pe baza statistica")
-            return cls(model=None)
+        return cls(model=incarca_model())
 
     def evalueaza(self, plati: list[Plata]) -> list[Neregularitate]:
         iesiri = [p for p in plati if p.iesire]
@@ -87,9 +110,10 @@ class DetectorNeregularitati:
 
             constatare = (
                 self._dubla_debitare(plata, istoric)
+                or self._rafala(plata, istoric)
                 or self._suma_atipica(plata, istoric)
                 or self._comerciant_nou(plata, istoric, iesiri)
-                or self._dupa_model(plata, grupuri[plata.comerciant])
+                or self._dupa_model(plata, istoric, iesiri)
             )
             if constatare:
                 constatari.append(constatare)
@@ -110,6 +134,29 @@ class DetectorNeregularitati:
                     10.0,
                 )
         return None
+
+    def _rafala(self, plata: Plata, istoric: list[Plata]) -> Neregularitate | None:
+        """Mai multe plati la acelasi comerciant intr-o singura zi.
+
+        Sumele pot fi toate obisnuite si diferite intre ele, deci nici
+        _dubla_debitare, nici _suma_atipica nu au ce prinde: anormal e ritmul.
+        Regula, nu model, pentru ca aici avem ce numara — iar un numar se poate
+        spune omului ("patru plati intr-o zi"), spre deosebire de un scor.
+        """
+        in_fereastra = [
+            p for p in istoric if plata.moment - p.moment <= FEREASTRA_RAFALA
+        ]
+        cate = len(in_fereastra) + 1
+        if cate < PRAG_RAFALA:
+            return None
+
+        return self._constatare(
+            plata,
+            "rafala_de_plati",
+            f"{cate} plati la {plata.comerciant} in mai putin de 24 de ore. "
+            "Verifica daca le-ai facut pe toate.",
+            8.0,
+        )
 
     def _suma_atipica(self, plata: Plata, istoric: list[Plata]) -> Neregularitate | None:
         if len(istoric) < MIN_ISTORIC or plata.suma < PRAG_SUMA_MINIMA:
@@ -159,16 +206,26 @@ class DetectorNeregularitati:
             plata.suma / tipic,
         )
 
-    def _dupa_model(self, plata: Plata, grup: list[Plata]) -> Neregularitate | None:
+    def _dupa_model(
+        self, plata: Plata, istoric: list[Plata], iesiri: list[Plata]
+    ) -> Neregularitate | None:
         if self.model is None:
             return None
-        try:
-            predictie = self.model.predict([vector(plata, grup)])
-        except Exception:
-            logger.exception("modelul a esuat la inferenta; ignor constatarea")
+
+        # Prima plata la un comerciant nu are cu ce fi comparata: trasaturile
+        # care o descriu sunt toate valori de asteptare ("nu exista anterioara"),
+        # iar modelul le-ar citi ca pe niste numere neobisnuite si ar semnala
+        # fiecare inceput de relatie. Cazul are deja regula lui, _comerciant_nou.
+        if not istoric:
             return None
 
-        if predictie[0] != -1:
+        trasaturi = [vector(plata, istoric, iesiri)]
+        try:
+            if self.model.predict(trasaturi)[0] != -1:
+                return None
+            brut = float(self.model.decision_function(trasaturi)[0])
+        except Exception:
+            logger.exception("modelul a esuat la inferenta; ignor constatarea")
             return None
 
         return self._constatare(
@@ -176,7 +233,7 @@ class DetectorNeregularitati:
             "tipar_neobisnuit",
             f"Plata de {plata.suma:.2f} {plata.valuta} catre {plata.comerciant} nu seamana "
             "cu tiparul tau obisnuit de cheltuieli.",
-            PRAG_SCOR,
+            PRAG_SCOR + abs(min(brut, 0.0)) * SCALA_MODEL,
         )
 
     @staticmethod

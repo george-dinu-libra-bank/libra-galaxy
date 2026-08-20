@@ -12,5 +12,13 @@ def test_health() -> None:
     response = TestClient(app).get("/api/v1/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "libra-api"}
+    body = response.json()
+    assert body["success"] is True
+    assert body["body"]["environment"]
     assert response.headers["x-request-id"]
+
+
+def test_health_bare_path_matches() -> None:
+    """Inregistrat de doua ori (bare + /api/v1), acelasi continut in ambele."""
+    client = TestClient(app)
+    assert client.get("/health").json()["body"] == client.get("/api/v1/health").json()["body"]

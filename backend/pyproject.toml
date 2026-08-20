@@ -14,6 +14,9 @@ dependencies = [
   "joblib>=1.4,<2",
   "fastapi>=0.116,<1",
   "pydantic-settings>=2.10,<3",
+  # PDF-ul rapoartelor. reportlab si nu weasyprint: weasyprint cere cairo si
+  # pango instalate in sistem, ceea ce cade in container.
+  "reportlab>=4.2,<6",
   "scikit-learn>=1.5,<2",
   "supabase>=2.18,<3",
   "uvicorn[standard]>=0.35,<1",

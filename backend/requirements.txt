@@ -36,3 +36,9 @@ azure-identity>=1.19,<2
 anyio>=4.0
 joblib>=1.4,<2
 scikit-learn>=1.5,<2
+
+# --- Zona administratorului si rapoartele de neregularitati (ml-neregularitati) ---
+# reportlab, nu weasyprint: weasyprint cere cairo/pango instalate in sistem, ceea
+# ce cade in container. email-validator: pydantic.EmailStr (schemas/profiles.py).
+reportlab>=4.2,<6
+email-validator>=2.2,<3

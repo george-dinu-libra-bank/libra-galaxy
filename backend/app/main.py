@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import assistant, health, identity
+from app.api.routes import admin, agents, alerte, assistant, health, identity, profiles
 from app.core.config import get_settings
 from app.core.envelope import error_response, new_request_id
 from app.core.errors import AppError
@@ -58,12 +58,21 @@ async def unexpected_error_handler(request: Request, exc: Exception):
     )
 
 
-# Routerele lui Cristi (agents, alerte, profiles) exista in backend/app/api/routes/
-# dar nu sunt inregistrate aici inca — decizia de azi a fost sa pastram
-# /assistant/* (persistenta conversatiilor, compresie, atasamente, voce) ca
-# suprafata unica, si sa folosim doar orchestratorul+financial_advisor-ul lui
-# Cristi ca "creier" in interiorul agentului financial_advisor (vezi
-# agents/financial_advisor.py). Inregistrarea lor separata ramane de discutat.
+# /assistant/* (persistenta conversatiilor, compresie, atasamente, voce) ramane
+# suprafata de chat pentru interfata — foloseste orchestratorul+financial_advisor-ul
+# lui Cristi doar ca "creier" in interiorul agentului financial_advisor (vezi
+# agents/financial_advisor.py), nu ca ruta separata.
+#
+# agents/alerte/admin/profiles sunt totusi inregistrate, sub /api/v1, ca ml-neregularitati
+# le foloseste direct (rapoarte de administrator, alerte pentru utilizator, proxy-ul
+# generic din frontend/src/app/api/backend/[...path]/route.ts) si testele lor pornesc
+# aplicatia reala prin TestClient(app). /api/v1/agents/chat ramane o a doua suprafata de
+# chat, neexpusa din interfata (frontend-ul asistentului vorbeste doar cu /assistant/*).
 app.include_router(health.router)
+app.include_router(health.router, prefix="/api/v1")
 app.include_router(assistant.router)
 app.include_router(identity.router)
+app.include_router(profiles.router, prefix="/api/v1")
+app.include_router(agents.router, prefix="/api/v1")
+app.include_router(alerte.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
