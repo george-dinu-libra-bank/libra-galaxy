@@ -4,8 +4,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { supabaseConfigurat } from "@/lib/supabase/configurat";
 import { genereazaIban } from "@/lib/iban";
+import { verificaIdentitateInregistrare, verificaLoginFata } from "@/lib/actions/identitate";
 import {
   normalizeazaTelefon,
   validCnp,
@@ -90,6 +92,73 @@ export async function autentifica(date: {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Autentificare biometrica                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Login fara parola: un cadru live de la camera e comparat de backend cu
+ * selfie-ul 'verified' salvat la inregistrare (verificaLoginFata). Doar la
+ * potrivire cream o sesiune reala — Supabase nu ofera din oficiu "logheaza
+ * userul X pe incredere", asa ca folosim Admin API sa generam un magic link
+ * (fara sa trimitem vreun email) si il "consumam" imediat cu verifyOtp pe
+ * clientul cu cookie-uri, ceea ce seteaza sesiunea la fel ca orice alt login.
+ *
+ * E gandit ca alternativa la parola, nu ca al doilea factor — daca vrem 2FA
+ * real (parola + fata), fluxul trebuie schimbat sa ceara ambele.
+ */
+export async function autentificaFata(date: {
+  email: string;
+  imagineLive: File;
+  redirectTo?: string;
+}): Promise<RezultatAuth> {
+  const email = date.email.trim().toLowerCase();
+
+  if (validEmail(email)) {
+    return { eroare: "Introdu emailul contului inainte de a folosi biometria." };
+  }
+  if (!(date.imagineLive instanceof File) || date.imagineLive.size === 0) {
+    return { eroare: "Nu am primit nicio poza de la camera." };
+  }
+
+  const potrivit = await verificaLoginFata(email, date.imagineLive);
+
+  if (!potrivit) {
+    return { eroare: "Nu am putut confirma identitatea. Incearca din nou, cu lumina mai buna, sau foloseste parola." };
+  }
+
+  const supabaseAdmin = await createAdminClient();
+
+  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+    type: "magiclink",
+    email,
+  });
+
+  if (error || !data?.properties?.hashed_token) {
+    console.error("[auth/autentificaFata] generateLink", { email, error });
+    return { eroare: "Nu am putut finaliza autentificarea. Incearca din nou." };
+  }
+
+  const supabase = await createClient();
+
+  // token_hash, nu token+email: hashed_token din generateLink se consuma cu
+  // parametrul token_hash — trimis ca "token" alaturi de email (cum arata
+  // multe exemple neoficiale), GoTrue il trateaza gresit ca pe un cod OTP
+  // scurt introdus manual si raspunde generic "expired or invalid".
+  const { error: eroareOtp } = await supabase.auth.verifyOtp({
+    token_hash: data.properties.hashed_token,
+    type: (data.properties.verification_type ?? "magiclink") as "magiclink" | "email",
+  });
+
+  if (eroareOtp) {
+    console.error("[auth/autentificaFata] verifyOtp", { email, eroareOtp });
+    return { eroare: "Nu am putut finaliza autentificarea. Incearca din nou." };
+  }
+
+  revalidatePath("/", "layout");
+  redirect(date.redirectTo || "/dashboard");
+}
+
+/* -------------------------------------------------------------------------- */
 /* Inregistrare                                                                */
 /* -------------------------------------------------------------------------- */
 
@@ -99,6 +168,8 @@ export async function inregistreaza(date: {
   telefon: string;
   email: string;
   parola: string;
+  buletin: File;
+  selfie: File;
 }): Promise<RezultatAuth> {
   const nume = date.nume.trim().replace(/\s+/g, " ");
   const cnp = date.cnp.replace(/\s+/g, "");
@@ -116,6 +187,13 @@ export async function inregistreaza(date: {
   if (eroare) {
     console.error("[auth/inregistreaza] validare esuata", { email, eroare });
     return { eroare };
+  }
+
+  if (!(date.buletin instanceof File) || date.buletin.size === 0) {
+    return { eroare: "Fa o poza buletinului." };
+  }
+  if (!(date.selfie instanceof File) || date.selfie.size === 0) {
+    return { eroare: "Fa un selfie ca sa iti confirmam identitatea." };
   }
 
   const supabase = await createClient();
@@ -141,6 +219,13 @@ export async function inregistreaza(date: {
       message: error.message,
     });
     return { eroare: traduEroare(error.message) };
+  }
+
+  // Verificarea identitatii (OCR + DeepFace) nu trebuie sa blocheze crearea
+  // contului — un scor mic sau un serviciu picat inseamna doar
+  // verification_status = 'pending'/'pending_review', nu esec la inregistrare.
+  if (data.user) {
+    await verificaIdentitateInregistrare(data.user.id, date.buletin, date.selfie, cnp);
   }
 
   // Fara sesiune => in proiectul Supabase e activata confirmarea pe email.
