@@ -2,8 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { supabaseConfigurat } from "@/lib/supabase/configurat";
 
-/** Rute care nu cer sesiune. */
-const RUTE_PUBLICE = ["/", "/login", "/register", "/auth", "/shop"];
+/**
+ * Rute pe care middleware-ul nu le redirectioneaza catre /login.
+ *
+ * „/api" nu inseamna „fara autentificare": rutele de acolo raspund in JSON, deci
+ * isi verifica singure sesiunea si intorc 401, nu un redirect 307 catre o pagina
+ * de login pe care un fetch() n-are ce sa faca.
+ */
+const RUTE_PUBLICE = ["/", "/login", "/register", "/auth", "/shop", "/api"];
 
 function estePublica(pathname: string) {
   return RUTE_PUBLICE.some(
