@@ -100,6 +100,7 @@ function Rand({
           {new Date(tranzactie.creatLa).toLocaleDateString("ro-RO", {
             day: "numeric",
             month: "short",
+            timeZone: "Europe/Bucharest",
           })}
         </span>
       </span>

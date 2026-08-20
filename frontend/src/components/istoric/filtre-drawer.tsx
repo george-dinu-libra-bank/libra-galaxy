@@ -44,9 +44,10 @@ function Chip({
       aria-pressed={activ}
       className={cn(
         "rounded-full border px-4 py-2 text-[13px] font-medium transition-colors duration-150 ease-soft",
+        "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25",
         activ
           ? "border-primary-600 bg-primary-600 text-white"
-          : "border-line bg-surface text-ink-soft hover:bg-primary-50",
+          : "border-line bg-surface text-ink-soft hover:bg-primary-500/12",
       )}
     >
       {children}

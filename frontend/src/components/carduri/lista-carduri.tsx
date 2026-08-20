@@ -54,7 +54,7 @@ export function ListaCarduri({ carduri }: { carduri: CardAfisat[] }) {
               key={card.id}
               type="button"
               onClick={() => setSelectatId(card.id)}
-              className="animate-fade-up rounded-card p-5 text-left text-white shadow-lg transition-transform duration-150 ease-soft active:scale-[0.98]"
+              className="animate-fade-up rounded-card p-5 text-left text-white shadow-lg transition-transform duration-150 ease-soft active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
               style={{
                 background: GRADIENTE_STIL_CARD[card.stil],
                 opacity: card.blocat ? 0.7 : 1,
