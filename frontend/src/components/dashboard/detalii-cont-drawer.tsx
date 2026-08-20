@@ -95,6 +95,7 @@ export function DetaliiContDrawer({ profil }: { profil: Profil }) {
               valoare={new Date(profil.creat_la).toLocaleDateString("ro-RO", {
                 day: "numeric",
                 month: "long",
+                timeZone: "Europe/Bucharest",
                 year: "numeric",
               })}
             />

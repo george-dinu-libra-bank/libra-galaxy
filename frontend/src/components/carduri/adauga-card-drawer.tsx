@@ -86,8 +86,9 @@ export function AdaugaCardDrawer({ compact = false }: { compact?: boolean }) {
               onClick={() => setTematica(stil)}
               className={cn(
                 "flex items-center gap-4 rounded-card border p-4 text-left transition-colors duration-150 ease-soft",
+                "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25",
                 tematica === stil
-                  ? "border-primary-500 bg-primary-50"
+                  ? "border-primary-500 bg-primary-500/12"
                   : "border-line bg-surface hover:bg-muted",
               )}
             >
