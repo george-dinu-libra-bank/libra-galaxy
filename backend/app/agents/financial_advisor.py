@@ -31,7 +31,7 @@ from app.agents.base import (
 )
 from app.agents.registru import construieste_analiza
 from app.agents.specs import FINANCIAL_ADVISOR
-from app.context.builder import AssembledContext
+from app.context.builder import AssembledContext, ContextSource
 from app.core.config import get_settings
 from app.core.errors import AiProviderUnavailableError
 from app.core.security import Principal
@@ -44,6 +44,19 @@ _NO_SESSION_TEXT_RO = (
     "Analiza financiara detaliata are nevoie de sesiunea ta autentificata — "
     "reincearca din aplicatie, autentificat normal."
 )
+
+
+def _sarcina_cu_context(user_text: str, context: AssembledContext) -> str:
+    """Bucla lui Cristi (agents/baza.py) primeste o singura sarcina, nu un
+    istoric de mesaje — fara asta, o continuare scurta ca "dar cel mai mic?"
+    n-are la ce se lega si iese un raspuns fara noima. Conversatia recenta
+    (deja asamblata de orchestrator, cu acelasi buget/format ca la ceilalti
+    agenti) se pune inaintea intrebarii curente, ca sarcina sa fie
+    auto-suficienta."""
+    for section in context.sections:
+        if section.source == ContextSource.RECENT_CONVERSATION and section.text.strip():
+            return f"Conversatia recenta:\n{section.text}\n\nIntrebarea curenta: {user_text}"
+    return user_text
 
 
 class FinancialAdvisorAgent:
@@ -75,7 +88,7 @@ class FinancialAdvisorAgent:
         client_model = get_client_model()
 
         agent = financiar.construieste(client_model, settings, analiza, UUID(principal.user_id))
-        rezultat = await agent.executa(user_text)
+        rezultat = await agent.executa(_sarcina_cu_context(user_text, context))
 
         confidence = CONFIDENCE_HIGH if rezultat.disponibil else CONFIDENCE_LOW
         return AgentAnswer(text=rezultat.raspuns, confidence=confidence)

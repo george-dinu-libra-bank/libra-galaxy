@@ -37,15 +37,15 @@ class RetrievalService:
 
     async def search(self, query: str, profile: RetrievalProfile = DEFAULT_PROFILE) -> list[KnowledgeChunkHit]:
         cache_key = query_cache_key(self._embedding_key, query)
-        cached = self._cache.get_query_embedding(cache_key)
+        cached = await self._cache.get_query_embedding(cache_key)
 
         if cached is not None:
             query_embedding = cached
         else:
             [query_embedding] = await self._embeddings.embed([query])
-            self._cache.put_query_embedding(cache_key, self._embedding_key, query_embedding)
+            await self._cache.put_query_embedding(cache_key, self._embedding_key, query_embedding)
 
-        return self._knowledge.search(
+        return await self._knowledge.search(
             embedding_key=self._embedding_key,
             query_embedding=query_embedding,
             languages=profile.languages,
