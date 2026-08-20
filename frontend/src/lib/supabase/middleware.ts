@@ -7,10 +7,10 @@ import { supabaseConfigurat } from "@/lib/supabase/configurat";
  *
  * „/api" nu inseamna „fara autentificare": rutele de acolo raspund in JSON, deci
  * isi verifica singure sesiunea si intorc 401, nu un redirect 307 catre o pagina
- * de login pe care un fetch() n-are ce sa faca.
+ * de login pe care un fetch() n-are ce sa faca. /shop e vitrina publica (Galaxy
+ * Shop), navigabila fara cont.
  */
-const RUTE_PUBLICE = ["/", "/login", "/register", "/auth", "/shop", "/api", "/api/health",
-  "/api/backend"];
+const RUTE_PUBLICE = ["/", "/login", "/register", "/auth", "/shop", "/api"];
 
 function estePublica(pathname: string) {
   return RUTE_PUBLICE.some(
