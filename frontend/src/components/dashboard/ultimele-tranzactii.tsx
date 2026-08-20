@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { AvatarProfil } from "@/components/ui/avatar-profil";
 import type { TranzactieAfisata } from "@/lib/data/tranzactii";
@@ -7,8 +10,16 @@ import { cn, formateazaSuma } from "@/lib/utils";
 /**
  * Rezumatul de pe dashboard: ultimele cateva miscari, cu poza celuilalt
  * participant. Istoricul complet, cu filtre si detalii, ramane pe /istoric.
+ *
+ * E componenta client doar ca sa poata anima: cand realtime aduce bani,
+ * router.refresh() reincarca Server Component-ul parinte si lista soseste aici
+ * ca props noi. Randurile fiind cheiate pe id, AnimatePresence vede exact ce a
+ * intrat si ce a iesit din primele cinci, si le deschide/inchide in loc sa
+ * clipeasca. Datele raman calculate pe server — aici nu se tine nimic in state.
  */
 export function UltimeleTranzactii({ tranzactii }: { tranzactii: TranzactieAfisata[] }) {
+  const fataMiscare = useReducedMotion();
+
   return (
     <section className="mt-8">
       <div className="flex items-center justify-between">
@@ -30,13 +41,33 @@ export function UltimeleTranzactii({ tranzactii }: { tranzactii: TranzactieAfisa
         </p>
       ) : (
         <div className="mt-4 overflow-hidden rounded-card bg-surface shadow-sm">
-          {tranzactii.map((tranzactie, i) => (
-            <Rand
-              key={tranzactie.id}
-              tranzactie={tranzactie}
-              ultimul={i === tranzactii.length - 1}
-            />
-          ))}
+          {/* `initial={false}`: la prima randare a paginii randurile sunt deja
+              acolo, nu "sosesc". Animam doar ce se schimba dupa aceea. */}
+          <AnimatePresence initial={false}>
+            {tranzactii.map((tranzactie, i) => (
+              <motion.div
+                key={tranzactie.id}
+                layout={fataMiscare ? false : "position"}
+                initial={fataMiscare ? false : { height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={fataMiscare ? undefined : { height: 0, opacity: 0 }}
+                transition={{
+                  height: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
+                  opacity: { duration: 0.22 },
+                  layout: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
+                }}
+                // Inaltimea se animeaza, deci continutul trebuie taiat cat timp
+                // randul e mai scund decat textul din el.
+                className="overflow-hidden"
+              >
+                <Rand
+                  tranzactie={tranzactie}
+                  ultimul={i === tranzactii.length - 1}
+                  fataMiscare={fataMiscare ?? false}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       )}
     </section>
@@ -46,9 +77,11 @@ export function UltimeleTranzactii({ tranzactii }: { tranzactii: TranzactieAfisa
 function Rand({
   tranzactie,
   ultimul,
+  fataMiscare,
 }: {
   tranzactie: TranzactieAfisata;
   ultimul: boolean;
+  fataMiscare: boolean;
 }) {
   const primita = tranzactie.tip === "primita";
   const Sageata = primita ? ArrowDownLeft : ArrowUpRight;
@@ -57,7 +90,18 @@ function Rand({
   const nume = tranzactie.contraparte?.nume ?? "Cont Libra";
 
   return (
-    <div
+    <motion.div
+      // O spalare care se stinge, ca sa se vada care rand tocmai a aparut:
+      // verde la incasare, albastru la orice altceva. Culorile sunt scrise in
+      // clar pentru ca motion animeaza valori, nu clase Tailwind; sunt aceleasi
+      // --color-success / --color-primary-500 din globals.css, cu alfa mic.
+      initial={
+        fataMiscare
+          ? false
+          : { backgroundColor: primita ? "rgba(18,185,129,0.14)" : "rgba(76,134,245,0.12)" }
+      }
+      animate={{ backgroundColor: "rgba(0,0,0,0)" }}
+      transition={{ duration: 1.1, ease: "easeOut", delay: 0.18 }}
       className={cn(
         "flex items-center gap-3 px-4 py-3",
         !ultimul && "border-b border-line",
@@ -113,6 +157,6 @@ function Rand({
       >
         {primita ? "+" : "−"} {formateazaSuma(tranzactie.suma, tranzactie.valuta)}
       </span>
-    </div>
+    </motion.div>
   );
 }
