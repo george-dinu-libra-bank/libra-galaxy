@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseConfigurat } from "@/lib/supabase/configurat";
 import { genereazaIban } from "@/lib/iban";
+import { verificaIdentitateInregistrare } from "@/lib/actions/identitate";
 import {
   normalizeazaTelefon,
   validCnp,
@@ -99,6 +100,8 @@ export async function inregistreaza(date: {
   telefon: string;
   email: string;
   parola: string;
+  buletin: File;
+  selfie: File;
 }): Promise<RezultatAuth> {
   const nume = date.nume.trim().replace(/\s+/g, " ");
   const cnp = date.cnp.replace(/\s+/g, "");
@@ -116,6 +119,13 @@ export async function inregistreaza(date: {
   if (eroare) {
     console.error("[auth/inregistreaza] validare esuata", { email, eroare });
     return { eroare };
+  }
+
+  if (!(date.buletin instanceof File) || date.buletin.size === 0) {
+    return { eroare: "Fa o poza buletinului." };
+  }
+  if (!(date.selfie instanceof File) || date.selfie.size === 0) {
+    return { eroare: "Fa un selfie ca sa iti confirmam identitatea." };
   }
 
   const supabase = await createClient();
@@ -141,6 +151,13 @@ export async function inregistreaza(date: {
       message: error.message,
     });
     return { eroare: traduEroare(error.message) };
+  }
+
+  // Verificarea identitatii (OCR + DeepFace) nu trebuie sa blocheze crearea
+  // contului — un scor mic sau un serviciu picat inseamna doar
+  // verification_status = 'pending'/'pending_review', nu esec la inregistrare.
+  if (data.user) {
+    await verificaIdentitateInregistrare(data.user.id, date.buletin, date.selfie, cnp);
   }
 
   // Fara sesiune => in proiectul Supabase e activata confirmarea pe email.
