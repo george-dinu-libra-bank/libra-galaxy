@@ -1,44 +1,58 @@
+"""Adaptor peste financial advisor-ul lui Cristi (agents/financiar.py).
+
+Decizia (2026-08-20): pastram orchestratorul meu — persistenta conversatiilor,
+compresia, atasamentele, vocea, nivelul de incredere (agents/base.py) — dar
+"creierul" agentului financial_advisor devine bucla lui de tool-calling peste
+AnalizaService (solduri, cashflow lunar, tranzactii, neregularitati/frauda),
+nu tool-urile mele simple (get_accounts/get_spending_summary/run_scenario).
+
+Diferenta fata de restul agentilor mei: acesta nu cheama chat_provider.complete()
+o singura data — delegheaza intreaga tura catre AgentModel-ul lui Cristi
+(app/agents/baza.py), care isi ruleaza propria bucla de tool-calling peste
+azure-ai-inference. select_tools() intoarce mereu [] — executorul meu nu are
+ce rula, tool-urile ruleaza in interiorul buclei lui, invizibile pentru mine.
+
+Foloseste create_user_client (RLS pastrat), nu service_role: asa a fost gandit
+stratul de repository-uri ale lui Cristi (vezi infrastructure/supabase.py).
+Necesita deci Principal.access_token — cerere fara sesiune reala (ex. token
+intern) primeste un raspuns clar, nu o eroare de autentificare confuza.
+"""
+
 from __future__ import annotations
 
-import re
+from uuid import UUID
 
-from app.agents.base import AgentAnswer, AttachmentContext, build_system_prompt, build_user_message, confidence_from_tool_results
+from app.agents import financiar
+from app.agents.base import (
+    CONFIDENCE_HIGH,
+    CONFIDENCE_LOW,
+    AgentAnswer,
+    AttachmentContext,
+)
+from app.agents.registru import construieste_analiza
 from app.agents.specs import FINANCIAL_ADVISOR
 from app.context.builder import AssembledContext
+from app.core.config import get_settings
+from app.core.errors import AiProviderUnavailableError
 from app.core.security import Principal
-from app.providers.base import ChatMessage, ChatProvider
+from app.infrastructure.llm import get_client_model
+from app.infrastructure.supabase import create_user_client
+from app.providers.base import ChatProvider
 from app.tools.base import SelectedTool, ToolResult
 
-_AMOUNT_RE = re.compile(r"(\d+(?:[.,]\d+)?)")
-_MONTHS_RE = re.compile(r"(\d+)\s*(luni|lun[aă]|months?)")
-
-
-def _extract_scenario_args(user_text: str) -> dict:
-    amounts = _AMOUNT_RE.findall(user_text)
-    monthly_amount = float(amounts[0].replace(",", ".")) if amounts else 500.0
-
-    months_match = _MONTHS_RE.search(user_text.lower())
-    months = int(months_match.group(1)) if months_match else 12
-
-    return {"monthly_amount": monthly_amount, "months": months}
+_NO_SESSION_TEXT_RO = (
+    "Analiza financiara detaliata are nevoie de sesiunea ta autentificata — "
+    "reincearca din aplicatie, autentificat normal."
+)
 
 
 class FinancialAdvisorAgent:
     spec = FINANCIAL_ADVISOR
 
     def select_tools(self, user_text: str, intent: str) -> list[SelectedTool]:
-        selections = [SelectedTool("get_accounts", {}, "solduri deschise, necesare pentru orice explicatie")]
-
-        if intent == "what_if":
-            selections.append(
-                SelectedTool("run_scenario", _extract_scenario_args(user_text), "intrebare de tip what-if")
-            )
-        else:
-            selections.append(
-                SelectedTool("get_spending_summary", {"days": 30}, "context de cheltuieli pentru o privire de ansamblu")
-            )
-
-        return selections
+        # Tool-urile lui Cristi (financiar_tools.py) ruleaza in bucla proprie
+        # din AgentModel.executa — nu prin executorul meu de tool-uri.
+        return []
 
     async def respond(
         self,
@@ -49,11 +63,19 @@ class FinancialAdvisorAgent:
         chat_provider: ChatProvider,
         attachments: list[AttachmentContext] = (),
     ) -> AgentAnswer:
-        system_prompt = build_system_prompt(self.spec, context)
-        completion = await chat_provider.complete(
-            [ChatMessage(role="system", content=system_prompt), build_user_message(user_text, attachments)]
-        )
-        return AgentAnswer(
-            text=completion.text, citations=[], confidence=confidence_from_tool_results(tool_results),
-            tokens_in=completion.tokens_in, tokens_out=completion.tokens_out, tokens_cached=completion.tokens_cached,
-        )
+        if not principal.access_token:
+            return AgentAnswer(text=_NO_SESSION_TEXT_RO, confidence=None)
+
+        settings = get_settings()
+        if not settings.agenti_activi:
+            raise AiProviderUnavailableError("Analiza financiara (AZURE_AI_*) nu este configurata.")
+
+        client_supabase = create_user_client(settings, principal.access_token)
+        analiza = construieste_analiza(client_supabase, settings)
+        client_model = get_client_model()
+
+        agent = financiar.construieste(client_model, settings, analiza, UUID(principal.user_id))
+        rezultat = await agent.executa(user_text)
+
+        confidence = CONFIDENCE_HIGH if rezultat.disponibil else CONFIDENCE_LOW
+        return AgentAnswer(text=rezultat.raspuns, confidence=confidence)

@@ -28,3 +28,11 @@ opencv-python-headless==4.10.0.84
 
 pytest>=8.3
 pytest-asyncio>=0.25
+
+# --- Financial advisor (Cristi) — bucla de tool-calling peste Azure AI Foundry,
+# cu AnalizaService (repos card/cont/tranzactie) si detectorul de neregularitati.
+azure-ai-inference>=1.0.0b9
+azure-identity>=1.19,<2
+anyio>=4.0
+joblib>=1.4,<2
+scikit-learn>=1.5,<2

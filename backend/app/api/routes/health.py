@@ -23,6 +23,7 @@ async def health(request: Request):
             "foundry_embedding_deployment": settings.foundry_embedding_deployment,
             "speech_configured": settings.speech_configured,
             "supabase_configured": settings.supabase_configured,
+            "agents_configured": settings.agenti_activi,
         },
         request_id=request_id,
     )

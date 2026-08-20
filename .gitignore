@@ -4,3 +4,7 @@
 /README_2.md
 .env
 .claude/
+.venv/
+supabase/.branches/
+supabase/.temp/
+__pycache__/

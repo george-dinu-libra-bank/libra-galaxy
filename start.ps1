@@ -36,4 +36,8 @@ if (-not (Test-Path "frontend\.env")) {
 }
 
 Write-Host "Pornesc Libra Galaxy - frontend: http://localhost:3000, backend: http://localhost:8000"
-docker compose up --build @ComposeArgs
+# -f explicit: exista si compose.yaml (scripts/dev-up*.ps1, Supabase local/cloud),
+# care altfel ar castiga implicit fata de docker-compose.yml (Docker prefera
+# numele "compose.yaml"), lasand deoparte montarea galaxy-bank-knowledge si
+# restul variabilelor din backend/.env (Foundry, Speech, atasamente).
+docker compose -f docker-compose.yml up --build @ComposeArgs

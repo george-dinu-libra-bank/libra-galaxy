@@ -10,20 +10,27 @@ from __future__ import annotations
 from app.agents.base import AgentSpec
 from app.tools.base import RiskLevel
 
+# "Creierul" acestui agent e delegat catre agents/financiar.py (Cristi): o bucla
+# proprie de tool-calling peste AnalizaService (sold, cashflow lunar, tranzactii,
+# neregularitati), nu tool-urile registrului meu de mai jos — vezi
+# agents/financial_advisor.py. tool_names ramane gol intentionat: eligibility.py
+# nu are ce sa verifice, pentru ca acest agent nu cere niciun tool prin
+# ToolRegistry (select_tools() intoarce mereu []).
 FINANCIAL_ADVISOR = AgentSpec(
     agent_id="financial_advisor",
-    purpose="Explica situatia financiara a utilizatorului si consecintele unor alegeri.",
+    purpose="Explica situatia financiara a utilizatorului: solduri, cashflow lunar, tranzactii, neregularitati.",
     responsibilities=(
-        "interpreteaza proiectii de scenariu deterministe",
-        "analizeaza solduri si tendinte de cheltuieli",
+        "analizeaza solduri si cashflow lunar prin tool-uri proprii (agents/financiar.py)",
+        "semnaleaza plati care ies din tiparul obisnuit, ca observatii statistice",
     ),
     prohibited=(
-        "sa calculeze el insusi solduri sau proiectii",
-        "sa execute transferuri sau sa schimbe reguli de alocare",
+        "sa calculeze el insusi solduri, cashflow sau proiectii",
+        "sa execute transferuri, sa blocheze carduri sau sa schimbe reguli de alocare",
+        "sa prezinte o neregularitate statistica drept frauda confirmata",
     ),
-    tool_names=frozenset({"get_accounts", "get_spending_summary", "run_scenario"}),
+    tool_names=frozenset(),
     risk_ceiling=RiskLevel.LOW,
-    prompt_version="advisor-v0",
+    prompt_version="advisor-v1-cristi",
     intents=("account_overview", "what_if", "financial_advice"),
 )
 

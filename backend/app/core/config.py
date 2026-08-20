@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     # /auth/v1/.well-known/jwks.json), nu cu un secret HS256 partajat
     # (core/security.py verifica prin JWKS, nu printr-un secret static).
     supabase_service_role_key: str = Field(default="", alias="SUPABASE_SERVICE_ROLE_KEY")
+    # Cheia publica/anon — folosita ca sa se construiasca un client scopat pe
+    # utilizator (create_user_client), care pastreaza contextul RLS in loc sa
+    # ocoleasca RLS ca service-role. Vezi agents/financial_advisor.py: orchestratorul
+    # lui Cristi si AnalizaService citesc prin acest client, nu prin service_role.
+    supabase_anon_key: str = Field(default="", alias="SUPABASE_ANON_KEY")
 
     # Endpoint-ul Foundry ("Models" blade, forma .../models) e compatibil OpenAI
     # direct prin base_url — nu e nevoie de api_version (providers/foundry.py).
@@ -84,6 +89,30 @@ class Settings(BaseSettings):
     # cascade-ul default ("opencv") pe poze mici/inclinate ca fotografia din
     # buletin. Fara dependente noi — greutatile se descarca automat de DeepFace.
     identity_detector_backend: str = Field(default="yunet", alias="IDENTITY_DETECTOR_BACKEND")
+
+    # Financial advisor-ul lui Cristi (agents/financiar.py) — bucla proprie de
+    # tool-calling peste azure-ai-inference, cu propriile praguri de siguranta.
+    llm_provider: str = Field(default="azure", alias="LLM_PROVIDER")
+    azure_ai_endpoint: str = Field(default="", alias="AZURE_AI_ENDPOINT")
+    # 'key' merge oriunde, inclusiv in container. 'identity' foloseste Entra
+    # prin DefaultAzureCredential (az login local, sau managed identity in Azure).
+    azure_ai_auth: str = Field(default="key", alias="AZURE_AI_AUTH")
+    azure_ai_api_key: str = Field(default="", alias="AZURE_AI_API_KEY")
+    azure_ai_chat_deployment: str = Field(default="gpt-5-mini", alias="AZURE_AI_CHAT_DEPLOYMENT")
+    azure_ai_embedding_deployment: str = Field(
+        default="text-embedding-3-small", alias="AZURE_AI_EMBEDDING_DEPLOYMENT"
+    )
+    agent_max_tokens: int = Field(default=4000, alias="AGENT_MAX_TOKENS")
+    # Un pas = un raspuns al modelului. Plasa de siguranta, nu tinta.
+    agent_max_pasi: int = Field(default=10, alias="AGENT_MAX_PASI")
+    # Cate tranzactii se citesc cel mult pentru o analiza (AnalizaService).
+    analiza_limita_randuri: int = Field(default=1000, alias="ANALIZA_LIMITA_RANDURI")
+
+    @property
+    def agenti_activi(self) -> bool:
+        if not self.azure_ai_endpoint:
+            return False
+        return self.azure_ai_auth.lower() == "identity" or bool(self.azure_ai_api_key)
 
     @property
     def embedding_key(self) -> str:

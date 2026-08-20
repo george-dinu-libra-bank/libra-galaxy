@@ -2,8 +2,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { supabaseConfigurat } from "@/lib/supabase/configurat";
 
-/** Rute care nu cer sesiune. */
-const RUTE_PUBLICE = ["/", "/login", "/register", "/auth"];
+/**
+ * Rute pe care middleware-ul nu le redirectioneaza. Proxy-ul backend isi face
+ * propria verificare si trebuie sa poata raspunde cu JSON 401, nu cu HTML de login.
+ */
+const RUTE_PUBLICE = [
+  "/",
+  "/login",
+  "/register",
+  "/auth",
+  "/api/health",
+  "/api/backend",
+];
 
 function estePublica(pathname: string) {
   return RUTE_PUBLICE.some(
@@ -23,7 +33,7 @@ export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_INTERNAL_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {

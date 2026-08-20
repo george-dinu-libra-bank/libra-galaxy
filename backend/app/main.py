@@ -58,6 +58,12 @@ async def unexpected_error_handler(request: Request, exc: Exception):
     )
 
 
+# Routerele lui Cristi (agents, alerte, profiles) exista in backend/app/api/routes/
+# dar nu sunt inregistrate aici inca — decizia de azi a fost sa pastram
+# /assistant/* (persistenta conversatiilor, compresie, atasamente, voce) ca
+# suprafata unica, si sa folosim doar orchestratorul+financial_advisor-ul lui
+# Cristi ca "creier" in interiorul agentului financial_advisor (vezi
+# agents/financial_advisor.py). Inregistrarea lor separata ramane de discutat.
 app.include_router(health.router)
 app.include_router(assistant.router)
 app.include_router(identity.router)

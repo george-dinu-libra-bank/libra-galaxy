@@ -4,13 +4,23 @@ Nu e un singleton la nivel de modul (interzis de docs/PATTERN_ADOPTION.md) —
 e o functie de fabrica, apelata prin FastAPI Depends, testabila prin
 dependency_overrides.
 
-Autentificarea (JWT/JWKS + modul cu cheie interna) nu e aici — traieste in
-core/security.py, singurul loc care decodeaza un token in tot backend-ul.
+Autentificarea principala (JWT/JWKS + modul cu cheie interna) nu e aici —
+traieste in core/security.py, singurul loc care decodeaza un token pentru
+Principal. `get_current_user`/`get_user_supabase` de mai jos sunt o a doua
+cale, complementara: intorc un client Supabase scopat pe utilizator (pastreaza
+contextul RLS), pentru cod care are nevoie explicit de asta — azi doar
+adaptorul financial_advisor (vezi agents/financial_advisor.py).
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import lru_cache
+from uuid import UUID
+
+from anyio import to_thread
+from fastapi import Depends, Header, HTTPException, status
+from supabase import Client
 
 from app.agents.compliance_kyc import ComplianceKycAgent
 from app.agents.document_intelligence import DocumentIntelligenceAgent
@@ -18,8 +28,9 @@ from app.agents.engagement import EngagementAgent
 from app.agents.financial_advisor import FinancialAdvisorAgent
 from app.agents.transaction_intelligence import TransactionIntelligenceAgent
 from app.attachments.service import AttachmentService
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.infrastructure.attachment_storage import AttachmentStorage
+from app.infrastructure.supabase import create_auth_client, create_user_client
 from app.infrastructure.supabase_client import get_service_client
 from app.orchestration.orchestrator import Orchestrator
 from app.orchestration.routing import AgentRouter
@@ -102,3 +113,50 @@ def get_voice_provider() -> MicrosoftVoiceProvider:
     """Nu e cache-uit: constructorul verifica speech_configured la fiecare apel, ca o
     lipsa de configurare sa produca AI_PROVIDER_UNAVAILABLE curat, nu o eroare la pornire."""
     return MicrosoftVoiceProvider(get_settings())
+
+
+@dataclass(frozen=True, slots=True)
+class UserContext:
+    user_id: UUID
+    access_token: str
+
+
+def _bearer_token(authorization: str | None) -> str:
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Lipseste tokenul de autentificare.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return token
+
+
+async def get_current_user(
+    authorization: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> UserContext:
+    token = _bearer_token(authorization)
+    client = create_auth_client(settings)
+
+    try:
+        response = await to_thread.run_sync(client.auth.get_user, token)
+        user = response.user
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sesiunea este invalida sau a expirat.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilizator invalid.")
+
+    return UserContext(user_id=UUID(str(user.id)), access_token=token)
+
+
+def get_user_supabase(
+    user: UserContext = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Client:
+    return create_user_client(settings, user.access_token)

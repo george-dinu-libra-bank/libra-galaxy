@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "libra-backend"
+version = "0.1.0"
+description = "API-ul FastAPI pentru Libra Galaxy"
+requires-python = ">=3.12"
+dependencies = [
+  "azure-ai-inference>=1.0.0b9",
+  "azure-identity>=1.19,<2",
+  "email-validator>=2.2,<3",
+  "joblib>=1.4,<2",
+  "fastapi>=0.116,<1",
+  "pydantic-settings>=2.10,<3",
+  "scikit-learn>=1.5,<2",
+  "supabase>=2.18,<3",
+  "uvicorn[standard]>=0.35,<1",
+
+  # Verificarea de identitate la inregistrare: OCR pe buletin + potrivire de fete.
+  # tf-keras e ceruta explicit de deepface pe TensorFlow 2.16+, unde Keras 3 nu
+  # mai expune API-ul pe care il foloseste.
+  "deepface>=0.0.93,<0.1",
+  "tf-keras>=2.18,<3",
+  "pytesseract>=0.3.13,<0.4",
+  "pillow>=11,<12",
+  "opencv-python-headless>=4.10,<5",
+  # Verificarea locala a JWT-ului Supabase prin JWKS (app/api/dependencies.py).
+  "pyjwt[crypto]>=2.10,<3",
+  # Rutele de identitate primesc fisiere prin multipart/form-data.
+  "python-multipart>=0.0.20,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1",
+  "pytest>=8.4,<9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]

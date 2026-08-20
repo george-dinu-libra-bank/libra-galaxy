@@ -1,0 +1,73 @@
+name: libra-galaxy
+
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      APP_ENV: development
+      LOG_LEVEL: INFO
+      # Implicit: Supabase local. Pentru cloud, pune valorile in .env la radacina.
+      SUPABASE_URL: ${SUPABASE_INTERNAL_URL:-http://host.docker.internal:54321}
+      SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?Porneste prin scripts/dev-up.ps1 sau completeaza .env}
+      CORS_ORIGINS: http://localhost:3000
+      # Verificarea de identitate scrie inainte sa existe sesiune, deci are nevoie
+      # de service_role; iar cheia interna e secretul partajat cu serverul Next.js.
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      BACKEND_INTERNAL_API_KEY: ${BACKEND_INTERNAL_API_KEY:-}
+      # Layer-ul de agenti. Fara endpoint si cheie, /api/v1/agents/chat da 503;
+      # /api/v1/alerte merge oricum, nu trece prin niciun model.
+      LLM_PROVIDER: ${LLM_PROVIDER:-azure}
+      AZURE_AI_ENDPOINT: ${AZURE_AI_ENDPOINT:-}
+      AZURE_AI_AUTH: ${AZURE_AI_AUTH:-key}
+      AZURE_AI_API_KEY: ${AZURE_AI_API_KEY:-}
+      AZURE_AI_CHAT_DEPLOYMENT: ${AZURE_AI_CHAT_DEPLOYMENT:-gpt-5-mini}
+      AZURE_AI_EMBEDDING_DEPLOYMENT: ${AZURE_AI_EMBEDDING_DEPLOYMENT:-text-embedding-3-small}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:54321}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?Porneste prin scripts/dev-up.ps1 sau completeaza .env}
+    environment:
+      # URL-ul pe care il vede browserul.
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:54321}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?Porneste prin scripts/dev-up.ps1 sau completeaza .env}
+      # URL-ul pe care il vede containerul; difera de cel de sus doar la Supabase local.
+      SUPABASE_INTERNAL_URL: ${SUPABASE_INTERNAL_URL:-http://host.docker.internal:54321}
+      # Ceruta de lib/supabase/admin.js. Nu are prefixul NEXT_PUBLIC_, deci
+      # ramane pe server si nu intra in bundle-ul din browser.
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Completeaza .env}
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000}
+      # Acelasi backend, sub al doilea nume: rutele proxy folosesc
+      # BACKEND_INTERNAL_URL, iar actions/identitate.ts foloseste BACKEND_URL.
+      # Fara asta, in container fallback-ul "localhost:8000" ar nimeri frontendul.
+      BACKEND_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000}
+      # Secretul partajat pentru fereastra de dupa signUp(), cand nu exista sesiune.
+      BACKEND_INTERNAL_API_KEY: ${BACKEND_INTERNAL_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)process.exit(1)})"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped

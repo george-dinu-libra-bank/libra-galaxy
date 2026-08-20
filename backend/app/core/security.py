@@ -38,6 +38,10 @@ class Principal:
     role: str
     permissions: set[str] = field(default_factory=set)
     locale: str = "ro"
+    # Token-ul JWT brut, cat tine request-ul — nu se logheaza (vezi redactarea
+    # din core/logging.py). Necesar doar pentru create_user_client (RLS pastrat),
+    # folosit azi de adaptorul financial_advisor peste agentul lui Cristi.
+    access_token: str | None = None
 
     def has_permission(self, permission: str) -> bool:
         return permission in self.permissions
@@ -79,7 +83,10 @@ async def get_principal(authorization: str | None = Header(default=None)) -> Pri
     locale = (claims.get("user_metadata") or {}).get("locale", "ro")
 
     user_id_var.set(user_id)
-    return Principal(user_id=user_id, role=role, permissions=set(ROLE_PERMISSIONS.get(role, set())), locale=locale)
+    return Principal(
+        user_id=user_id, role=role, permissions=set(ROLE_PERMISSIONS.get(role, set())),
+        locale=locale, access_token=token,
+    )
 
 
 async def get_principal_or_internal(
