@@ -81,6 +81,46 @@ Expuse in doua locuri:
 - `GET /api/v1/alerte`, direct pentru interfata — **nu trece prin niciun model de limbaj**,
   deci merge si fara `ANTHROPIC_API_KEY`.
 
+## Zona de administrator
+
+Rolul sta in `public.user_roles` (`user_id`, `role`), nu in token: un rol pus in JWT ar
+ramane valabil pana expira tokenul, inclusiv dupa ce i-a fost luat cuiva dreptul. Se
+verifica la fiecare cerere cu `cere_administrator` din `app/api/dependencies.py`.
+
+Doua zone, amandoua sub aceeasi verificare:
+
+| Ruta | Ce face |
+|---|---|
+| `GET /api/v1/admin/conturi-semnalate` | conturile cu plati atipice |
+| `GET /api/v1/admin/raport/{id}` `+/pdf` `+/csv` | raportul de analiza, descarcabil |
+| `GET /api/identity/admin/pending` | verificarile care asteapta o hotarare omeneasca |
+| `GET /api/identity/admin/case/{id}` | un caz, cu URL-uri semnate catre cele doua poze |
+| `POST /api/identity/admin/review` | aproba sau respinge |
+
+Reguli care nu se incalca aici:
+
+1. **Verificarea de rol e pe server, pe fiecare ruta.** Butonul ascuns in interfata nu e o
+   bariera; oricine poate chema ruta direct.
+2. **Service-role ocoleste RLS.** Citirile administratorului merg cu el (trec peste toate
+   conturile), deci autorizarea nu mai vine din baza de date — vine din dependinta, si
+   trebuie sa fie acolo fara exceptie.
+3. **Pozele raman private.** Se afiseaza prin `create_signed_url` cu durata scurta,
+   niciodata `getPublicUrl`.
+4. **Fiecare citire lasa o urma** in `public.acces_administrator`: cine s-a uitat la datele
+   cui, si cand. Tabela se scrie, nu se modifica si nu se sterge.
+5. **Adminul schimba doar decizia.** Dovezile — poze, CNP citit, scor, prag — sunt inghetate
+   de un trigger la UPDATE. Altfel un raport de revizuire n-ar mai putea fi verificat.
+
+### Scorul de potrivire a fetelor e o DISTANTA
+
+`identity_verifications.similarity_score` se numeste asa din motive istorice, dar contine
+distanta cosinus intoarsa de DeepFace: **mai mic inseamna mai asemanator**, iar potrivirea
+trece cand `distanta <= prag` (vezi `infrastructure/face_match.py`).
+
+In API si in interfata se numeste `distanta_fete`, insotita de `prag` si `sub_prag`. Daca ar
+fi aratata ca "scor de similaritate", cine revizuieste ar citi 0.37 fata de 0.68 ca esec si
+ar respinge un cont bun.
+
 ## Configurare
 
 | Variabila | Implicit | Ce face |

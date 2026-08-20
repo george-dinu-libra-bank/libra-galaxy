@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes import admin, agents, alerte, health, profiles
+from app.api.routes.admin_identity import router as admin_identity_router
 from app.api.routes.identity import router as identity_router
 from app.infrastructure.config import get_settings
 from app.infrastructure.logging import configureaza_logging, obtine_logger
@@ -67,6 +68,7 @@ async def request_context(request: Request, call_next):
 # Verificarea identitatii isi pastreaza prefixul propriu (/api/identity/...),
 # fixat in router; restul stau sub /api/v1.
 app.include_router(identity_router)
+app.include_router(admin_identity_router)
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(profiles.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
