@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { SetariClient } from "@/components/setari/setari-client";
+import { checkAdmin } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -30,5 +31,8 @@ export default async function SetariPage() {
     );
   }
 
-  return <SetariClient profil={profil} />;
+  // Zona de administrare nu se anunta celor care n-au ce cauta in ea.
+  const esteAdmin = (await checkAdmin()) !== null;
+
+  return <SetariClient profil={profil} esteAdmin={esteAdmin} />;
 }
