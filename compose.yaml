@@ -11,6 +11,10 @@ services:
       SUPABASE_URL: ${SUPABASE_INTERNAL_URL:-http://host.docker.internal:54321}
       SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?Porneste prin scripts/dev-up.ps1 sau completeaza .env}
       CORS_ORIGINS: http://localhost:3000
+      # Verificarea de identitate scrie inainte sa existe sesiune, deci are nevoie
+      # de service_role; iar cheia interna e secretul partajat cu serverul Next.js.
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      BACKEND_INTERNAL_API_KEY: ${BACKEND_INTERNAL_API_KEY:-}
       # Layer-ul de agenti. Fara endpoint si cheie, /api/v1/agents/chat da 503;
       # /api/v1/alerte merge oricum, nu trece prin niciun model.
       LLM_PROVIDER: ${LLM_PROVIDER:-azure}
@@ -47,6 +51,12 @@ services:
       # ramane pe server si nu intra in bundle-ul din browser.
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Completeaza .env}
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000}
+      # Acelasi backend, sub al doilea nume: rutele proxy folosesc
+      # BACKEND_INTERNAL_URL, iar actions/identitate.ts foloseste BACKEND_URL.
+      # Fara asta, in container fallback-ul "localhost:8000" ar nimeri frontendul.
+      BACKEND_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000}
+      # Secretul partajat pentru fereastra de dupa signUp(), cand nu exista sesiune.
+      BACKEND_INTERNAL_API_KEY: ${BACKEND_INTERNAL_API_KEY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

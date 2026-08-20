@@ -13,6 +13,7 @@ import { DetaliiContDrawer } from "@/components/dashboard/detalii-cont-drawer";
 import { ListaConturi } from "@/components/dashboard/lista-conturi";
 import { SoldAnimat } from "@/components/dashboard/sold-animat";
 import { UltimeleTranzactii } from "@/components/dashboard/ultimele-tranzactii";
+import { Banda } from "@/components/ui/banda";
 import { obtineConturiUtilizator, totalSold } from "@/lib/data/conturi";
 import { obtineTranzactiiUtilizator } from "@/lib/data/tranzactii";
 import { createClient } from "@/lib/supabase/server";
@@ -42,7 +43,7 @@ export default async function DashboardPage() {
 
   const { data: profil } = await supabase
     .from("profiles")
-    .select("nume, cnp, telefon, email, iban_cont, creat_la, avatar_url")
+    .select("nume, cnp, telefon, email, iban_cont, creat_la, avatar_url, verification_status")
     .eq("id", user.id)
     .single();
 
@@ -83,6 +84,19 @@ export default async function DashboardPage() {
 
       {profil ? (
         <>
+          {profil.verification_status === "pending_review" ? (
+            <div className="mt-4">
+              <Banda ton="info">
+                Verificarea identitatii este in curs de revizuire manuala. Unele
+                actiuni pot fi limitate pana la finalizare.
+              </Banda>
+            </div>
+          ) : profil.verification_status === "pending" ? (
+            <div className="mt-4">
+              <Banda ton="info">Verificarea identitatii este in curs.</Banda>
+            </div>
+          ) : null}
+
           <ListaConturi conturi={conturi} />
 
           <div className="mt-4">

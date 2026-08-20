@@ -1,6 +1,10 @@
 __pycache__/
+*.py[cod]
+*.pyc
 .pytest_cache/
 .venv/
-*.py[cod]
+venv/
 .env
 *.egg-info/
+# Greutatile descarcate de DeepFace la prima rulare locala.
+.deepface/
