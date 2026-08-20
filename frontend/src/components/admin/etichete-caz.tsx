@@ -1,5 +1,5 @@
 import { Check, HelpCircle, X } from "lucide-react";
-import type { CazVerificare } from "@/lib/data/admin-verificari";
+import type { CazVerificare } from "@/lib/tipuri-admin";
 import { cn } from "@/lib/utils";
 
 type Ton = "bun" | "rau" | "necunoscut";

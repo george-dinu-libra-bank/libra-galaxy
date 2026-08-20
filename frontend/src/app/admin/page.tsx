@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ChevronRight, ScanFace, ShieldCheck } from "lucide-react";
 import { cereAdmin } from "@/lib/admin";
-import { obtineCazuriDeRevizuit, type CazVerificare } from "@/lib/data/admin-verificari";
+import { obtineCazuriDeRevizuit } from "@/lib/data/admin-verificari";
+import type { CazVerificare } from "@/lib/tipuri-admin";
 import { BackendError } from "@/lib/backend";
 import { Banda } from "@/components/ui/banda";
 import { EticheteCaz } from "@/components/admin/etichete-caz";

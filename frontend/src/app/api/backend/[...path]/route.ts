@@ -50,6 +50,11 @@ async function proxy(request: NextRequest, context: RouteContext) {
     const requestId = upstream.headers.get("x-request-id");
     if (requestId) responseHeaders.set("X-Request-ID", requestId);
 
+    // Fara asta, un PDF sau un CSV s-ar deschide in tab in loc sa se descarce,
+    // si si-ar pierde numele pus de backend.
+    const dispozitie = upstream.headers.get("content-disposition");
+    if (dispozitie) responseHeaders.set("Content-Disposition", dispozitie);
+
     return new NextResponse(upstream.body, {
       status: upstream.status,
       headers: responseHeaders,

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ShieldCheck } from "lucide-react";
+import { NavAdmin } from "@/components/admin/nav-admin";
 import { cereAdmin } from "@/lib/admin";
 
 export const metadata: Metadata = {
@@ -48,6 +49,10 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           </div>
         </div>
       </header>
+
+      <div className="mx-auto w-full max-w-5xl px-6">
+        <NavAdmin />
+      </div>
 
       <main className="mx-auto w-full max-w-5xl px-6 py-8">{children}</main>
     </div>
