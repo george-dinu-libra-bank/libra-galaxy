@@ -14,17 +14,22 @@ const CHEIE_INTERNA = process.env.BACKEND_INTERNAL_API_KEY;
 const MAX_OCTETI_BULETIN = 8 * 1024 * 1024;
 
 /**
- * Backend-ul raspunde la orice eroare cu {"detail": {"cod": "...", "mesaj": "..."}}
- * (vezi backend/app/infrastructure/errors.py si main.py) — un cod stabil de
- * diagnostic, nu doar un status HTTP gol. Cand nu putem parsa raspunsul (ex.
- * backend-ul e complet picat si nu raspunde deloc JSON), cazul e tot logat,
- * doar cu cod generic.
+ * Backend-ul raspunde la orice eroare cu plicul standard
+ * {"success": false, "error": {"code": "...", "message": "..."}} (vezi
+ * backend/app/core/errors.py si envelope.py) — un cod stabil de diagnostic,
+ * nu doar un status HTTP gol. Validarea automata FastAPI (422, cerere
+ * malformata) ocoleste plicul si raspunde cu {"detail": "..."} — tratata
+ * separat mai jos. Cand nu putem parsa raspunsul deloc (backend-ul e complet
+ * picat), cazul e tot logat, doar cu cod generic.
  */
 async function citesteEroare(raspuns: Response): Promise<{ cod: string; mesaj: string }> {
   try {
-    const corp = (await raspuns.json()) as { detail?: { cod?: string; mesaj?: string } | string };
+    const corp = (await raspuns.json()) as {
+      error?: { code?: string; message?: string };
+      detail?: string;
+    };
+    if (corp.error?.code) return { cod: corp.error.code, mesaj: corp.error.message ?? "" };
     if (typeof corp.detail === "string") return { cod: "eroare_http", mesaj: corp.detail };
-    if (corp.detail?.cod) return { cod: corp.detail.cod, mesaj: corp.detail.mesaj ?? "" };
   } catch {
     // corpul nu era JSON — backend-ul probabil a picat complet
   }
@@ -165,5 +170,40 @@ export async function verificaIdentitateInregistrare(
   } catch (eroare) {
     console.error("[identitate/verificaIdentitateInregistrare] cod=fetch_esuat — backend-ul nu raspunde deloc?", eroare);
     return "eroare";
+  }
+}
+
+/**
+ * Login biometric: trimite un cadru live de la camera + emailul introdus,
+ * ca backend-ul sa-l compare 1:1 cu ultimul selfie 'verified' al contului
+ * (vezi backend/app/services/identity_service.py verifica_login_fata).
+ * Fara autentificare (userul inca nu are sesiune) — protejata prin rate
+ * limiting pe email+IP in backend (backend/app/infrastructure/rate_limit.py).
+ *
+ * Raspunsul e strict boolean; sesiunea reala se creeaza separat, in
+ * autentificaFata() din auth.ts, doar daca matched === true.
+ */
+export async function verificaLoginFata(email: string, imagineLive: File): Promise<boolean> {
+  try {
+    const trimitere = new FormData();
+    trimitere.append("email", email);
+    trimitere.append("imagine", imagineLive, imagineLive.name || "live.jpg");
+
+    const raspuns = await fetch(`${BACKEND_URL}/api/identity/login-match`, {
+      method: "POST",
+      body: trimitere,
+    });
+
+    if (!raspuns.ok) {
+      const { cod, mesaj } = await citesteEroare(raspuns);
+      console.error("[identitate/verificaLoginFata]", { status: raspuns.status, cod, mesaj });
+      return false;
+    }
+
+    const date = (await raspuns.json()) as { matched: boolean };
+    return date.matched;
+  } catch (eroare) {
+    console.error("[identitate/verificaLoginFata] cod=fetch_esuat — backend-ul nu raspunde deloc?", eroare);
+    return false;
   }
 }

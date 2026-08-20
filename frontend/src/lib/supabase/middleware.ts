@@ -4,7 +4,8 @@ import { supabaseConfigurat } from "@/lib/supabase/configurat";
 
 /**
  * Rute pe care middleware-ul nu le redirectioneaza. Proxy-ul backend isi face
- * propria verificare si trebuie sa poata raspunde cu JSON 401, nu cu HTML de login.
+ * propria verificare si trebuie sa poata raspunde cu JSON 401, nu cu HTML de login;
+ * /shop e vitrina publica (Galaxy Shop), navigabila fara cont.
  */
 const RUTE_PUBLICE = [
   "/",
@@ -13,6 +14,7 @@ const RUTE_PUBLICE = [
   "/auth",
   "/api/health",
   "/api/backend",
+  "/shop",
 ];
 
 function estePublica(pathname: string) {

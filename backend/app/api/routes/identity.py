@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 
 from app.core.errors import PermissionDeniedError, ValidationError
 from app.core.security import Principal, get_principal_or_internal
+from app.infrastructure.rate_limit import limiteaza
 from app.schemas.identity import (
     ExtrageCnpResponse,
+    LoginFataResponse,
     VerificaIdentitateRequest,
     VerificaIdentitateResponse,
 )
@@ -47,3 +49,22 @@ async def verify(
     # IdentityImageDownloadError/IdentityResultWriteError (core/errors.py) trec
     # neprinse pana la handler-ul global din main.py — acelasi plic ca restul API-ului.
     return identity_service.verifica_identitate(cerere)
+
+
+@router.post("/login-match", response_model=LoginFataResponse)
+async def login_match(request: Request, email: str = Form(...), imagine: UploadFile = File(...)) -> LoginFataResponse:
+    """
+    Fara autentificare (userul inca nu are sesiune — asta chiar e pasul de
+    login). Protejata doar prin rate limiting pe email+IP, ca sa nu poata
+    cineva incerca poze la infinit pe un email cunoscut sau sa scaneze multe
+    conturi de pe aceeasi masina. Raspunsul e intentionat minimal (doar
+    matched: bool) — vezi LoginFataResponse.
+    """
+    ip = request.client.host if request.client else "necunoscut"
+    limiteaza(f"login-match:email:{email.strip().lower()}", max_incercari=5, fereastra_secunde=300)
+    limiteaza(f"login-match:ip:{ip}", max_incercari=20, fereastra_secunde=300)
+
+    date = await _citeste_imagine(imagine)
+    matched = identity_service.verifica_login_fata(email, date)
+
+    return LoginFataResponse(matched=matched)

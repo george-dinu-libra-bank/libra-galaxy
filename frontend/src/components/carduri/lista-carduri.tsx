@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Eye, EyeOff, Lock, Unlock } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, Lock, Unlock } from "lucide-react";
 import { AdaugaCardDrawer } from "@/components/carduri/adauga-card-drawer";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
@@ -145,7 +145,12 @@ function DetaliuCard({ card }: { card: CardAfisat }) {
   return (
     <div>
       <Rand eticheta="Tematica" valoare={ETICHETE_STIL_CARD[card.stil]} />
-      <Rand eticheta="Numar" valoare={dateSensibile?.numar ?? card.numarMascat} mono />
+      <Rand
+        eticheta="Numar"
+        valoare={dateSensibile?.numar ?? card.numarMascat}
+        mono
+        copiabil={Boolean(dateSensibile)}
+      />
       <Rand eticheta="CCV" valoare={dateSensibile?.ccv ?? "•••"} mono />
       <Rand eticheta="Expira" valoare={card.dataExpirare} mono />
       <Rand eticheta="Sold" valoare={formateazaSuma(card.soldCurent)} mono />
@@ -212,11 +217,49 @@ function DetaliuCard({ card }: { card: CardAfisat }) {
   );
 }
 
-function Rand({ eticheta, valoare, mono }: { eticheta: string; valoare: string; mono?: boolean }) {
+function Rand({
+  eticheta,
+  valoare,
+  mono,
+  copiabil,
+}: {
+  eticheta: string;
+  valoare: string;
+  mono?: boolean;
+  copiabil?: boolean;
+}) {
+  const [copiat, setCopiat] = useState(false);
+
+  async function copiaza() {
+    try {
+      await navigator.clipboard.writeText(valoare.replace(/\s+/g, ""));
+      setCopiat(true);
+      setTimeout(() => setCopiat(false), 1500);
+    } catch {
+      // clipboard indisponibil (ex. context non-securizat) — nu blocam UI-ul
+    }
+  }
+
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-line py-3 last:border-0">
+    <div className="flex items-center justify-between gap-4 border-b border-line py-3 last:border-0">
       <span className="text-[13px] text-ink-faint">{eticheta}</span>
-      <span className={cn("text-right text-[15px] text-ink", mono && "tabular")}>{valoare}</span>
+      <span className="flex items-center gap-2">
+        <span className={cn("text-right text-[15px] text-ink", mono && "tabular")}>{valoare}</span>
+        {copiabil ? (
+          <button
+            type="button"
+            onClick={copiaza}
+            aria-label={copiat ? "Copiat" : `Copiaza ${eticheta.toLowerCase()}`}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-primary-50 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+          >
+            {copiat ? (
+              <Check size={14} strokeWidth={1.75} aria-hidden className="text-success" />
+            ) : (
+              <Copy size={14} strokeWidth={1.75} aria-hidden />
+            )}
+          </button>
+        ) : null}
+      </span>
     </div>
   );
 }

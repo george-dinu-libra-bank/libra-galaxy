@@ -21,8 +21,12 @@ class VerificaIdentitateResponse(BaseModel):
     status: str
 
 
-class EroareResponse(BaseModel):
-    """Forma standard a oricarei erori intoarse de API — vezi app/main.py si infrastructure/errors.py."""
+class LoginFataResponse(BaseModel):
+    """
+    Raspuns intentionat minimal: nu spunem daca emailul exista sau daca
+    userul are/nu are o poza verificata — doar 'matched'. Orice detaliu in
+    plus ar ajuta pe cineva sa ghiceasca ce conturi exista sau sunt
+    verificate biometric.
+    """
 
-    cod: str
-    mesaj: str
+    matched: bool

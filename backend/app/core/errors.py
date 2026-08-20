@@ -33,6 +33,11 @@ class PermissionDeniedError(AppError):
     status_code = 403
 
 
+class RateLimitError(AppError):
+    code = "RATE_LIMITED"
+    status_code = 429
+
+
 class ResourceNotFoundError(AppError):
     code = "RESOURCE_NOT_FOUND"
     status_code = 404

@@ -60,3 +60,29 @@ def verifica_identitate(cerere: VerificaIdentitateRequest) -> VerificaIdentitate
         threshold=rezultat.threshold,
         status=status,
     )
+
+
+def verifica_login_fata(email: str, imagine_live_bytes: bytes) -> bool:
+    """
+    Login biometric: compara 1:1 cadrul live cu ultimul selfie 'verified' al
+    contului cu emailul dat — nu cauta in toata baza (1:N ar fi lent si mult
+    mai expus la fals-pozitive). Orice pas care nu gaseste ceva (cont
+    inexistent, fara selfie verificat) se termina tacut cu False, ca sa nu
+    se poata deduce din raspuns daca un email exista sau e verificat.
+    """
+    id_user = identity_repository.gaseste_id_user_dupa_email(email)
+    if not id_user:
+        return False
+
+    cale_selfie = identity_repository.gaseste_selfie_verificat(id_user)
+    if not cale_selfie:
+        return False
+
+    try:
+        selfie_referinta_bytes = identity_repository.descarca_imagine(BUCKET_SELFIE, cale_selfie)
+    except Exception:
+        logger.exception("verifica_login_fata: descarcare selfie referinta esuata (id_user=%s)", id_user)
+        return False
+
+    rezultat = verifica_fete(selfie_referinta_bytes, imagine_live_bytes)
+    return rezultat.verified
