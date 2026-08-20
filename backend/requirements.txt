@@ -1,0 +1,21 @@
+fastapi>=0.115
+uvicorn[standard]>=0.34
+pydantic>=2.10
+pydantic-settings>=2.7
+python-multipart>=0.0.20
+python-dotenv>=1.0
+
+supabase>=2.11
+# [crypto] aduce `cryptography`, necesar pentru verificarea ES256 (JWKS) —
+# proiectele Supabase noi semneaza token-uri asimetric, nu cu secret HS256.
+PyJWT[crypto]>=2.10
+
+openai>=1.59
+httpx>=0.28
+tiktoken>=0.8
+
+pypdf>=5.1
+PyYAML>=6.0
+
+pytest>=8.3
+pytest-asyncio>=0.25

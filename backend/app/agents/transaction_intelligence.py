@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+from app.agents.base import AgentAnswer, AttachmentContext, build_system_prompt, build_user_message, confidence_from_tool_results
+from app.agents.specs import TRANSACTION_INTELLIGENCE
+from app.context.builder import AssembledContext
+from app.core.security import Principal
+from app.providers.base import ChatMessage, ChatProvider
+from app.tools.base import SelectedTool, ToolResult
+
+
+class TransactionIntelligenceAgent:
+    spec = TRANSACTION_INTELLIGENCE
+
+    def select_tools(self, user_text: str, intent: str) -> list[SelectedTool]:
+        return [
+            SelectedTool("get_recent_transactions", {"limit": 30}, "tranzactii recente pentru analiza"),
+            SelectedTool("get_spending_summary", {"days": 30}, "rezumat de cheltuieli pentru context"),
+        ]
+
+    async def respond(
+        self,
+        principal: Principal,
+        user_text: str,
+        context: AssembledContext,
+        tool_results: list[ToolResult],
+        chat_provider: ChatProvider,
+        attachments: list[AttachmentContext] = (),
+    ) -> AgentAnswer:
+        system_prompt = build_system_prompt(self.spec, context)
+        completion = await chat_provider.complete(
+            [ChatMessage(role="system", content=system_prompt), build_user_message(user_text, attachments)]
+        )
+        return AgentAnswer(
+            text=completion.text, citations=[], confidence=confidence_from_tool_results(tool_results),
+            tokens_in=completion.tokens_in, tokens_out=completion.tokens_out, tokens_cached=completion.tokens_cached,
+        )
