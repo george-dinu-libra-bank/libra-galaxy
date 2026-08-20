@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from anyio import to_thread
 from supabase import Client
 
 from app.core.errors import PersistenceError, ResourceNotFoundError
@@ -18,61 +19,91 @@ class Conversation:
 
 
 class ConversationRepository:
-    """Singurul strat care citeste/scrie ai_conversations. Fiecare interogare filtreaza pe id_user."""
+    """Singurul strat care citeste/scrie ai_conversations. Fiecare interogare filtreaza pe id_user.
+
+    Fiecare metoda ruleaza apelul sincron supabase-py pe un thread separat
+    (to_thread.run_sync) — altfel un singur round-trip HTTP ar bloca toata
+    bucla de evenimente asyncio, serializand cererile concurente ale tuturor
+    utilizatorilor pe un singur thread."""
 
     def __init__(self, client: Client) -> None:
         self._client = client
 
-    def create(self, user_id: str, title: str = "Conversație nouă") -> Conversation:
-        result = self._client.table("ai_conversations").insert({"id_user": user_id, "titlu": title}).execute()
+    async def create(self, user_id: str, title: str = "Conversație nouă") -> Conversation:
+        def interogare():
+            return self._client.table("ai_conversations").insert({"id_user": user_id, "titlu": title}).execute()
+
+        result = await to_thread.run_sync(interogare)
         if not result.data:
             raise PersistenceError("Nu am putut crea conversatia.")
         return self._to_conversation(result.data[0])
 
-    def get_owned(self, user_id: str, conversation_id: str) -> Conversation:
-        result = (
-            self._client.table("ai_conversations")
-            .select("*")
-            .eq("id", conversation_id)
-            .eq("id_user", user_id)
-            .maybe_single()
-            .execute()
-        )
+    async def get_owned(self, user_id: str, conversation_id: str) -> Conversation:
+        def interogare():
+            return (
+                self._client.table("ai_conversations")
+                .select("*")
+                .eq("id", conversation_id)
+                .eq("id_user", user_id)
+                .maybe_single()
+                .execute()
+            )
+
+        result = await to_thread.run_sync(interogare)
         # .maybe_single() intoarce None direct cand nu exista niciun rand.
         if not result or not result.data:
             raise ResourceNotFoundError("Conversatia nu a fost gasita.")
         return self._to_conversation(result.data)
 
-    def list_for_user(self, user_id: str, limit: int = 50) -> list[Conversation]:
-        result = (
-            self._client.table("ai_conversations")
-            .select("*")
-            .eq("id_user", user_id)
-            .order("actualizat_la", desc=True)
-            .limit(limit)
-            .execute()
-        )
+    async def list_for_user(self, user_id: str, limit: int = 50) -> list[Conversation]:
+        def interogare():
+            return (
+                self._client.table("ai_conversations")
+                .select("*")
+                .eq("id_user", user_id)
+                .order("actualizat_la", desc=True)
+                .limit(limit)
+                .execute()
+            )
+
+        result = await to_thread.run_sync(interogare)
         return [self._to_conversation(row) for row in (result.data or [])]
 
-    def delete_owned(self, user_id: str, conversation_id: str) -> None:
+    async def delete_owned(self, user_id: str, conversation_id: str) -> None:
         # Filtrat pe owner, nu doar pe id — un id ghicit nu poate sterge la altul.
         # Mesajele/rezumatul/atasamentele dispar prin "on delete cascade"
         # (0004/0005_ai_asistent*.sql). Idempotent: sterge 0 randuri fara eroare
         # daca id-ul nu exista sau nu e al utilizatorului.
-        self._client.table("ai_conversations").delete().eq("id", conversation_id).eq("id_user", user_id).execute()
+        def interogare():
+            return self._client.table("ai_conversations").delete().eq("id", conversation_id).eq(
+                "id_user", user_id
+            ).execute()
 
-    def touch(self, conversation_id: str) -> None:
-        self._client.table("ai_conversations").update({"actualizat_la": "now()"}).eq("id", conversation_id).execute()
+        await to_thread.run_sync(interogare)
 
-    def set_title_if_default(self, conversation_id: str, title: str) -> None:
-        self._client.table("ai_conversations").update({"titlu": title}).eq("id", conversation_id).eq(
-            "titlu", "Conversație nouă"
-        ).execute()
+    async def touch(self, conversation_id: str) -> None:
+        def interogare():
+            return self._client.table("ai_conversations").update({"actualizat_la": "now()"}).eq(
+                "id", conversation_id
+            ).execute()
 
-    def update_watermark(self, conversation_id: str, watermark: int) -> None:
-        self._client.table("ai_conversations").update({"summary_watermark": watermark}).eq(
-            "id", conversation_id
-        ).execute()
+        await to_thread.run_sync(interogare)
+
+    async def set_title_if_default(self, conversation_id: str, title: str) -> None:
+        def interogare():
+            return self._client.table("ai_conversations").update({"titlu": title}).eq(
+                "id", conversation_id
+            ).eq("titlu", "Conversație nouă").execute()
+
+        await to_thread.run_sync(interogare)
+
+    async def update_watermark(self, conversation_id: str, watermark: int) -> None:
+        def interogare():
+            return self._client.table("ai_conversations").update({"summary_watermark": watermark}).eq(
+                "id", conversation_id
+            ).execute()
+
+        await to_thread.run_sync(interogare)
 
     @staticmethod
     def _to_conversation(row: dict) -> Conversation:

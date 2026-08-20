@@ -91,7 +91,7 @@ async def upload_attachment(
     service: AttachmentService = Depends(get_attachment_service),
 ):
     content = await file.read()
-    attachment = service.upload(principal.user_id, file.filename or "fisier", file.content_type or "", content)
+    attachment = await service.upload(principal.user_id, file.filename or "fisier", file.content_type or "", content)
 
     response = AttachmentOut(
         id=attachment.id, kind=attachment.kind, filename=attachment.filename, size_bytes=attachment.size_bytes
@@ -105,7 +105,7 @@ async def list_conversations(
     principal: Principal = Depends(get_principal),
     conversations: ConversationRepository = Depends(get_conversation_repository),
 ):
-    rows = conversations.list_for_user(principal.user_id)
+    rows = await conversations.list_for_user(principal.user_id)
     body = [ConversationOut(id=row.id, title=row.title, updated_at=row.updated_at).model_dump() for row in rows]
     return success(body, request_id=_request_id(request))
 
@@ -117,7 +117,7 @@ async def delete_conversation(
     principal: Principal = Depends(get_principal),
     conversations: ConversationRepository = Depends(get_conversation_repository),
 ):
-    conversations.delete_owned(principal.user_id, conversation_id)
+    await conversations.delete_owned(principal.user_id, conversation_id)
     return success({"deleted": True}, request_id=_request_id(request))
 
 
@@ -129,8 +129,8 @@ async def list_messages(
     conversations: ConversationRepository = Depends(get_conversation_repository),
     messages: MessageRepository = Depends(get_message_repository),
 ):
-    conversations.get_owned(principal.user_id, conversation_id)  # ridica RESOURCE_NOT_FOUND daca nu e a lui
-    rows = messages.list_for_conversation(conversation_id)
+    await conversations.get_owned(principal.user_id, conversation_id)  # ridica RESOURCE_NOT_FOUND daca nu e a lui
+    rows = await messages.list_for_conversation(conversation_id)
 
     body = [
         MessageOut(

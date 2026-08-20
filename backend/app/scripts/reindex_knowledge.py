@@ -34,12 +34,12 @@ async def reindex() -> None:
     documents = load_knowledge_documents(settings.knowledge_dir_path)
     print(f"{len(documents)} documente gasite in {settings.knowledge_dir_path}")
 
-    existing_ids = knowledge_repo.existing_chunk_ids(settings.embedding_key)
+    existing_ids = await knowledge_repo.existing_chunk_ids(settings.embedding_key)
     desired_chunks = []
     chunk_to_document: dict[str, tuple[str, int, str | None]] = {}
 
     for document in documents:
-        knowledge_repo.upsert_document(
+        await knowledge_repo.upsert_document(
             document.document_id, document.version, document.source_path, document.document_type,
             document.language, document.checksum, document.audience,
         )
@@ -56,14 +56,16 @@ async def reindex() -> None:
         batch = plan.to_embed[start : start + EMBEDDING_BATCH_SIZE]
         texts = [chunk.text for chunk in batch]
 
-        cached_vectors = [cache_repo.get_chunk_embedding(embedding_cache_key(settings.embedding_key, text)) for text in texts]
+        cached_vectors = [
+            await cache_repo.get_chunk_embedding(embedding_cache_key(settings.embedding_key, text)) for text in texts
+        ]
         missing_indexes = [i for i, vector in enumerate(cached_vectors) if vector is None]
 
         if missing_indexes:
             fresh_vectors = await embeddings.embed([texts[i] for i in missing_indexes])
             for i, vector in zip(missing_indexes, fresh_vectors):
                 cached_vectors[i] = vector
-                cache_repo.put_chunk_embedding(embedding_cache_key(settings.embedding_key, texts[i]), vector)
+                await cache_repo.put_chunk_embedding(embedding_cache_key(settings.embedding_key, texts[i]), vector)
 
         for chunk, vector in zip(batch, cached_vectors):
             document_id, version, section = chunk_to_document[chunk.chunk_id]
@@ -74,8 +76,8 @@ async def reindex() -> None:
                 }
             )
 
-    knowledge_repo.upsert_chunks(settings.embedding_key, rows_to_upsert)
-    knowledge_repo.delete_chunks(settings.embedding_key, list(plan.to_delete_ids))
+    await knowledge_repo.upsert_chunks(settings.embedding_key, rows_to_upsert)
+    await knowledge_repo.delete_chunks(settings.embedding_key, list(plan.to_delete_ids))
 
     print("Reindexare terminata.")
 
