@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { supabaseConfigurat } from "@/lib/supabase/configurat";
 
 /** Rute care nu cer sesiune. */
-const RUTE_PUBLICE = ["/", "/login", "/register", "/auth"];
+const RUTE_PUBLICE = ["/", "/login", "/register", "/auth", "/shop"];
 
 function estePublica(pathname: string) {
   return RUTE_PUBLICE.some(
