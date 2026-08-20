@@ -50,7 +50,7 @@ export function ListaBeneficiari({ beneficiari: initiali }: { beneficiari: Benef
               setSelectatId(b.id);
               setPas("detalii");
             }}
-            className="flex w-full items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 text-left shadow-sm transition-colors hover:bg-muted"
+            className="flex w-full items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 text-left shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[13px] font-semibold text-primary-700">
               {initiale(b.nume)}

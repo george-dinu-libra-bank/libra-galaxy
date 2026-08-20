@@ -31,8 +31,9 @@ function Rand({
         className={cn(
           "flex w-full items-center gap-3 rounded-field border px-4 py-3 text-left transition-colors duration-150 ease-soft",
           "disabled:cursor-not-allowed disabled:opacity-60",
+          "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25",
           ales
-            ? "border-primary-500 bg-primary-50"
+            ? "border-primary-500 bg-primary-500/12"
             : "border-line bg-surface hover:bg-muted disabled:hover:bg-surface",
         )}
       >
