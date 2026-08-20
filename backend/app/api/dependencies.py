@@ -54,3 +54,48 @@ def get_user_supabase(
     settings: Settings = Depends(get_settings),
 ) -> Client:
     return create_user_client(settings, user.access_token)
+
+
+async def cere_administrator(
+    user: UserContext = Depends(get_current_user),
+    client: Client = Depends(get_user_supabase),
+) -> UserContext:
+    """Lasa sa treaca numai administratorii.
+
+    Verificarea intreaba baza de date, nu tokenul: rolul sta in profiles si e
+    inghetat de trigger, deci nu poate fi ridicat din aplicatie. Un rol pus in
+    JWT ar fi mai ieftin de citit, dar ar ramane valabil pana expira tokenul,
+    inclusiv dupa ce i-a fost luat cuiva dreptul.
+
+    Chiar daca cineva ar ocoli verificarea de aici, RLS ramane bariera reala:
+    politicile de la 0004 cer public.este_administrator() in baza de date.
+    """
+
+    def interogare() -> str | None:
+        raspuns = (
+            client.table("profiles")
+            .select("rol")
+            .eq("id", str(user.user_id))
+            .maybe_single()
+            .execute()
+        )
+        date = raspuns.data if raspuns else None
+        return date.get("rol") if date else None
+
+    try:
+        rol = await to_thread.run_sync(interogare)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Nu am putut verifica drepturile contului.",
+        ) from exc
+
+    if rol != "administrator":
+        # Acelasi raspuns si cand contul nu exista, si cand exista dar e client:
+        # cine incearca ruta nu trebuie sa afle ce a nimerit.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Aceasta zona e disponibila numai administratorilor.",
+        )
+
+    return user

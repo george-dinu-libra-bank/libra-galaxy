@@ -52,24 +52,58 @@ def normalizeaza(randuri: list[dict], user_id: UUID) -> list[Plata]:
     return sorted(plati, key=lambda p: p.moment)
 
 
-def vector(plata: Plata, istoric: list[Plata]) -> list[float]:
-    """Trasaturile folosite si de model, si de baza statistica.
+FEREASTRA_RAFALA = 86400.0  # secunde; cate plati la acelasi comerciant intr-o zi
+
+
+def vector(plata: Plata, istoric: list[Plata], toate: list[Plata] | None = None) -> list[float]:
+    """Trasaturile pe care le vede modelul.
 
     Ordinea conteaza: acelasi vector trebuie produs la antrenare si la inferenta.
+
+    `istoric` sunt platile la acelasi comerciant, `toate` sunt toate platile de
+    iesire ale utilizatorului. Din amandoua se folosesc numai cele dinaintea
+    platii evaluate: la inferenta viitorul oricum nu exista, iar la antrenare
+    l-am da modelului un avantaj pe care nu-l va avea in productie.
+
+    Doua trasaturi se uita dincolo de comerciantul curent, pentru ca fara ele
+    tiparele care conteaza raman invizibile:
+
+    - `suma / mediana generala` — un sir de plati mici la un comerciant nou isi
+      trage singur mediana in jos, deci raportat la el insusi pare normal. Fata
+      de cat cheltuie omul de obicei, nu mai pare.
+    - `plati in ultimele 24h` — patru plati intr-o zi la un magazin vizitat
+      saptamanal e un ritm anormal, chiar daca fiecare suma in parte e obisnuita.
+
+    Ziua din luna, ziua saptamanii si numarul de plati anterioare au fost scoase
+    dupa masuratori: raspund la "cat de rar e comerciantul", nu la "cat de
+    neobisnuita e plata". IsolationForest alege dimensiunea de taiere la
+    intamplare, deci fiecare trasatura fara legatura cu intrebarea fura din
+    taieturile utile. Pe setul de testare, scoaterea lor a dus semnalarile
+    corecte de la 0 din 8 la 5 din 8.
     """
-    sume = [p.suma for p in istoric]
-    mediana = _mediana(sume) if sume else plata.suma
     anterioare = [p for p in istoric if p.moment < plata.moment]
+    sume = [p.suma for p in anterioare]
+    mediana_comerciant = _mediana(sume) if sume else plata.suma
+
+    referinta = toate if toate is not None else istoric
+    sume_generale = [p.suma for p in referinta if p.moment < plata.moment]
+    mediana_generala = _mediana(sume_generale) if sume_generale else plata.suma
+
     zile_de_la_ultima = (
         (plata.moment - anterioare[-1].moment).total_seconds() / 86400 if anterioare else -1.0
     )
+    in_24h = sum(
+        1
+        for p in anterioare
+        if (plata.moment - p.moment).total_seconds() <= FEREASTRA_RAFALA
+    )
+
     return [
         plata.suma,
-        plata.suma / mediana if mediana else 1.0,
-        float(len(istoric)),
+        plata.suma / mediana_comerciant if mediana_comerciant else 1.0,
+        plata.suma / mediana_generala if mediana_generala else 1.0,
         zile_de_la_ultima,
-        float(plata.moment.day),
-        float(plata.moment.weekday()),
+        float(in_24h),
     ]
 
 

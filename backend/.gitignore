@@ -4,3 +4,6 @@ __pycache__/
 *.py[cod]
 .env
 *.egg-info/
+
+# Artefact antrenat, se regenereaza cu python -m app.ml.antrenare
+app/ml/model.joblib

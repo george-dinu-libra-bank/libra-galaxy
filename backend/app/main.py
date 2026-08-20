@@ -4,7 +4,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import agents, alerte, health, profiles
+from app.api.routes import admin, agents, alerte, health, profiles
 from app.infrastructure.config import get_settings
 
 settings = get_settings()
@@ -40,3 +40,4 @@ app.include_router(health.router, prefix="/api/v1")
 app.include_router(profiles.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(alerte.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
