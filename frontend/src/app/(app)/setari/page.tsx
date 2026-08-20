@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SetariClient } from "@/components/setari/setari-client";
 import { createClient } from "@/lib/supabase/server";
+import { TEMA_COOKIE, temaDinCookie } from "@/lib/tema";
 
 export const metadata: Metadata = {
   title: "Setări · Libra",
@@ -30,5 +32,7 @@ export default async function SetariPage() {
     );
   }
 
-  return <SetariClient profil={profil} />;
+  const tema = temaDinCookie((await cookies()).get(TEMA_COOKIE)?.value);
+
+  return <SetariClient profil={profil} tema={tema} />;
 }

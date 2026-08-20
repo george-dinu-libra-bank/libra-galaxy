@@ -1,4 +1,5 @@
 import { obtineConturiUtilizator, totalSold } from "@/lib/data/conturi";
+import { obtineCursuri } from "@/lib/data/curs-valutar";
 import { createClient } from "@/lib/supabase/server";
 
 export type StilCard = "standard" | "silver" | "gold";
@@ -27,18 +28,21 @@ export async function obtineCarduriUtilizator(): Promise<CardAfisat[]> {
 
   if (!user) return [];
 
-  const [{ data, error }, conturi] = await Promise.all([
+  const [{ data, error }, conturi, cursuri] = await Promise.all([
     supabase
       .from("carduri")
       .select("id, numar_card, data_expirare, card_style, is_blocked, creat_la")
       .eq("id_user", user.id)
       .order("creat_la", { ascending: true }),
     obtineConturiUtilizator(),
+    obtineCursuri(),
   ]);
 
   if (error) throw error;
 
-  const sold = totalSold(conturi);
+  // Cardul arata totalul din toate conturile, adus la RON: conturile pot fi in
+  // valute diferite de la 0013_schimb_valutar.sql.
+  const sold = totalSold(conturi, cursuri);
 
   return (data ?? []).map((card) => ({
     id: card.id as string,

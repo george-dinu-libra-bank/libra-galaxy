@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { Bell, ChevronRight, LogOut, Moon, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EditeazaTelefonDrawer } from "@/components/setari/editeaza-telefon-drawer";
 import { deconecteaza } from "@/lib/actions/auth";
-import { aplicaTema, citesteTema } from "@/lib/tema";
+import { aplicaTema, type Tema } from "@/lib/tema";
 import { cn, mascheazaCnp } from "@/lib/utils";
 
 type Profil = {
@@ -71,18 +71,11 @@ function Rand({
   );
 }
 
-export function SetariClient({ profil }: { profil: Profil }) {
+export function SetariClient({ profil, tema }: { profil: Profil; tema: Tema }) {
   const [telefon, setTelefon] = useState(profil.telefon);
   const [notificari, setNotificari] = useState(true);
-  const [temaIntunecata, setTemaIntunecata] = useState(false);
+  const [temaIntunecata, setTemaIntunecata] = useState(tema === "dark");
   const [seIese, startTransition] = useTransition();
-
-  // Clasa .dark e aplicata de scriptul din <head> inainte de hidratare (vezi
-  // lib/tema.ts) — citim starea reala abia dupa montare, ca sa nu depindem
-  // de randarea pe server (care nu stie preferinta utilizatorului).
-  useEffect(() => {
-    setTemaIntunecata(citesteTema() === "dark");
-  }, []);
 
   function comutaTema() {
     const noua = temaIntunecata ? "light" : "dark";

@@ -54,7 +54,9 @@ export async function obtineConturiTransfer(): Promise<ContSursa[]> {
       nume: cont.nume,
       numarMascat: cont.ibanMascat,
       sold: cont.sold,
-      valuta: VALUTA_IMPLICITA,
+      // Contul isi are propria valuta de la 0013_schimb_valutar.sql; suma
+      // introdusa in formular se interpreteaza in valuta sursei.
+      valuta: cont.valuta,
       blocat: false,
       tip: "cont" as const,
     })),
@@ -63,6 +65,7 @@ export async function obtineConturiTransfer(): Promise<ContSursa[]> {
       nume: grup.nume,
       numarMascat: grup.membri === 1 ? "1 membru" : `${grup.membri} membri`,
       sold: grup.sold,
+      // Punga comuna a unui grup ramane in RON, oricare ar fi conturile membrilor.
       valuta: VALUTA_IMPLICITA,
       blocat: false,
       tip: "grup" as const,

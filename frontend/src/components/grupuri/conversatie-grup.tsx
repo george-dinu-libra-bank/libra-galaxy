@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ArrowDownLeft, Send } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Send } from "lucide-react";
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { AvatarProfil } from "@/components/ui/avatar-profil";
 import { Banda } from "@/components/ui/banda";
@@ -72,10 +72,14 @@ export function ConversatieGrup({
             const zisNou = zi !== ziAnterioara;
             ziAnterioara = zi;
 
-            // Anunturile de incasare nu sunt replici intr-o discutie: nu au
-            // parte (stanga/dreapta) si nu iau forma de bula. Verde, centrat,
-            // ca sa se vada dintr-o privire ca e o miscare de bani.
-            if (mesaj.tip === "incasare") {
+            // Anunturile de bani nu sunt replici intr-o discutie: nu au parte
+            // (stanga/dreapta) si nu iau forma de bula. Centrate si colorate, ca
+            // sa se vada dintr-o privire incotro s-a dus soldul comun: verde
+            // cand intra, rosu cand iese.
+            if (mesaj.tip !== "text") {
+              const iese = mesaj.tip === "plata";
+              const Sageata = iese ? ArrowUpRight : ArrowDownLeft;
+
               return (
                 <div key={mesaj.id} className="flex flex-col gap-3">
                   {zisNou ? (
@@ -83,16 +87,34 @@ export function ConversatieGrup({
                   ) : null}
 
                   <div className="flex justify-center">
-                    <div className="flex max-w-[92%] items-center gap-2 rounded-card bg-success/10 px-4 py-2.5">
-                      <ArrowDownLeft
+                    <div
+                      className={cn(
+                        "flex max-w-[92%] items-center gap-2 rounded-card px-4 py-2.5",
+                        iese ? "bg-danger/10" : "bg-success/10",
+                      )}
+                    >
+                      <Sageata
                         size={16}
                         strokeWidth={2}
                         aria-hidden
-                        className="shrink-0 text-success"
+                        className={cn(
+                          "shrink-0",
+                          iese ? "text-danger" : "text-success",
+                        )}
                       />
-                      <p className="text-[13px] font-medium leading-[18px] text-success">
+                      <p
+                        className={cn(
+                          "text-[13px] font-medium leading-[18px]",
+                          iese ? "text-danger" : "text-success",
+                        )}
+                      >
                         {mesaj.continut}{" "}
-                        <span className="tabular font-normal text-success/70">
+                        <span
+                          className={cn(
+                            "tabular font-normal",
+                            iese ? "text-danger/70" : "text-success/70",
+                          )}
+                        >
                           · {ora(mesaj.creatLa)}
                         </span>
                       </p>

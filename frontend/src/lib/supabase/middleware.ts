@@ -3,19 +3,14 @@ import { createServerClient } from "@supabase/ssr";
 import { supabaseConfigurat } from "@/lib/supabase/configurat";
 
 /**
- * Rute pe care middleware-ul nu le redirectioneaza. Proxy-ul backend isi face
- * propria verificare si trebuie sa poata raspunde cu JSON 401, nu cu HTML de login;
- * /shop e vitrina publica (Galaxy Shop), navigabila fara cont.
+ * Rute pe care middleware-ul nu le redirectioneaza catre /login.
+ *
+ * „/api" nu inseamna „fara autentificare": rutele de acolo raspund in JSON, deci
+ * isi verifica singure sesiunea si intorc 401, nu un redirect 307 catre o pagina
+ * de login pe care un fetch() n-are ce sa faca. /shop e vitrina publica (Galaxy
+ * Shop), navigabila fara cont.
  */
-const RUTE_PUBLICE = [
-  "/",
-  "/login",
-  "/register",
-  "/auth",
-  "/api/health",
-  "/api/backend",
-  "/shop",
-];
+const RUTE_PUBLICE = ["/", "/login", "/register", "/auth", "/shop", "/api"];
 
 function estePublica(pathname: string) {
   return RUTE_PUBLICE.some(

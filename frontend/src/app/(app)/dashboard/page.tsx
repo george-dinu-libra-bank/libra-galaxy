@@ -1,20 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  ArrowLeftRight,
-  Bell,
-  CreditCard,
-  History,
-  Users,
-} from "lucide-react";
+import { ArrowLeftRight, Bell, CreditCard, Users } from "lucide-react";
 import { AvatarUtilizator } from "@/components/dashboard/avatar-utilizator";
 import { DetaliiContDrawer } from "@/components/dashboard/detalii-cont-drawer";
 import { ListaConturi } from "@/components/dashboard/lista-conturi";
+import { SchimbValutarDrawer } from "@/components/dashboard/schimb-valutar-drawer";
 import { SoldAnimat } from "@/components/dashboard/sold-animat";
 import { UltimeleTranzactii } from "@/components/dashboard/ultimele-tranzactii";
 import { Banda } from "@/components/ui/banda";
 import { obtineConturiUtilizator, totalSold } from "@/lib/data/conturi";
+import { obtineCursuri } from "@/lib/data/curs-valutar";
 import { obtineTranzactiiUtilizator } from "@/lib/data/tranzactii";
 import { createClient } from "@/lib/supabase/server";
 
@@ -22,12 +18,17 @@ export const metadata: Metadata = {
   title: "Contul meu · Libra",
 };
 
+// Istoricul a iesit de aici in favoarea schimbului valutar: e la un tap distanta
+// in bara de jos, pe cand schimbul n-avea niciun drum catre el.
 const ACTIUNI = [
   { eticheta: "Transfer", href: "/transfer", icoana: ArrowLeftRight },
-  { eticheta: "Istoric", href: "/istoric", icoana: History },
   { eticheta: "Carduri", href: "/carduri", icoana: CreditCard },
   { eticheta: "Beneficiari", href: "/beneficiari", icoana: Users },
 ];
+
+/** Stilul unei dale din grila — impartit intre linkuri si declansatorul de drawer. */
+const DALA =
+  "flex aspect-square flex-col items-center justify-center gap-2 rounded-[18px] bg-surface p-2 shadow-sm transition-[transform,box-shadow] duration-[180ms] ease-soft hover:shadow-md active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25";
 
 /** Cate miscari incap in rezumatul de pe dashboard; restul stau in /istoric. */
 const TRANZACTII_REZUMAT = 5;
@@ -50,9 +51,11 @@ export default async function DashboardPage() {
   const prenume = profil?.nume?.split(" ").at(-1) ?? "";
   const conturi = await obtineConturiUtilizator();
   const tranzactii = await obtineTranzactiiUtilizator(TRANZACTII_REZUMAT);
+  const cursuri = await obtineCursuri();
 
   // Totalul se aduna aici, pe server — cifra ajunge gata calculata in HTML.
-  const total = totalSold(conturi);
+  // Conturile pot fi in valute diferite, deci se aduc intai la RON.
+  const total = totalSold(conturi, cursuri);
 
   return (
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
@@ -119,17 +122,16 @@ export default async function DashboardPage() {
 
       <div className="mt-4 grid grid-cols-4 gap-3">
         {ACTIUNI.map(({ eticheta, href, icoana: Icoana }) => (
-          <Link
-            key={eticheta}
-            href={href}
-            className="flex aspect-square flex-col items-center justify-center gap-2 rounded-[18px] bg-surface p-2 shadow-sm transition-[transform,box-shadow] duration-[180ms] ease-soft hover:shadow-md active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
-          >
+          <Link key={eticheta} href={href} className={DALA}>
             <Icoana size={22} strokeWidth={1.75} aria-hidden className="text-primary-600" />
             <span className="text-center text-xs leading-4 text-ink-soft">
               {eticheta}
             </span>
           </Link>
         ))}
+
+        {/* Singura dala care nu duce nicaieri: deschide un drawer peste ecran. */}
+        <SchimbValutarDrawer conturi={conturi} cursuri={cursuri} className={DALA} />
       </div>
 
       <UltimeleTranzactii tranzactii={tranzactii} />
