@@ -167,3 +167,38 @@ export async function verificaIdentitateInregistrare(
     return "eroare";
   }
 }
+
+/**
+ * Login biometric: trimite un cadru live de la camera + emailul introdus,
+ * ca backend-ul sa-l compare 1:1 cu ultimul selfie 'verified' al contului
+ * (vezi backend/app/services/identity_service.py verifica_login_fata).
+ * Fara autentificare (userul inca nu are sesiune) — protejata prin rate
+ * limiting pe email+IP in backend (backend/app/infrastructure/rate_limit.py).
+ *
+ * Raspunsul e strict boolean; sesiunea reala se creeaza separat, in
+ * autentificaFata() din auth.ts, doar daca matched === true.
+ */
+export async function verificaLoginFata(email: string, imagineLive: File): Promise<boolean> {
+  try {
+    const trimitere = new FormData();
+    trimitere.append("email", email);
+    trimitere.append("imagine", imagineLive, imagineLive.name || "live.jpg");
+
+    const raspuns = await fetch(`${BACKEND_URL}/api/identity/login-match`, {
+      method: "POST",
+      body: trimitere,
+    });
+
+    if (!raspuns.ok) {
+      const { cod, mesaj } = await citesteEroare(raspuns);
+      console.error("[identitate/verificaLoginFata]", { status: raspuns.status, cod, mesaj });
+      return false;
+    }
+
+    const date = (await raspuns.json()) as { matched: boolean };
+    return date.matched;
+  } catch (eroare) {
+    console.error("[identitate/verificaLoginFata] cod=fetch_esuat — backend-ul nu raspunde deloc?", eroare);
+    return false;
+  }
+}

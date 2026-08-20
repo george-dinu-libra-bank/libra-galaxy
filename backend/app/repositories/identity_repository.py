@@ -6,6 +6,38 @@ def descarca_imagine(bucket: str, cale: str) -> bytes:
     return client.storage.from_(bucket).download(cale)
 
 
+def gaseste_id_user_dupa_email(email: str) -> str | None:
+    client = get_admin_client()
+    raspuns = (
+        client.table("profiles")
+        .select("id")
+        .ilike("email", email.strip())
+        .limit(1)
+        .execute()
+    )
+    if not raspuns.data:
+        return None
+    return raspuns.data[0]["id"]
+
+
+def gaseste_selfie_verificat(id_user: str) -> str | None:
+    """Ultima poza selfie cu status 'verified' a userului — singura acceptata
+    ca referinta pentru login biometric (nu 'pending_review'/'rejected')."""
+    client = get_admin_client()
+    raspuns = (
+        client.table("identity_verifications")
+        .select("selfie_image_path")
+        .eq("id_user", id_user)
+        .eq("status", "verified")
+        .order("creat_la", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not raspuns.data:
+        return None
+    return raspuns.data[0]["selfie_image_path"]
+
+
 def inregistreaza_verificare(
     id_user: str,
     buletin_path: str,

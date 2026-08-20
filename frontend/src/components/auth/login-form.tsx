@@ -6,8 +6,9 @@ import { useState, useTransition } from "react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
-import { autentifica } from "@/lib/actions/auth";
+import { autentifica, autentificaFata } from "@/lib/actions/auth";
 import { validEmail } from "@/lib/validare";
+import { FaceLoginCapture } from "./face-login-capture";
 import { ResetareParolaDrawer } from "./resetare-parola-drawer";
 
 export function LoginForm({ redirectTo }: { redirectTo?: string }) {
@@ -15,7 +16,47 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
   const [parola, setParola] = useState("");
   const [erori, setErori] = useState<{ email?: string | null; parola?: string | null }>({});
   const [eroareGlobala, setEroareGlobala] = useState<string | null>(null);
+  const [arataCamera, setArataCamera] = useState(false);
   const [seTrimite, startTransition] = useTransition();
+
+  function deschideBiometrie() {
+    const eroareEmail = validEmail(email);
+    setErori((p) => ({ ...p, email: eroareEmail }));
+    setEroareGlobala(null);
+
+    if (eroareEmail) {
+      setEroareGlobala("Introdu emailul contului inainte de a folosi biometria.");
+      return;
+    }
+
+    setArataCamera(true);
+  }
+
+  function laCaptura(fisier: File) {
+    setEroareGlobala(null);
+
+    startTransition(async () => {
+      const rezultat = await autentificaFata({ email, imagineLive: fisier, redirectTo });
+
+      if (rezultat?.eroare) {
+        setEroareGlobala(rezultat.eroare);
+        setArataCamera(false);
+      }
+    });
+  }
+
+  if (arataCamera) {
+    return (
+      <div className="flex flex-col gap-5">
+        {eroareGlobala ? <Banda ton="eroare">{eroareGlobala}</Banda> : null}
+        <FaceLoginCapture
+          onCaptura={laCaptura}
+          onRenunta={() => setArataCamera(false)}
+          seTrimite={seTrimite}
+        />
+      </div>
+    );
+  }
 
   function trimite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -94,7 +135,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
         varianta="secondary"
         className="w-full"
         iconaStanga={<Fingerprint size={18} strokeWidth={1.75} aria-hidden />}
-        onClick={() => setEroareGlobala("Autentificarea biometrica va fi disponibila in curand.")}
+        onClick={deschideBiometrie}
       >
         Continua cu biometrie
       </Button>

@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 
 from app.api.dependencies import AuthContext, get_current_user_or_internal
 from app.infrastructure.errors import ErrorAplicatie
+from app.infrastructure.rate_limit import limiteaza
 from app.services import identity_service
 from app.schemas.identity import (
     ExtrageCnpResponse,
+    LoginFataResponse,
     VerificaIdentitateRequest,
     VerificaIdentitateResponse,
 )
@@ -51,3 +53,22 @@ async def verify(
         return identity_service.verifica_identitate(cerere)
     except ErrorAplicatie as exc:
         raise HTTPException(status_code=exc.status_http, detail={"cod": exc.cod, "mesaj": exc.mesaj}) from exc
+
+
+@router.post("/login-match", response_model=LoginFataResponse)
+async def login_match(request: Request, email: str = Form(...), imagine: UploadFile = File(...)) -> LoginFataResponse:
+    """
+    Fara autentificare (userul inca nu are sesiune — asta chiar e pasul de
+    login). Protejata doar prin rate limiting pe email+IP, ca sa nu poata
+    cineva incerca poze la infinit pe un email cunoscut sau sa scaneze multe
+    conturi de pe aceeasi masina. Raspunsul e intentionat minimal (doar
+    matched: bool) — vezi LoginFataResponse.
+    """
+    ip = request.client.host if request.client else "necunoscut"
+    limiteaza(f"login-match:email:{email.strip().lower()}", max_incercari=5, fereastra_secunde=300)
+    limiteaza(f"login-match:ip:{ip}", max_incercari=20, fereastra_secunde=300)
+
+    date = await _citeste_imagine(imagine)
+    matched = identity_service.verifica_login_fata(email, date)
+
+    return LoginFataResponse(matched=matched)
