@@ -40,7 +40,7 @@ export function ListaConturi({ conturi }: { conturi: ContBancar[] }) {
                 </div>
 
                 <p className="tabular shrink-0 text-[17px] font-bold text-ink">
-                  {formateazaSuma(cont.sold)}
+                  {formateazaSuma(cont.sold, cont.valuta)}
                 </p>
               </div>
 

@@ -25,10 +25,12 @@ export type MembruGrup = {
 };
 
 /**
- * „text" e scris de un om, „incasare" e generat de public.core_banking_groups
- * cand cineva pune bani in grup (0010_mesaje_incasare.sql).
+ * „text" e scris de un om; „incasare" si „plata" sunt generate de
+ * public.core_banking_groups cand cineva pune bani in grup
+ * (0010_mesaje_incasare.sql), respectiv cand scoate din el
+ * (0012_mesaje_plata.sql).
  */
-export type TipMesaj = "text" | "incasare";
+export type TipMesaj = "text" | "incasare" | "plata";
 
 export type MesajGrup = {
   id: number;

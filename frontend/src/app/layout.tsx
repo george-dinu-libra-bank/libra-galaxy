@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { FundalSpatial } from "@/components/shell/fundal-spatial";
-import { SCRIPT_INITIALIZARE_TEMA } from "@/lib/tema";
+import { TEMA_COOKIE, temaDinCookie } from "@/lib/tema";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,20 +25,17 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Tema vine din cookie, deci clasa "dark" e deja in HTML-ul trimis de server:
+  // fara flash de light theme si fara mismatch la hidratare.
+  const tema = temaDinCookie((await cookies()).get(TEMA_COOKIE)?.value);
+
   return (
-    // suppressHydrationWarning: scriptul din <head> adauga clasa "dark" pe
-    // <html> inainte de hidratare (vezi lib/tema.ts) — server-ul nu o poate
-    // sti dinainte, deci un mismatch pe acest atribut e asteptat, nu un bug.
-    <html lang="ro" suppressHydrationWarning>
-      <head>
-        {/* Aplica tema salvata inainte de primul paint, ca sa evitam flash-ul de light theme. */}
-        <script dangerouslySetInnerHTML={{ __html: SCRIPT_INITIALIZARE_TEMA }} />
-      </head>
+    <html lang="ro" className={tema === "dark" ? "dark" : undefined}>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <FundalSpatial />
         {children}

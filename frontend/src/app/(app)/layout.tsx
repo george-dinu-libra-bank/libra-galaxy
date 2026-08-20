@@ -1,12 +1,16 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
+import { AscultatorRealtime } from "@/components/realtime/ascultator-realtime";
 import { BottomNav } from "@/components/shell/bottom-nav";
+import { Notificari } from "@/components/ui/notificari";
+import { supabaseConfigurat } from "@/lib/supabase/configurat";
 import { createClient } from "@/lib/supabase/server";
 
 /**
  * Cadrul comun al ecranelor autentificate (dashboard, istoric, transfer,
- * carduri, beneficiari, setari): verifica sesiunea o singura data si
- * monteaza navigarea de jos. Fiecare pagina isi aduce doar continutul.
+ * carduri, beneficiari, setari): verifica sesiunea o singura data, monteaza
+ * navigarea de jos si ascultatorul de realtime. Fiecare pagina isi aduce doar
+ * continutul.
  */
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient();
@@ -21,6 +25,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     <div className="min-h-dvh pb-24">
       {children}
       <BottomNav />
+      {/* Sesiunea e deja rezolvata mai sus, deci id-ul se paseaza ca prop:
+          clientul nu mai face un getUser() in plus. In modul previzualizare
+          (fara credentiale Supabase) nu montam nimic. */}
+      {supabaseConfigurat ? <AscultatorRealtime idUtilizator={user.id} /> : null}
+      <Notificari />
     </div>
   );
 }
