@@ -7,6 +7,8 @@ export type ContBancar = {
   /** Ultimele 4 cifre, pentru liste: „•••• 4821". */
   ibanMascat: string;
   sold: number;
+  /** RON, EUR, USD, GBP sau CHF. Creditele se vireaza numai in conturi RON. */
+  valuta: string;
   creatLa: string;
 };
 
@@ -27,7 +29,7 @@ export async function obtineConturiUtilizator(): Promise<ContBancar[]> {
 
   const { data, error } = await supabase
     .from("conturi_bancare")
-    .select("id, nume, iban, sold, creat_la")
+    .select("id, nume, iban, sold, valuta, creat_la")
     .eq("id_user", user.id)
     .order("creat_la", { ascending: true });
 
@@ -39,6 +41,7 @@ export async function obtineConturiUtilizator(): Promise<ContBancar[]> {
     iban: cont.iban as string,
     ibanMascat: `•••• ${(cont.iban as string).slice(-4)}`,
     sold: Number(cont.sold),
+    valuta: (cont.valuta as string) ?? "RON",
     creatLa: cont.creat_la as string,
   }));
 }

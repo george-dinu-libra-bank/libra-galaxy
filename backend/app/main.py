@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, agents, alerte, assistant, health, identity, profiles
+from app.api.routes import admin, agents, alerte, assistant, credite, health, identity, profiles
 from app.core.config import get_settings
 from app.core.envelope import error_response, new_request_id
 from app.core.errors import AppError
@@ -76,3 +76,4 @@ app.include_router(profiles.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(alerte.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(credite.router, prefix="/api/v1")

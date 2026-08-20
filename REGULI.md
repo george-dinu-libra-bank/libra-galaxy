@@ -34,7 +34,13 @@ Exemplu real: `app/core/config.py`+`errors.py`+`logging.py`+`security.py` (deja 
 
 - Numerotare secvențială, strict aditivă — niciodată nu se modifică o migrație deja aplicată.
 - **Verifică numărul următor liber înainte să creezi o migrație nouă** — dacă doi oameni pornesc de la același ultim număr cunoscut în paralel, apare coliziune (`0004_ceva.sql` de două ori, cu conținut diferit). La merge: se renumerotează una dintre ele (`git mv`), nu se aleg conflict markers pe conținutul SQL.
-- Nu pot fi aplicate migrații direct de mine (Claude) — service-role key e o cheie REST, nu o conexiune Postgres. Se aplică manual (SQL Editor sau `supabase db push`) de cineva cu acces la dashboard.
+- **Pot fi aplicate de mine (Claude), prin serverul MCP Supabase** — `apply_migration` pentru DDL, `execute_sql` pentru verificări. Regula anterioară spunea că nu se poate, ceea ce era adevărat doar despre cheia service-role: aceea e într-adevăr o cheie REST și nu poate rula DDL. Dar există alte două căi, amândouă verificate:
+  - serverul MCP hostat (`claude mcp add --scope project --transport http supabase "https://mcp.supabase.com/mcp"`), după autorizare OAuth din `/mcp`;
+  - local, prin `.\scripts\supabase.ps1` — CLI-ul rulează în container, iar `config.toml` are `[db.migrations] enabled = true`, deci `db reset` reaplică tot.
+- **Gotcha la MCP-ul Supabase**: URL-ul din `.mcp.json` trebuie să fie exact `https://mcp.supabase.com/mcp`, fără query string. Metadatele lui (`/.well-known/oauth-protected-resource/mcp`) declară `"resource": "https://mcp.supabase.com/mcp"`, iar clientul trimite URL-ul configurat ca indicator de resursă (RFC 9728). Cu `?project_ref=...&features=...` în URL, `api.supabase.com` respinge autorizarea cu `resource: Resource must be a valid MCP endpoint`. Proiectul se dă oricum ca parametru la fiecare tool.
+- **`supabase_migrations` e GOL în proiectul cloud** — schema existentă a fost construită direct în SQL Editor. Fișierele din `supabase/migrations/` descriu *intenția*, nu istoricul aplicat, și cele două chiar au divergat: `0008_rol_administrator.sql` nu e aplicat (nu există `profiles.rol`, nici `public.este_administrator()` înainte de `0009`, nici `acces_administrator`), iar rolurile trăiesc de fapt în `public.user_roles`. **Verifică schema reală cu `list_tables` înainte să te bazezi pe un fișier de migrație.**
+- Înainte de o migrație pe cloud, ia un instantaneu al stării reale (vezi `0000_instantaneu_inainte_de_credite.sql`, generat din catalogul Postgres). Nu înlocuiește backupul automat Supabase, dar arată exact ce era acolo înainte.
+- După orice DDL, rulează `get_advisors` cu `type: "security"` — prinde tabele cu RLS activat fără politici și funcții `SECURITY DEFINER` expuse ca RPC pentru `anon`.
 
 ---
 
