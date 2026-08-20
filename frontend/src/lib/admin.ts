@@ -32,14 +32,18 @@ export async function checkAdmin(): Promise<UtilizatorAdmin | null> {
 
   if (!user || !session?.access_token) return null;
 
+  // `limit(1)`, nu `maybeSingle()`: tabela nu are un index unic pe
+  // (user_id, role), deci acelasi om poate aparea de doua ori cu rolul de
+  // admin. `maybeSingle()` ar da eroare in acel caz si l-ar da afara pe un
+  // administrator adevarat. Ce ne intereseaza e daca exista macar un rand.
   const { data, error } = await supabase
     .from("user_roles")
     .select("role")
     .eq("user_id", user.id)
     .eq("role", "admin")
-    .maybeSingle();
+    .limit(1);
 
-  if (error || !data) return null;
+  if (error || !data || data.length === 0) return null;
 
   return { id: user.id, email: user.email ?? "", token: session.access_token };
 }
