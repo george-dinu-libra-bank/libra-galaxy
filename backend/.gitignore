@@ -9,3 +9,6 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+
+# greutati de model descarcate de DeepFace la runtime/build
+.deepface/

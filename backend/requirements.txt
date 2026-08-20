@@ -17,5 +17,14 @@ tiktoken>=0.8
 pypdf>=5.1
 PyYAML>=6.0
 
+# --- Verificare identitate (OCR buletin + DeepFace selfie) -------------------
+# Pinuri exacte, nu >= : deepface/tf-keras sunt sensibile la versiune si la
+# Python 3.11 (Dockerfile.dev), spre deosebire de restul dependintelor de mai sus.
+deepface==0.0.93
+tf-keras==2.18.0
+pytesseract==0.3.13
+pillow==11.1.0
+opencv-python-headless==4.10.0.84
+
 pytest>=8.3
 pytest-asyncio>=0.25

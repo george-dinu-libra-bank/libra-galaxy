@@ -80,3 +80,28 @@ async def get_principal(authorization: str | None = Header(default=None)) -> Pri
 
     user_id_var.set(user_id)
     return Principal(user_id=user_id, role=role, permissions=set(ROLE_PERMISSIONS.get(role, set())), locale=locale)
+
+
+async def get_principal_or_internal(
+    authorization: str | None = Header(default=None),
+    x_internal_api_key: str | None = Header(default=None),
+    x_user_id: str | None = Header(default=None),
+) -> Principal:
+    """Pentru rute apelate de Next.js inainte sa existe o sesiune Supabase
+    (inregistrare cu confirmare pe email activata — vezi api/routes/identity.py).
+    Cheia interna nu ajunge niciodata in browser; Next.js e contextul de
+    incredere in aceasta fereastra ingusta. In afara asta, verificarea e
+    identica cu get_principal — un singur decodor de JWT in tot backend-ul.
+    """
+    settings = get_settings()
+
+    if (
+        x_internal_api_key
+        and x_user_id
+        and settings.backend_internal_api_key
+        and x_internal_api_key == settings.backend_internal_api_key
+    ):
+        user_id_var.set(x_user_id)
+        return Principal(user_id=x_user_id, role="customer", permissions=set(ROLE_PERMISSIONS.get("customer", set())))
+
+    return await get_principal(authorization)

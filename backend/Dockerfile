@@ -1,7 +1,5 @@
 FROM python:3.11-slim
 
-# tesseract: OCR pentru buletin (identity_service). libgl1/libglib2.0-0:
-# dependinte native pentru opencv-python-headless/DeepFace.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       tesseract-ocr \
       tesseract-ocr-ron \
@@ -10,14 +8,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Descarca greutatile ArcFace la build, nu la prima cerere de verificare identitate.
+# Descarca greutatile ArcFace la build, nu la prima cerere.
 RUN python -c "from deepface import DeepFace; DeepFace.build_model('ArcFace')"
 
 COPY . .
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

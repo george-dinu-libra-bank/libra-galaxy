@@ -3,6 +3,9 @@
 Nu e un singleton la nivel de modul (interzis de docs/PATTERN_ADOPTION.md) —
 e o functie de fabrica, apelata prin FastAPI Depends, testabila prin
 dependency_overrides.
+
+Autentificarea (JWT/JWKS + modul cu cheie interna) nu e aici — traieste in
+core/security.py, singurul loc care decodeaza un token in tot backend-ul.
 """
 
 from __future__ import annotations

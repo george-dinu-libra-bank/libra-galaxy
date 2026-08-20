@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import assistant, health
+from app.api.routes import assistant, health, identity
 from app.core.config import get_settings
 from app.core.envelope import error_response, new_request_id
 from app.core.errors import AppError
@@ -46,5 +46,18 @@ async def app_error_handler(request: Request, error: AppError):
     return error_response(error, request_id=request_id)
 
 
+@app.exception_handler(Exception)
+async def unexpected_error_handler(request: Request, exc: Exception):
+    """Orice exceptie care nu e un AppError (deja tratat mai sus) — fara handler
+    explicit, Starlette ar raspunde cu text simplu, fara nimic util pentru
+    frontend/loguri. Logam traceback-ul complet, raspundem cu plicul standard."""
+    request_id = request.headers.get("X-Request-ID") or new_request_id()
+    logger.exception("unexpected_error", extra={"event_data": {"path": request.url.path}})
+    return error_response(
+        AppError("A aparut o eroare neasteptata pe server."), request_id=request_id
+    )
+
+
 app.include_router(health.router)
 app.include_router(assistant.router)
+app.include_router(identity.router)

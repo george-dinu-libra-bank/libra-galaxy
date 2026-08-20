@@ -38,3 +38,5 @@ services:
       - ./backend/.env
     environment:
       - LIBRA_KNOWLEDGE_DIR=/galaxy-bank-knowledge
+    stdin_open: true
+    tty: true

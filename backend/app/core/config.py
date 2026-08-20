@@ -4,9 +4,20 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
-from pydantic import Field
+from pydantic import BeforeValidator, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _empty_string_to_none(value: object) -> object:
+    """`.env` cu o cheie prezenta dar goala (IDENTITY_VERIFY_DISTANCE_THRESHOLD=)
+    trebuie tratat ca "nesetat", nu ca "" de parsat ca float — altfel Settings()
+    arunca ValidationError la pornire in loc sa foloseasca default=None."""
+    return None if value == "" else value
+
+
+OptionalFloat = Annotated[float | None, BeforeValidator(_empty_string_to_none)]
 
 _REPO_ROOT_KNOWLEDGE_DIR = Path(__file__).resolve().parents[3] / "galaxy-bank-knowledge"
 
@@ -58,6 +69,21 @@ class Settings(BaseSettings):
     knowledge_dir: str = Field(default="", alias="LIBRA_KNOWLEDGE_DIR")
 
     cors_origins: str = Field(default="http://localhost:3000", alias="CORS_ORIGINS")
+
+    # Verificare identitate la inregistrare (OCR buletin + DeepFace selfie).
+    # Secret partajat doar intre serverul Next.js si acest serviciu, folosit
+    # cand nu exista inca o sesiune Supabase (vezi core/security.py
+    # get_principal_or_internal si api/routes/identity.py).
+    backend_internal_api_key: str = Field(default="", alias="BACKEND_INTERNAL_API_KEY")
+    # None => se foloseste pragul implicit al modelului ArcFace din DeepFace.
+    identity_verify_distance_threshold: OptionalFloat = Field(
+        default=None, alias="IDENTITY_VERIFY_DISTANCE_THRESHOLD"
+    )
+    identity_deepface_model: str = Field(default="ArcFace", alias="IDENTITY_DEEPFACE_MODEL")
+    # yunet: detector DNN mic (parte din opencv), mult mai fiabil decat Haar
+    # cascade-ul default ("opencv") pe poze mici/inclinate ca fotografia din
+    # buletin. Fara dependente noi — greutatile se descarca automat de DeepFace.
+    identity_detector_backend: str = Field(default="yunet", alias="IDENTITY_DETECTOR_BACKEND")
 
     @property
     def embedding_key(self) -> str:

@@ -81,3 +81,13 @@ class ToolExecutionError(AppError):
 class RetrievalError(AppError):
     code = "RETRIEVAL_ERROR"
     status_code = 503
+
+
+class IdentityImageDownloadError(AppError):
+    code = "IDENTITY_IMAGE_DOWNLOAD_FAILED"
+    status_code = 502
+
+
+class IdentityResultWriteError(AppError):
+    code = "IDENTITY_RESULT_WRITE_FAILED"
+    status_code = 502

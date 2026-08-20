@@ -9,7 +9,10 @@
 --   0001_profiles.sql            profiles + trigger pe auth.users + IBAN
 --   0002_carduri_tranzactii.sql  carduri + tranzactii + generator de card
 --   0003_card_style.sql          coloana card_style (standard | silver | gold)
---   0004_ai_asistent.sql         conversatii, memorie, RAG si telemetrie AI
+--   0004_ai_asistent.sql                    conversatii, memorie, RAG si telemetrie AI
+--   0005_ai_asistent_atasamente_voce.sql    atasamente PDF/poze + coloana canal
+--   0006_ai_asistent_nivel_incredere.sql    nivel de incredere pe mesajele asistentului
+--   0007_identity_verification.sql          verificare identitate (OCR buletin + DeepFace)
 --
 -- Relatii:
 --   auth.users 1 ── 1 profiles 1 ── N carduri 1 ── N tranzactii
