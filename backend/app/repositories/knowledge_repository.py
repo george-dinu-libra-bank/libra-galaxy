@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from anyio import to_thread
 from supabase import Client
 
 from app.core.errors import RetrievalError
@@ -19,64 +20,84 @@ class KnowledgeChunkHit:
 
 
 class KnowledgeRepository:
-    """Singurul strat care citeste/scrie knowledge_documents/knowledge_chunks."""
+    """Singurul strat care citeste/scrie knowledge_documents/knowledge_chunks.
+
+    Fiecare metoda ruleaza apelul sincron supabase-py pe un thread separat
+    (to_thread.run_sync), ca sa nu blocheze bucla de evenimente asyncio."""
 
     def __init__(self, client: Client) -> None:
         self._client = client
 
-    def get_document_checksum(self, document_id: str) -> str | None:
-        result = (
-            self._client.table("knowledge_documents")
-            .select("checksum")
-            .eq("document_id", document_id)
-            .order("versiune", desc=True)
-            .limit(1)
-            .maybe_single()
-            .execute()
-        )
+    async def get_document_checksum(self, document_id: str) -> str | None:
+        def interogare():
+            return (
+                self._client.table("knowledge_documents")
+                .select("checksum")
+                .eq("document_id", document_id)
+                .order("versiune", desc=True)
+                .limit(1)
+                .maybe_single()
+                .execute()
+            )
+
+        result = await to_thread.run_sync(interogare)
         # .maybe_single() intoarce None direct cand nu exista niciun rand.
         return result.data["checksum"] if result and result.data else None
 
-    def upsert_document(
+    async def upsert_document(
         self, document_id: str, version: int, source: str, document_type: str, language: str,
         checksum: str, audience: str
     ) -> None:
-        self._client.table("knowledge_documents").upsert(
-            {
-                "document_id": document_id,
-                "versiune": version,
-                "sursa": source,
-                "tip_document": document_type,
-                "limba": language,
-                "checksum": checksum,
-                "audienta": audience,
-            },
-            on_conflict="document_id,versiune",
-        ).execute()
+        def interogare():
+            return self._client.table("knowledge_documents").upsert(
+                {
+                    "document_id": document_id,
+                    "versiune": version,
+                    "sursa": source,
+                    "tip_document": document_type,
+                    "limba": language,
+                    "checksum": checksum,
+                    "audienta": audience,
+                },
+                on_conflict="document_id,versiune",
+            ).execute()
 
-    def existing_chunk_ids(self, embedding_key: str) -> set[str]:
-        result = (
-            self._client.table("knowledge_chunks")
-            .select("chunk_id")
-            .eq("embedding_key", embedding_key)
-            .execute()
-        )
+        await to_thread.run_sync(interogare)
+
+    async def existing_chunk_ids(self, embedding_key: str) -> set[str]:
+        def interogare():
+            return (
+                self._client.table("knowledge_chunks")
+                .select("chunk_id")
+                .eq("embedding_key", embedding_key)
+                .execute()
+            )
+
+        result = await to_thread.run_sync(interogare)
         return {row["chunk_id"] for row in (result.data or [])}
 
-    def upsert_chunks(self, embedding_key: str, chunks: list[dict]) -> None:
+    async def upsert_chunks(self, embedding_key: str, chunks: list[dict]) -> None:
         if not chunks:
             return
         rows = [{**chunk, "embedding_key": embedding_key} for chunk in chunks]
-        self._client.table("knowledge_chunks").upsert(rows, on_conflict="embedding_key,chunk_id").execute()
 
-    def delete_chunks(self, embedding_key: str, chunk_ids: list[str]) -> None:
+        def interogare():
+            return self._client.table("knowledge_chunks").upsert(rows, on_conflict="embedding_key,chunk_id").execute()
+
+        await to_thread.run_sync(interogare)
+
+    async def delete_chunks(self, embedding_key: str, chunk_ids: list[str]) -> None:
         if not chunk_ids:
             return
-        self._client.table("knowledge_chunks").delete().eq("embedding_key", embedding_key).in_(
-            "chunk_id", chunk_ids
-        ).execute()
 
-    def search(
+        def interogare():
+            return self._client.table("knowledge_chunks").delete().eq("embedding_key", embedding_key).in_(
+                "chunk_id", chunk_ids
+            ).execute()
+
+        await to_thread.run_sync(interogare)
+
+    async def search(
         self,
         embedding_key: str,
         query_embedding: list[float],
@@ -86,8 +107,8 @@ class KnowledgeRepository:
         top_k: int,
         min_score: float,
     ) -> list[KnowledgeChunkHit]:
-        try:
-            result = self._client.rpc(
+        def interogare():
+            return self._client.rpc(
                 "match_knowledge_chunks",
                 {
                     "p_embedding_key": embedding_key,
@@ -99,6 +120,9 @@ class KnowledgeRepository:
                     "p_min_score": min_score,
                 },
             ).execute()
+
+        try:
+            result = await to_thread.run_sync(interogare)
         except Exception as exc:  # supabase-py surfaces network/RPC errors as generic exceptions
             raise RetrievalError("Cautarea in baza de cunostinte a esuat.") from exc
 

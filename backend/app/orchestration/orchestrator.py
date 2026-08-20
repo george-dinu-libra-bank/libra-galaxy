@@ -9,6 +9,8 @@ contine el insusi logica de business.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
 from dataclasses import dataclass
 
@@ -18,6 +20,7 @@ from app.context.builder import ContextBuilder, ContextSource
 from app.core.security import Principal
 from app.infrastructure.attachment_storage import AttachmentStorage
 from app.memory.compression import RECENT_WINDOW, compress_conversation
+from app.memory.extraction import extract_memory
 from app.orchestration.intent import classify_intent
 from app.orchestration.risk import classify_risk
 from app.orchestration.routing import AgentRouter
@@ -32,6 +35,8 @@ from app.telemetry.metrics import estimate_chat_cost
 from app.tools.base import SelectedTool, ToolResult
 from app.tools.executor import execute_tools
 from app.tools.registry import ToolRegistry
+
+logger = logging.getLogger("libra.assistant")
 
 _TITLE_MAX_CHARS = 60
 
@@ -106,19 +111,23 @@ class Orchestrator:
         started = time.perf_counter()
 
         conversation = (
-            self._conversations.get_owned(principal.user_id, conversation_id)
+            await self._conversations.get_owned(principal.user_id, conversation_id)
             if conversation_id
-            else self._conversations.create(principal.user_id)
+            else await self._conversations.create(principal.user_id)
         )
 
-        user_message = self._messages.append(
+        user_message = await self._messages.append(
             conversation.id, principal.user_id, "user", user_text, channel=channel
         )
-        attachment_contexts = self._resolve_attachments(principal.user_id, attachment_ids or [], user_message.id)
+        await self._remember(principal.user_id, user_text)
+        recent = await self._messages.recent_window(conversation.id, RECENT_WINDOW)
+        attachment_contexts = await self._resolve_attachments(
+            principal.user_id, attachment_ids or [], user_message.id
+        )
 
         intent = classify_intent(user_text)
         risk = classify_risk(intent)
-        agent_id = self._router.select(intent)
+        agent_id = self._select_agent_id(intent, recent)
         agent = self._agents[agent_id]
 
         selections = agent.select_tools(user_text, intent)
@@ -127,7 +136,7 @@ class Orchestrator:
             registry=self._tools,
         )
 
-        context = self._build_context(principal, conversation.id, selections, tool_results)
+        context = await self._build_context(principal, conversation.id, selections, tool_results, recent)
 
         error_code: str | None = None
         answer = None
@@ -140,7 +149,7 @@ class Orchestrator:
             raise
         finally:
             latency_ms = int((time.perf_counter() - started) * 1000)
-            self._record_telemetry(
+            await self._record_telemetry(
                 principal=principal, conversation_id=conversation.id, agent=agent, intent=intent, risk=risk,
                 selections=selections, tool_results=tool_results, context_chars=len(context.render()),
                 latency_ms=latency_ms, success=answer is not None, error_code=error_code,
@@ -149,14 +158,14 @@ class Orchestrator:
                 answer_tokens_cached=answer.tokens_cached if answer else 0,
             )
 
-        assistant_message = self._messages.append(
+        assistant_message = await self._messages.append(
             conversation.id, principal.user_id, "assistant", answer.text, answer.citations,
             confidence=answer.confidence, channel=channel,
         )
-        self._conversations.set_title_if_default(conversation.id, _derive_title(user_text))
-        self._conversations.touch(conversation.id)
+        await self._conversations.set_title_if_default(conversation.id, _derive_title(user_text))
+        await self._conversations.touch(conversation.id)
 
-        compress_conversation(
+        await compress_conversation(
             conversation.id, principal.user_id, conversation.summary_watermark,
             self._conversations, self._messages, self._summaries,
         )
@@ -166,23 +175,32 @@ class Orchestrator:
             citations=answer.citations, confidence=answer.confidence, agent_id=agent_id,
         )
 
-    def _resolve_attachments(
+    async def _resolve_attachments(
         self, user_id: str, attachment_ids: list[str], message_id: str
     ) -> list[AttachmentContext]:
         if not attachment_ids:
             return []
 
-        records = self._attachments.get_owned_many(user_id, attachment_ids)
-        self._attachments.attach_to_message(attachment_ids, message_id)
+        # attach_to_message nu depinde de rezultatul get_owned_many (are nevoie
+        # doar de attachment_ids/message_id) — pornesc ambele deodata.
+        records, _ = await asyncio.gather(
+            self._attachments.get_owned_many(user_id, attachment_ids),
+            self._attachments.attach_to_message(attachment_ids, message_id),
+        )
+
+        image_records = [record for record in records if record.kind == "imagine"]
+        downloads = await asyncio.gather(
+            *(self._attachment_storage.download(record.storage_path) for record in image_records)
+        )
+        images_by_path = dict(zip((record.storage_path for record in image_records), downloads))
 
         contexts = []
         for record in records:
             if record.kind == "imagine":
-                image_bytes = self._attachment_storage.download(record.storage_path)
                 contexts.append(
                     AttachmentContext(
                         kind=record.kind, filename=record.filename,
-                        image_data_uri=to_data_uri(image_bytes, record.content_type),
+                        image_data_uri=to_data_uri(images_by_path[record.storage_path], record.content_type),
                     )
                 )
             else:
@@ -192,8 +210,40 @@ class Orchestrator:
 
         return contexts
 
-    def _build_context(
-        self, principal: Principal, conversation_id: str, selections: list[SelectedTool], tool_results: list[ToolResult]
+    def _select_agent_id(self, intent: str, recent: list) -> str:
+        """Rutare "sticky": un raspuns scurt fara cuvinte-cheie proprii ("dar cel
+        mai mic?") ramane la agentul turei precedente, in loc sa cada pe
+        document_intelligence (implicitul pentru "unknown") doar pentru ca nu
+        contine niciun tipar din intent.py. Fara asta, o continuare fireasca a
+        unei intrebari financiare primea un raspuns "nu am gasit in baza de
+        cunostinte", complet nelegat de intrebare — vezi discutia din chat."""
+        if intent != "unknown":
+            return self._router.select(intent)
+
+        previous_user_messages = [message for message in recent if message.role == "user"][:-1]
+        if not previous_user_messages:
+            return self._router.select(intent)
+
+        previous_intent = classify_intent(previous_user_messages[-1].text)
+        return self._router.select(previous_intent)
+
+    async def _remember(self, user_id: str, user_text: str) -> None:
+        """Extractie determinista, best-effort — un esec aici nu strica raspunsul."""
+        candidate = extract_memory(user_text)
+        if candidate is None:
+            return
+        try:
+            await self._memories.write(user_id, candidate.memory_type, candidate.content)
+        except Exception:
+            logger.exception("nu am putut salva memoria extrasa (user=%s)", user_id)
+
+    async def _build_context(
+        self,
+        principal: Principal,
+        conversation_id: str,
+        selections: list[SelectedTool],
+        tool_results: list[ToolResult],
+        recent: list,
     ):
         builder = ContextBuilder()
         sections = [
@@ -203,16 +253,21 @@ class Orchestrator:
             )
         ]
 
-        summary = self._summaries.get(conversation_id)
+        # recent vine deja incarcat de handle_message (are nevoie de el si
+        # pentru rutarea "sticky") — nu se mai citeste a doua oara aici. Doar
+        # rezumatul si memoriile raman de citit, in paralel.
+        summary, memories = await asyncio.gather(
+            self._summaries.get(conversation_id),
+            self._memories.list_active(principal.user_id),
+        )
+
         if summary.text:
             sections.append(builder.add(ContextSource.CONVERSATION_SUMMARY, "Rezumatul conversatiei", summary.text))
 
-        memories = self._memories.list_active(principal.user_id)
         if memories:
             memory_text = "\n".join(f"[{memory.memory_type}] {memory.content}" for memory in memories)
             sections.append(builder.add(ContextSource.USER_MEMORY, "Preferinte cunoscute", memory_text))
 
-        recent = self._messages.recent_window(conversation_id, RECENT_WINDOW)
         if recent:
             recent_text = "\n".join(f"{message.role}: {message.text}" for message in recent)
             sections.append(builder.add(ContextSource.RECENT_CONVERSATION, "Conversatia recenta", recent_text))
@@ -223,7 +278,7 @@ class Orchestrator:
 
         return builder.build(sections)
 
-    def _record_telemetry(
+    async def _record_telemetry(
         self,
         *,
         principal: Principal,
@@ -247,7 +302,7 @@ class Orchestrator:
             if result.tool_name == "search_bank_knowledge" and result.data
         )
 
-        run_id = self._telemetry.record_run(
+        run_id = await self._telemetry.record_run(
             user_id=principal.user_id, conversation_id=conversation_id, agent_id=agent.spec.agent_id,
             intent=intent, risk_level=risk.value, prompt_version=agent.spec.prompt_version,
             deployment=self._chat_provider.deployment, latency_ms=latency_ms, tool_count=len(tool_results),
@@ -255,15 +310,20 @@ class Orchestrator:
         )
 
         reasons = {selection.name: selection.reason for selection in selections}
-        for result in tool_results:
-            self._telemetry.record_tool_invocation(
-                run_id=run_id, tool_name=result.tool_name, success=result.success,
-                duration_ms=result.duration_ms, reason=reasons.get(result.tool_name, "n/a"),
+        if tool_results:
+            await asyncio.gather(
+                *(
+                    self._telemetry.record_tool_invocation(
+                        run_id=run_id, tool_name=result.tool_name, success=result.success,
+                        duration_ms=result.duration_ms, reason=reasons.get(result.tool_name, "n/a"),
+                    )
+                    for result in tool_results
+                )
             )
 
         if answer_tokens_in or answer_tokens_out:
             cost = estimate_chat_cost(answer_tokens_in, answer_tokens_out, self._chat_price_in, self._chat_price_out)
-            self._telemetry.record_usage(
+            await self._telemetry.record_usage(
                 feature="assistant", agent_id=agent.spec.agent_id, deployment=self._chat_provider.deployment,
                 environment=self._environment, tokens_in=answer_tokens_in, tokens_out=answer_tokens_out,
                 tokens_cached=answer_tokens_cached, estimated_cost_usd=cost,

@@ -27,7 +27,7 @@ class AttachmentService:
         self._repository = repository
         self._max_bytes = max_bytes
 
-    def upload(self, user_id: str, filename: str, content_type: str, content: bytes) -> Attachment:
+    async def upload(self, user_id: str, filename: str, content_type: str, content: bytes) -> Attachment:
         kind = _ALLOWED_CONTENT_TYPES.get(content_type)
         if kind is None:
             raise ValidationError("Tip de fisier neacceptat. Sunt permise doar PDF, PNG, JPEG si WEBP.")
@@ -36,11 +36,11 @@ class AttachmentService:
             raise ValidationError(f"Fisierul depaseste limita de {self._max_bytes // (1024 * 1024)} MB.")
 
         storage_path = f"{user_id}/{uuid.uuid4().hex}-{_safe_filename(filename)}"
-        self._storage.upload(storage_path, content, content_type)
+        await self._storage.upload(storage_path, content, content_type)
 
         extracted_text = extract_pdf_text(content) if kind == "pdf" else None
 
-        return self._repository.create(
+        return await self._repository.create(
             user_id=user_id, kind=kind, filename=filename, storage_path=storage_path,
             content_type=content_type, size_bytes=len(content), extracted_text=extracted_text,
         )

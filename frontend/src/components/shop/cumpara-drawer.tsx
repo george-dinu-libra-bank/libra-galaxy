@@ -1,11 +1,21 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { CheckCircle2, CreditCard, Lock } from "lucide-react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  Loader2,
+  Lock,
+  ShieldCheck,
+  XCircle,
+} from "lucide-react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
 import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
+import { useStarePlata } from "@/hooks/use-stare-plata";
 import { obtineProdus } from "@/lib/data/produse";
 import { formateazaSuma } from "@/lib/utils";
 import { ProdusVizual } from "./produs-vizual";
@@ -30,48 +40,97 @@ function formularValid(date: {
   cvv: string;
 }) {
   const cifreCard = date.numarCard.replace(/\D/g, "");
-  const [luna] = date.expirare.split("/");
 
   return (
     cifreCard.length === 16 &&
     date.numeCard.trim().length >= 3 &&
-    /^\d{2}\/\d{2}$/.test(date.expirare) &&
-    Number(luna) >= 1 &&
-    Number(luna) <= 12 &&
-    /^\d{3,4}$/.test(date.cvv)
+    /^(0[1-9]|1[0-2])\/\d{2}$/.test(date.expirare) &&
+    /^\d{3}$/.test(date.cvv)
   );
 }
 
 const FORM_INITIAL = { numarCard: "", numeCard: "", expirare: "", cvv: "" };
 
+type Pas = "form" | "asteptare" | "aprobata" | "respinsa" | "expirata" | "esuata";
+
+const TITLURI: Record<Pas, string> = {
+  form: "Finalizează comanda",
+  asteptare: "Confirmare plată",
+  aprobata: "Plata a fost aprobată",
+  respinsa: "Plata a fost respinsă",
+  expirata: "Plata a expirat",
+  esuata: "Plata nu a reușit",
+};
+
 /**
- * Drawer de cumparare: rezumatul produsului + formular de card.
- * Doar UI momentan — nu trimite nimic, doar simuleaza o plata reusita.
+ * Drawer de cumparare: rezumatul produsului, formularul de card si asteptarea
+ * confirmarii din aplicatia de banking.
+ *
+ * Formularul nu decide nimic: validarea reala (cardul e al tau, e activ, nu a
+ * expirat, ai fonduri) se face in POST /api/payments. De acolo incolo, starea
+ * platii vine prin Realtime — ecranul asculta o singura plata, dupa id.
  *
  * Primeste doar slug-ul (nu produsul intreg): un obiect cu o componenta de
  * icoana nu poate trece ca prop dintr-o pagina server intr-un client
- * component, deci produsul se cauta aici, in client.
+ * component, deci produsul se cauta aici, in client. Pretul trimis serverului
+ * n-ar conta oricum — acolo se citeste tot din catalog, dupa acelasi slug.
  */
-export function CumparaDrawer({ slug }: { slug: string }) {
+export function CumparaDrawer({
+  slug,
+  autentificat,
+}: {
+  slug: string;
+  autentificat: boolean;
+}) {
   const produs = obtineProdus(slug);
+
   const [deschis, setDeschis] = useState(false);
-  const [pas, setPas] = useState<"form" | "succes">("form");
+  const [pas, setPas] = useState<Pas>("form");
   const [date, setDate] = useState(FORM_INITIAL);
   const [eroare, setEroare] = useState<string | null>(null);
-  const [seProceseaza, startTransition] = useTransition();
+  const [seValideaza, setSeValideaza] = useState(false);
+  const [idPlata, setIdPlata] = useState<string | null>(null);
+  const [expiraLa, setExpiraLa] = useState<string | null>(null);
+
+  const { status, motiv } = useStarePlata(idPlata);
+
+  // Raspunsul din aplicatia de banking ajunge aici, prin Realtime.
+  useEffect(() => {
+    if (!status || status === "PENDING_APPROVAL") return;
+
+    if (status === "APPROVED") setPas("aprobata");
+    else if (status === "DECLINED") setPas("respinsa");
+    else if (status === "EXPIRED") setPas("expirata");
+    else setPas("esuata");
+  }, [status]);
+
+  // Daca nimeni nu raspunde, cererea moare singura la expira_la. Serverul refuza
+  // oricum aprobarea dupa acest moment; asta doar deblocheaza ecranul.
+  useEffect(() => {
+    if (pas !== "asteptare" || !expiraLa) return;
+
+    const ramas = new Date(expiraLa).getTime() - Date.now();
+    const cronometru = setTimeout(() => setPas("expirata"), Math.max(ramas, 0));
+
+    return () => clearTimeout(cronometru);
+  }, [pas, expiraLa]);
 
   if (!produs) return null;
 
   function reseteaza(v: boolean) {
     setDeschis(v);
+
     if (!v) {
       setPas("form");
       setDate(FORM_INITIAL);
       setEroare(null);
+      setSeValideaza(false);
+      setIdPlata(null);
+      setExpiraLa(null);
     }
   }
 
-  function plateste() {
+  async function plateste() {
     setEroare(null);
 
     if (!formularValid(date)) {
@@ -79,11 +138,44 @@ export function CumparaDrawer({ slug }: { slug: string }) {
       return;
     }
 
-    startTransition(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 900));
-      setPas("succes");
-    });
+    setSeValideaza(true);
+
+    try {
+      const raspuns = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug,
+          numarCard: date.numarCard,
+          dataExpirare: date.expirare,
+          cvv: date.cvv,
+        }),
+      });
+
+      const rezultat = (await raspuns.json().catch(() => null)) as {
+        paymentId?: string;
+        expiraLa?: string | null;
+        eroare?: string;
+      } | null;
+
+      if (!raspuns.ok || !rezultat?.paymentId) {
+        setEroare(rezultat?.eroare ?? "Nu am putut porni plata. Încearcă din nou.");
+        return;
+      }
+
+      // Datele cardului nu mai stau in memoria paginii dupa ce si-au facut treaba.
+      setDate(FORM_INITIAL);
+      setExpiraLa(rezultat.expiraLa ?? null);
+      setIdPlata(rezultat.paymentId);
+      setPas("asteptare");
+    } catch {
+      setEroare("Nu am putut porni plata. Verifică conexiunea.");
+    } finally {
+      setSeValideaza(false);
+    }
   }
+
+  const final = pas !== "form" && pas !== "asteptare";
 
   return (
     <Drawer open={deschis} onOpenChange={reseteaza}>
@@ -93,31 +185,82 @@ export function CumparaDrawer({ slug }: { slug: string }) {
       </DrawerTrigger>
 
       <DrawerContent
-        title={pas === "succes" ? "Comandă plasată" : "Finalizează comanda"}
+        title={TITLURI[pas]}
         description={
-          pas === "succes"
-            ? "Confirmarea comenzii tale."
-            : "Rezumatul comenzii și datele cardului."
+          pas === "form"
+            ? "Rezumatul comenzii și datele cardului."
+            : pas === "asteptare"
+              ? "Așteptăm confirmarea din aplicația ta de banking."
+              : "Rezultatul plății."
         }
         className="h-[92vh]"
+        // Cat timp asteptam raspunsul, „X"-ul ar sugera ca plata se poate anula
+        // de aici — dar ea traieste mai departe pe server pana expira.
+        cuInchidere={pas !== "asteptare"}
         footer={
           pas === "form" ? (
-            <Button className="w-full" loading={seProceseaza} onClick={plateste}>
-              Plătește {formateazaSuma(produs.pret)}
-            </Button>
-          ) : (
+            autentificat ? (
+              <Button className="w-full" loading={seValideaza} onClick={plateste}>
+                {seValideaza ? "Se validează cardul…" : `Plătește ${formateazaSuma(produs.pret)}`}
+              </Button>
+            ) : (
+              <Link
+                href={`/login?redirectTo=${encodeURIComponent(`/shop/${slug}`)}`}
+                className="flex h-[52px] w-full items-center justify-center rounded-field bg-primary-600 text-[15px] font-semibold text-white shadow-btn transition-colors duration-150 ease-soft hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+              >
+                Autentifică-te în Libra
+              </Link>
+            )
+          ) : pas === "asteptare" ? null : (
             <Button className="w-full" onClick={() => reseteaza(false)}>
               Închide
             </Button>
           )
         }
       >
-        {pas === "succes" ? (
+        {pas === "asteptare" ? (
           <div className="flex flex-col items-center gap-3 py-10 text-center">
-            <CheckCircle2 size={48} strokeWidth={1.5} className="animate-pop text-success" />
-            <p className="text-[16px] font-semibold text-ink">Comanda a fost plasată</p>
+            <span className="flex items-center gap-1.5 text-[13px] text-ink-faint">
+              <ShieldCheck size={14} strokeWidth={1.75} aria-hidden />
+              Galaxy Shop
+            </span>
+
+            <p className="tabular text-[30px] font-bold leading-[36px] text-ink">
+              {formateazaSuma(produs.pret)}
+            </p>
+
+            <p className="mt-2 flex items-center gap-2 text-[14px] font-medium text-ink-soft">
+              <Loader2 size={18} strokeWidth={1.75} className="animate-spin" aria-hidden />
+              Confirmă plata în aplicația ta de banking…
+            </p>
+
+            <p className="max-w-xs text-[12.5px] leading-[18px] text-ink-faint">
+              Am trimis cererea pe contul tău Libra. Deschide aplicația și apasă
+              „Confirmă”.
+            </p>
+          </div>
+        ) : final ? (
+          <div className="flex flex-col items-center gap-3 py-10 text-center">
+            {pas === "aprobata" ? (
+              <CheckCircle2 size={48} strokeWidth={1.5} className="animate-pop text-success" />
+            ) : pas === "expirata" ? (
+              <Clock size={48} strokeWidth={1.5} className="animate-pop text-ink-faint" />
+            ) : (
+              <XCircle size={48} strokeWidth={1.5} className="animate-pop text-danger" />
+            )}
+
+            <p className="text-[16px] font-semibold text-ink">{TITLURI[pas]}</p>
+            <p className="tabular text-[20px] font-semibold text-primary-600">
+              {formateazaSuma(produs.pret)}
+            </p>
             <p className="max-w-xs text-[13.5px] leading-[19px] text-ink-faint">
-              {produs.nume} · {formateazaSuma(produs.pret)}
+              {pas === "aprobata"
+                ? `${produs.nume} — plata a fost confirmată cu succes.`
+                : pas === "respinsa"
+                  ? "Ai respins plata din aplicație. Nu s-a mișcat niciun ban."
+                  : pas === "expirata"
+                    ? "Nimeni nu a confirmat la timp. Poți relua comanda."
+                    : (motiv ?? "Plata nu a putut fi procesată.")}
             </p>
           </div>
         ) : (
@@ -134,12 +277,21 @@ export function CumparaDrawer({ slug }: { slug: string }) {
 
             {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}
 
+            {autentificat ? null : (
+              <Banda ton="info">
+                Plata se face cu un card Libra, așa că ai nevoie de o sesiune activă.
+                Autentifică-te și revino — comanda te așteaptă.
+              </Banda>
+            )}
+
             <div className="flex flex-col gap-4">
               <Camp
                 eticheta="Număr card"
                 icoana={CreditCard}
                 inputMode="numeric"
+                autoComplete="off"
                 placeholder="1234 5678 9012 3456"
+                disabled={!autentificat}
                 value={date.numarCard}
                 onChange={(e) =>
                   setDate((d) => ({ ...d, numarCard: formateazaNumarCard(e.target.value) }))
@@ -149,6 +301,8 @@ export function CumparaDrawer({ slug }: { slug: string }) {
               <Camp
                 eticheta="Nume pe card"
                 placeholder="ION POPESCU"
+                autoComplete="off"
+                disabled={!autentificat}
                 value={date.numeCard}
                 onChange={(e) =>
                   setDate((d) => ({ ...d, numeCard: e.target.value.toUpperCase() }))
@@ -159,7 +313,9 @@ export function CumparaDrawer({ slug }: { slug: string }) {
                 <Camp
                   eticheta="Expiră (LL/AA)"
                   inputMode="numeric"
+                  autoComplete="off"
                   placeholder="12/28"
+                  disabled={!autentificat}
                   value={date.expirare}
                   onChange={(e) =>
                     setDate((d) => ({ ...d, expirare: formateazaExpirare(e.target.value) }))
@@ -170,10 +326,12 @@ export function CumparaDrawer({ slug }: { slug: string }) {
                   eticheta="CVV"
                   icoana={Lock}
                   inputMode="numeric"
+                  autoComplete="off"
                   placeholder="123"
+                  disabled={!autentificat}
                   value={date.cvv}
                   onChange={(e) =>
-                    setDate((d) => ({ ...d, cvv: e.target.value.replace(/\D/g, "").slice(0, 4) }))
+                    setDate((d) => ({ ...d, cvv: e.target.value.replace(/\D/g, "").slice(0, 3) }))
                   }
                 />
               </div>
@@ -181,7 +339,7 @@ export function CumparaDrawer({ slug }: { slug: string }) {
 
             <p className="flex items-center gap-1.5 text-[12px] text-ink-faint">
               <Lock size={13} strokeWidth={1.75} aria-hidden />
-              Datele cardului nu sunt încă trimise nicăieri — doar interfața e gata.
+              CVV-ul se verifică o singură dată și nu se salvează nicăieri.
             </p>
           </div>
         )}

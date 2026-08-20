@@ -216,6 +216,38 @@ body {
   color: var(--color-primary-900);
 }
 
+/* Notificari (sonner) — culorile vin din tokeni, deci urmeaza singure tema.
+   Fara next-themes: nu ii dam prop-ul `theme`, ci ii rescriem variabilele
+   proprii. Numele lor sunt cele din sonner 2.0.8; daca se face upgrade major,
+   verifica node_modules/sonner/dist/styles.css.
+
+   Notificarea de incasare e toast.custom si isi picteaza singura cartea
+   (components/realtime/toast-incasare.tsx) — sonner ii pune data-styled="false"
+   si nu deseneaza nimic sub ea. Regulile de mai jos raman pentru eventualele
+   toast-uri obisnuite. Latimea, in schimb, le priveste pe amandoua. */
+[data-sonner-toaster] {
+  --width: 380px;
+  --normal-bg: var(--color-surface);
+  --normal-text: var(--color-ink);
+  --normal-border: var(--color-line);
+  --normal-bg-hover: var(--color-muted);
+  --normal-border-hover: var(--color-line);
+  --border-radius: var(--radius-field);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Umbra proprie a lui sonner e pusa pe [data-styled='true'], deci selectorul
+   trebuie sa aiba aceeasi specificitate ca sa o inlocuiasca. */
+[data-sonner-toast][data-styled="true"] {
+  box-shadow: var(--shadow-md);
+}
+
+/* [data-description] are culoarea scrisa in clar in sonner; selectorul
+   descendent o bate fara !important. */
+[data-sonner-toast] [data-description] {
+  color: var(--color-ink-soft);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

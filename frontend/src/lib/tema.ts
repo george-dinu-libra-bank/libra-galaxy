@@ -1,27 +1,25 @@
-export const TEMA_STORAGE_KEY = "libra-tema";
+export const TEMA_COOKIE = "libra-tema";
 
 export type Tema = "light" | "dark";
 
-/** Scriptul inline din <head> foloseste aceeasi logica, in JS simplu (fara import). */
-export const SCRIPT_INITIALIZARE_TEMA = `
-(function () {
-  try {
-    var tema = localStorage.getItem("${TEMA_STORAGE_KEY}");
-    if (tema === "dark") document.documentElement.classList.add("dark");
-  } catch (e) {}
-})();
-`;
+const UN_AN_IN_SECUNDE = 60 * 60 * 24 * 365;
+
+/** Normalizeaza valoarea bruta a cookie-ului la o tema valida. */
+export function temaDinCookie(valoare: string | undefined): Tema {
+  return valoare === "dark" ? "dark" : "light";
+}
 
 export function citesteTema(): Tema {
   if (typeof document === "undefined") return "light";
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
+/**
+ * Salveaza tema intr-un cookie (nu in localStorage) ca sa o poata citi si
+ * layout-ul de pe server — asa clasa .dark ajunge in HTML-ul initial si nu mai
+ * avem nevoie de un script inline in <head> care sa o puna inainte de paint.
+ */
 export function aplicaTema(tema: Tema) {
   document.documentElement.classList.toggle("dark", tema === "dark");
-  try {
-    localStorage.setItem(TEMA_STORAGE_KEY, tema);
-  } catch {
-    // localStorage poate fi indisponibil (mod privat) — tema tot se aplica pentru sesiunea curenta.
-  }
+  document.cookie = `${TEMA_COOKIE}=${tema}; path=/; max-age=${UN_AN_IN_SECUNDE}; samesite=lax`;
 }

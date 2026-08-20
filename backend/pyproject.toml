@@ -20,6 +20,14 @@ dependencies = [
   "scikit-learn>=1.5,<2",
   "supabase>=2.18,<3",
   "uvicorn[standard]>=0.35,<1",
+  # Extractia de text din atasamentele PDF (app/attachments/extraction.py).
+  "pypdf>=5.1,<6",
+  # Sursele RAG (app/rag/registry.py).
+  "PyYAML>=6.0,<7",
+  # Provider-ul OpenAI-compatible pentru Azure AI Foundry (app/providers/foundry.py).
+  "openai>=1.59,<2",
+  # Numaratoarea de tokeni pentru telemetrie (app/telemetry/metrics.py).
+  "tiktoken>=0.8,<1",
 
   # Verificarea de identitate la inregistrare: OCR pe buletin + potrivire de fete.
   # tf-keras e ceruta explicit de deepface pe TensorFlow 2.16+, unde Keras 3 nu

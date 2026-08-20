@@ -37,7 +37,7 @@ def fold_messages_into_summary(existing_summary: str, new_messages: list[Message
     return combined[-max_chars:]
 
 
-def compress_conversation(
+async def compress_conversation(
     conversation_id: str,
     user_id: str,
     watermark: int,
@@ -46,18 +46,18 @@ def compress_conversation(
     summary_repository: SummaryRepository,
     window: int = RECENT_WINDOW,
 ) -> None:
-    total = message_repository.count(conversation_id)
+    total = await message_repository.count(conversation_id)
     fold_end = total - window
 
     if fold_end <= watermark:
         return
 
-    new_messages = message_repository.range(conversation_id, watermark + 1, fold_end)
+    new_messages = await message_repository.range(conversation_id, watermark + 1, fold_end)
     if not new_messages:
         return
 
-    current_summary = summary_repository.get(conversation_id)
+    current_summary = await summary_repository.get(conversation_id)
     updated_text = fold_messages_into_summary(current_summary.text, new_messages)
 
-    summary_repository.upsert(conversation_id, user_id, updated_text, fold_end)
-    conversation_repository.update_watermark(conversation_id, fold_end)
+    await summary_repository.upsert(conversation_id, user_id, updated_text, fold_end)
+    await conversation_repository.update_watermark(conversation_id, fold_end)

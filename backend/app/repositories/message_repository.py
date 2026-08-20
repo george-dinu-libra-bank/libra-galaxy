@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from anyio import to_thread
 from supabase import Client
 
 from app.core.errors import PersistenceError
@@ -21,12 +22,15 @@ class Message:
 
 
 class MessageRepository:
-    """Singurul strat care citeste/scrie ai_messages. Secventa e alocata aici, monoton crescatoare per conversatie."""
+    """Singurul strat care citeste/scrie ai_messages. Secventa e alocata aici, monoton crescatoare per conversatie.
+
+    Fiecare metoda ruleaza apelul sincron supabase-py pe un thread separat
+    (to_thread.run_sync), ca sa nu blocheze bucla de evenimente asyncio."""
 
     def __init__(self, client: Client) -> None:
         self._client = client
 
-    def append(
+    async def append(
         self,
         conversation_id: str,
         user_id: str,
@@ -36,77 +40,94 @@ class MessageRepository:
         confidence: str | None = None,
         channel: str = "text",
     ) -> Message:
-        next_sequence = self._next_sequence(conversation_id)
-        result = (
-            self._client.table("ai_messages")
-            .insert(
-                {
-                    "id_conversation": conversation_id,
-                    "id_user": user_id,
-                    "secventa": next_sequence,
-                    "rol": role,
-                    "continut": text,
-                    "citari": citations or [],
-                    "nivel_incredere": confidence,
-                    "canal": channel,
-                }
+        next_sequence = await self._next_sequence(conversation_id)
+
+        def interogare():
+            return (
+                self._client.table("ai_messages")
+                .insert(
+                    {
+                        "id_conversation": conversation_id,
+                        "id_user": user_id,
+                        "secventa": next_sequence,
+                        "rol": role,
+                        "continut": text,
+                        "citari": citations or [],
+                        "nivel_incredere": confidence,
+                        "canal": channel,
+                    }
+                )
+                .execute()
             )
-            .execute()
-        )
+
+        result = await to_thread.run_sync(interogare)
         if not result.data:
             raise PersistenceError("Nu am putut salva mesajul.")
         return self._to_message(result.data[0])
 
-    def count(self, conversation_id: str) -> int:
-        result = (
-            self._client.table("ai_messages")
-            .select("secventa")
-            .eq("id_conversation", conversation_id)
-            .order("secventa", desc=True)
-            .limit(1)
-            .execute()
-        )
+    async def count(self, conversation_id: str) -> int:
+        def interogare():
+            return (
+                self._client.table("ai_messages")
+                .select("secventa")
+                .eq("id_conversation", conversation_id)
+                .order("secventa", desc=True)
+                .limit(1)
+                .execute()
+            )
+
+        result = await to_thread.run_sync(interogare)
         return result.data[0]["secventa"] if result.data else 0
 
-    def recent_window(self, conversation_id: str, window: int) -> list[Message]:
-        result = (
-            self._client.table("ai_messages")
-            .select("*")
-            .eq("id_conversation", conversation_id)
-            .order("secventa", desc=True)
-            .limit(window)
-            .execute()
-        )
+    async def recent_window(self, conversation_id: str, window: int) -> list[Message]:
+        def interogare():
+            return (
+                self._client.table("ai_messages")
+                .select("*")
+                .eq("id_conversation", conversation_id)
+                .order("secventa", desc=True)
+                .limit(window)
+                .execute()
+            )
+
+        result = await to_thread.run_sync(interogare)
         rows = list(reversed(result.data or []))
         return [self._to_message(row) for row in rows]
 
-    def range(self, conversation_id: str, start_sequence: int, end_sequence: int) -> list[Message]:
+    async def range(self, conversation_id: str, start_sequence: int, end_sequence: int) -> list[Message]:
         if start_sequence > end_sequence:
             return []
-        result = (
-            self._client.table("ai_messages")
-            .select("*")
-            .eq("id_conversation", conversation_id)
-            .gte("secventa", start_sequence)
-            .lte("secventa", end_sequence)
-            .order("secventa")
-            .execute()
-        )
+
+        def interogare():
+            return (
+                self._client.table("ai_messages")
+                .select("*")
+                .eq("id_conversation", conversation_id)
+                .gte("secventa", start_sequence)
+                .lte("secventa", end_sequence)
+                .order("secventa")
+                .execute()
+            )
+
+        result = await to_thread.run_sync(interogare)
         return [self._to_message(row) for row in (result.data or [])]
 
-    def list_for_conversation(self, conversation_id: str, limit: int = 200) -> list[Message]:
-        result = (
-            self._client.table("ai_messages")
-            .select("*")
-            .eq("id_conversation", conversation_id)
-            .order("secventa")
-            .limit(limit)
-            .execute()
-        )
+    async def list_for_conversation(self, conversation_id: str, limit: int = 200) -> list[Message]:
+        def interogare():
+            return (
+                self._client.table("ai_messages")
+                .select("*")
+                .eq("id_conversation", conversation_id)
+                .order("secventa")
+                .limit(limit)
+                .execute()
+            )
+
+        result = await to_thread.run_sync(interogare)
         return [self._to_message(row) for row in (result.data or [])]
 
-    def _next_sequence(self, conversation_id: str) -> int:
-        return self.count(conversation_id) + 1
+    async def _next_sequence(self, conversation_id: str) -> int:
+        return await self.count(conversation_id) + 1
 
     @staticmethod
     def _to_message(row: dict) -> Message:
