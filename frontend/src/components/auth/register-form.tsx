@@ -17,6 +17,8 @@ import {
   validTelefon,
 } from "@/lib/validare";
 import { cn } from "@/lib/utils";
+import { BuletinCapture } from "./buletin-capture";
+import { SelfieCapture } from "./selfie-capture";
 import { DeCeCnpDrawer, TermeniDrawer } from "./info-drawere";
 
 type Campuri = {
@@ -39,7 +41,13 @@ const VALIDATORI: Record<keyof Campuri, (v: string) => string | null> = {
 
 const ETICHETE_PUTERE = ["Prea slaba", "Slaba", "Acceptabila", "Buna", "Puternica"];
 
+type Pas = "buletin" | "selfie" | "date";
+
 export function RegisterForm() {
+  const [pas, setPas] = useState<Pas>("buletin");
+  const [pozaBuletin, setPozaBuletin] = useState<File | null>(null);
+  const [pozaSelfie, setPozaSelfie] = useState<File | null>(null);
+
   const [valori, setValori] = useState<Campuri>(INITIAL);
   const [erori, setErori] = useState<Partial<Record<keyof Campuri, string | null>>>({});
   const [atinse, setAtinse] = useState<Partial<Record<keyof Campuri, boolean>>>({});
@@ -63,6 +71,17 @@ export function RegisterForm() {
     setErori((p) => ({ ...p, [camp]: VALIDATORI[camp](valori[camp]) }));
   }
 
+  function laFinalizareBuletin(fisier: File, cnp: string) {
+    setPozaBuletin(fisier);
+    setValori((p) => ({ ...p, cnp }));
+    setPas("selfie");
+  }
+
+  function laFinalizareSelfie(fisier: File) {
+    setPozaSelfie(fisier);
+    setPas("date");
+  }
+
   function trimite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setEroareGlobala(null);
@@ -80,13 +99,22 @@ export function RegisterForm() {
     const eroareTermeni = acord ? null : "Trebuie sa accepti termenii si conditiile.";
     setEroareAcord(eroareTermeni);
 
+    if (!pozaBuletin || !pozaSelfie) {
+      setEroareGlobala("Lipseste poza buletinului sau selfie-ul.");
+      return;
+    }
+
     if (Object.values(eroriNoi).some(Boolean) || eroareTermeni) {
       setEroareGlobala("Mai sunt campuri de corectat.");
       return;
     }
 
     startTransition(async () => {
-      const rezultat = await inregistreaza(valori);
+      const rezultat = await inregistreaza({
+        ...valori,
+        buletin: pozaBuletin,
+        selfie: pozaSelfie,
+      });
 
       if (rezultat?.eroare) setEroareGlobala(rezultat.eroare);
       if (rezultat?.mesaj) setMesaj(rezultat.mesaj);
@@ -108,6 +136,14 @@ export function RegisterForm() {
         </Link>
       </div>
     );
+  }
+
+  if (pas === "buletin") {
+    return <BuletinCapture onFinalizat={laFinalizareBuletin} />;
+  }
+
+  if (pas === "selfie") {
+    return <SelfieCapture onFinalizat={laFinalizareSelfie} />;
   }
 
   return (
@@ -143,6 +179,7 @@ export function RegisterForm() {
             onBlur={() => laBlur("cnp")}
             eroare={erori.cnp}
             validat={Boolean(atinse.cnp && !erori.cnp && valori.cnp)}
+            ajutor="Citit automat din poza buletinului — verifica sa fie corect."
           />
           <div className="mt-1.5">
             <DeCeCnpDrawer />

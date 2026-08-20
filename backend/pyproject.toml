@@ -20,6 +20,20 @@ dependencies = [
   "scikit-learn>=1.5,<2",
   "supabase>=2.18,<3",
   "uvicorn[standard]>=0.35,<1",
+
+  # Verificarea identitatii la inregistrare.
+  # Tokenul se valideaza cu cheia publica a proiectului (JWKS), nu cu un secret.
+  "pyjwt>=2.10,<3",
+  # Upload-ul de poze vine ca multipart/form-data.
+  "python-multipart>=0.0.20,<0.1",
+  "pillow>=11,<12",
+  "pytesseract>=0.3.13,<0.4",
+  # DeepFace trage TensorFlow dupa el (sute de MB). E importat lene in
+  # app/infrastructure/face_match.py, deci restul aplicatiei porneste si fara
+  # el instalat; numai comparatia de fete il cere.
+  "deepface>=0.0.93,<0.1",
+  "tf-keras>=2.18,<3",
+  "opencv-python-headless>=4.10,<5",
 ]
 
 [project.optional-dependencies]

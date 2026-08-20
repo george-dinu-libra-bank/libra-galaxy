@@ -10,7 +10,12 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import UserContext, get_current_user, get_user_supabase
+from app.api.dependencies import (
+    UserContext,
+    get_admin_supabase,
+    get_current_user,
+    get_user_supabase,
+)
 from app.infrastructure.config import Settings, get_settings
 from app.main import app
 
@@ -61,7 +66,7 @@ class _Urma(_Interogare):
 
 
 class _ClientFals:
-    def __init__(self, rol: str = "administrator", tranzactii: list[dict] | None = None) -> None:
+    def __init__(self, rol: str = "admin", tranzactii: list[dict] | None = None) -> None:
         self._rol = rol
         self._tranzactii = tranzactii or []
         self.inserari: list[dict] = []
@@ -85,6 +90,11 @@ class _ClientFals:
             return _Interogare(self._tranzactii)
         if nume == "acces_administrator":
             return _Urma(self.inserari)
+        if nume == "user_roles":
+            # Verificarea de rol trece prin clientul privilegiat, nu prin RLS.
+            return _Interogare(
+                [{"role": self._rol}] if self._rol == "admin" else []
+            )
         return _Interogare([])
 
 
@@ -103,6 +113,7 @@ def _plata(zile_in_urma: float, suma: float, descriere: str) -> dict:
 def _cu_client(client: _ClientFals) -> None:
     app.dependency_overrides[get_current_user] = lambda: ADMIN
     app.dependency_overrides[get_user_supabase] = lambda: client
+    app.dependency_overrides[get_admin_supabase] = lambda: client
     app.dependency_overrides[get_settings] = lambda: Settings(
         supabase_url="http://supabase.invalid", supabase_anon_key="test-anon-key"
     )
@@ -117,7 +128,7 @@ def test_zona_de_administrator_cere_autentificare() -> None:
 
 
 def test_un_client_obisnuit_primeste_403() -> None:
-    _cu_client(_ClientFals(rol="client"))
+    _cu_client(_ClientFals(rol="user"))
     try:
         raspuns = TestClient(app).get("/api/v1/admin/conturi-semnalate")
     finally:

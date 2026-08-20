@@ -1,9 +1,14 @@
 __pycache__/
 .pytest_cache/
 .venv/
+venv/
 *.py[cod]
+*.pyc
 .env
 *.egg-info/
+
+# Greutatile modelelor DeepFace, descarcate la prima folosire.
+.deepface/
 
 # Artefact antrenat, se regenereaza cu python -m app.ml.antrenare
 app/ml/model.joblib
