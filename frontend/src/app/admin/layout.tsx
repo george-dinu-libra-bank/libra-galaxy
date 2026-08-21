@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ShieldCheck } from "lucide-react";
 import { NavAdmin } from "@/components/admin/nav-admin";
+import { Logo } from "@/components/ui/logo";
 import { cereAdmin } from "@/lib/admin";
 
 export const metadata: Metadata = {
@@ -25,7 +26,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   return (
     <div className="min-h-dvh bg-bg">
       <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-4">
+        <div className="mx-auto grid w-full max-w-5xl grid-cols-[1fr_auto_1fr] items-center gap-3 px-6 py-4">
           <Link href="/admin" className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-600 text-white">
               <ShieldCheck size={18} strokeWidth={1.75} aria-hidden />
@@ -38,7 +39,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
             </span>
           </Link>
 
-          <div className="flex items-center gap-4">
+          <Logo size={40} className="justify-self-center" />
+
+          <div className="flex items-center justify-end gap-4">
             <span className="hidden text-[13px] text-ink-faint sm:block">{admin.email}</span>
             <Link
               href="/dashboard"
