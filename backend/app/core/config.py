@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     attachments_bucket: str = Field(default="asistent-atasamente", alias="LIBRA_ATTACHMENTS_BUCKET")
     max_attachment_bytes: int = Field(default=10 * 1024 * 1024, alias="LIBRA_MAX_ATTACHMENT_BYTES")
 
+    # Exporturi PDF generate de aplicatie (nu incarcate de utilizator) — bucket
+    # privat separat, fiindca whitelist-ul/RLS-ul de mai sus e gandit pentru input.
+    export_bucket: str = Field(default="asistent-exporturi", alias="LIBRA_EXPORT_BUCKET")
+    export_signed_url_seconds: int = Field(default=900, alias="LIBRA_EXPORT_URL_SECONDS")
+
     # Explicit, nu dedus din adancimea fisierului (fragil intre local si Docker).
     # Local: repo_root/galaxy-bank-knowledge. In container: vezi docker-compose.yml,
     # unde folderul e montat direct la /galaxy-bank-knowledge.

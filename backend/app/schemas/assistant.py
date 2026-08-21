@@ -15,6 +15,12 @@ class CitationOut(BaseModel):
     score: float
 
 
+class GeneratedFileOut(BaseModel):
+    url: str
+    filename: str
+    kind: str = "pdf"
+
+
 class SendMessageResponse(BaseModel):
     conversation_id: str
     message_id: str
@@ -22,6 +28,7 @@ class SendMessageResponse(BaseModel):
     citations: list[CitationOut]
     confidence: str | None = None
     agent_id: str
+    file: GeneratedFileOut | None = None
 
 
 class VoiceMessageResponse(SendMessageResponse):
@@ -42,6 +49,7 @@ class MessageOut(BaseModel):
     confidence: str | None = None
     channel: str
     created_at: str
+    file: GeneratedFileOut | None = None
 
 
 class AgentCapabilityOut(BaseModel):

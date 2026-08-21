@@ -31,6 +31,7 @@ from app.attachments.service import AttachmentService
 from app.services.credit_service import CreditService
 from app.core.config import Settings, get_settings
 from app.infrastructure.attachment_storage import AttachmentStorage
+from app.infrastructure.export_storage import ExportStorage
 from app.infrastructure.supabase import create_auth_client, create_user_client
 from app.infrastructure.supabase_client import get_service_client
 from app.ml.neregularitati import DetectorNeregularitati
@@ -49,6 +50,7 @@ from app.repositories.memory_repository import MemoryRepository
 from app.repositories.message_repository import MessageRepository
 from app.repositories.summary_repository import SummaryRepository
 from app.repositories.telemetry_repository import TelemetryRepository
+from app.services.transaction_export_service import TransactionExportService
 from app.tools.banking_tools import build_banking_tools
 from app.tools.knowledge_tools import build_knowledge_tools
 from app.tools.registry import ToolRegistry
@@ -70,6 +72,8 @@ def get_orchestrator() -> Orchestrator:
     embedding_cache = EmbeddingCacheRepository(client)
     attachments = AttachmentRepository(client)
     attachment_storage = AttachmentStorage(client, settings.attachments_bucket)
+    export_storage = ExportStorage(client, settings.export_bucket)
+    export_service = TransactionExportService(banking, export_storage, settings.export_signed_url_seconds)
 
     chat_provider = MicrosoftFoundryChatProvider(settings)
     embedding_provider = MicrosoftFoundryEmbeddingProvider(settings)
@@ -91,6 +95,7 @@ def get_orchestrator() -> Orchestrator:
         tool_registry=tools, agents=agents, router=AgentRouter(),
         chat_provider=chat_provider, environment=settings.environment,
         chat_price_in=settings.chat_price_per_million_input, chat_price_out=settings.chat_price_per_million_output,
+        export_service=export_service,
     )
 
 
@@ -125,6 +130,17 @@ def get_attachment_service() -> AttachmentService:
     client = get_service_client()
     storage = AttachmentStorage(client, settings.attachments_bucket)
     return AttachmentService(storage, AttachmentRepository(client), settings.max_attachment_bytes)
+
+
+@lru_cache
+def get_attachment_repository() -> AttachmentRepository:
+    return AttachmentRepository(get_service_client())
+
+
+@lru_cache
+def get_export_storage() -> ExportStorage:
+    settings = get_settings()
+    return ExportStorage(get_service_client(), settings.export_bucket)
 
 
 def get_voice_provider() -> MicrosoftVoiceProvider:

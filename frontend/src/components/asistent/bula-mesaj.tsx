@@ -1,6 +1,6 @@
-import { Mic } from "lucide-react";
+import { FileDown, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { NivelIncredere } from "@/lib/data/asistent";
+import type { FisierGenerat, NivelIncredere } from "@/lib/data/asistent";
 
 function ora(data: string) {
   return new Date(data).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" });
@@ -18,12 +18,14 @@ export function BulaMesaj({
   nivelIncredere,
   canal,
   creatLa,
+  fisierGenerat,
 }: {
   rol: "user" | "assistant";
   text: string;
   nivelIncredere: NivelIncredere;
   canal: "text" | "voce";
   creatLa: string;
+  fisierGenerat?: FisierGenerat | null;
 }) {
   const alMeu = rol === "user";
   const incredere = nivelIncredere ? STIL_INCREDERE[nivelIncredere] : null;
@@ -48,6 +50,18 @@ export function BulaMesaj({
           {ora(creatLa)}
         </div>
       </div>
+
+      {!alMeu && fisierGenerat ? (
+        <a
+          href={fisierGenerat.url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-2.5 py-1 text-[11px] font-medium text-primary-700 shadow-sm hover:bg-primary-100"
+        >
+          <FileDown size={12} strokeWidth={1.75} aria-hidden />
+          Descarcă PDF
+        </a>
+      ) : null}
 
       {!alMeu && incredere ? (
         <span

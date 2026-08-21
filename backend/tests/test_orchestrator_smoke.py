@@ -27,6 +27,7 @@ from app.repositories.conversation_repository import Conversation
 from app.repositories.memory_repository import UserMemory
 from app.repositories.message_repository import Message
 from app.repositories.summary_repository import ConversationSummary
+from app.services.transaction_export_service import GeneratedExport
 from app.tools.registry import ToolRegistry
 
 UTILIZATOR = Principal(user_id=str(uuid4()), role="customer", permissions={"assistant:use"})
@@ -119,10 +120,25 @@ class AttachmentsFalse:
     async def attach_to_message(self, attachment_ids, message_id) -> None:
         pass
 
+    async def create(self, **kwargs):
+        pass
+
 
 class AttachmentStorageFalse:
     async def download(self, path: str) -> bytes:
         raise AssertionError("nu ar trebui apelat fara atasamente")
+
+
+@dataclass
+class ExportServiceFalse:
+    apelat: int = 0
+
+    async def generate_transactions_pdf(self, principal):
+        self.apelat += 1
+        return GeneratedExport(
+            url="https://exemplu.test/semnat.pdf", filename="extras.pdf",
+            storage_path=f"{principal.user_id}/extras.pdf", size_bytes=123,
+        )
 
 
 class ChatProviderFals:
@@ -142,7 +158,11 @@ class AgentFals:
         return AgentAnswer(text=self._text, confidence=None, tokens_in=0, tokens_out=0)
 
 
-def _construieste_orchestrator(memories: MemoriesFalse | None = None, agents: dict | None = None) -> Orchestrator:
+def _construieste_orchestrator(
+    memories: MemoriesFalse | None = None,
+    agents: dict | None = None,
+    export_service: ExportServiceFalse | None = None,
+) -> Orchestrator:
     return Orchestrator(
         conversations=ConversationsFalse(),
         messages=MessagesFalse(),
@@ -158,6 +178,7 @@ def _construieste_orchestrator(memories: MemoriesFalse | None = None, agents: di
         environment="test",
         chat_price_in=0.0,
         chat_price_out=0.0,
+        export_service=export_service or ExportServiceFalse(),
     )
 
 
@@ -251,3 +272,32 @@ async def test_empty_completion_gets_a_fallback_message_not_a_blank_bubble() -> 
 
     assert result.text.strip()
     assert result.text != "   "
+
+
+@pytest.mark.anyio
+async def test_export_request_never_reaches_any_agent() -> None:
+    """O cerere de export trebuie sa se scurtcircuiteze determinist catre
+    TransactionExportService (orchestrator.py::_handle_export_request) —
+    niciun agent, deci niciun LLM, nu vede vreodata cererea. Asta e fix-ul
+    real pentru halucinatia de formate/campuri inventate raportata live,
+    nu doar hardening de prompt."""
+    agent = AgentFals()
+    chemat = False
+
+    async def spy(*args, **kwargs):
+        nonlocal chemat
+        chemat = True
+        return AgentAnswer(text="nu ar trebui sa se ajunga aici", confidence=None)
+
+    agent.respond = spy
+    export_service = ExportServiceFalse()
+    orchestrator = _construieste_orchestrator(agents={"document_intelligence": agent}, export_service=export_service)
+
+    result = await orchestrator.handle_message(UTILIZATOR, None, "Exporta-mi tranzactiile intr-un fisier")
+
+    assert chemat is False
+    assert export_service.apelat == 1
+    assert result.agent_id == "transaction_export"
+    assert result.generated_file is not None
+    assert result.generated_file.url == "https://exemplu.test/semnat.pdf"
+    assert result.generated_file.filename == "extras.pdf"

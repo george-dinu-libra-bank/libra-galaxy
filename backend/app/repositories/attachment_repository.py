@@ -18,6 +18,8 @@ class Attachment:
     content_type: str
     size_bytes: int
     extracted_text: str | None
+    direction: str = "intrare"
+    message_id: str | None = None
 
 
 class AttachmentRepository:
@@ -32,7 +34,7 @@ class AttachmentRepository:
 
     async def create(
         self, *, user_id: str, kind: str, filename: str, storage_path: str, content_type: str,
-        size_bytes: int, extracted_text: str | None,
+        size_bytes: int, extracted_text: str | None, direction: str = "intrare", message_id: str | None = None,
     ) -> Attachment:
         def interogare():
             return (
@@ -46,6 +48,8 @@ class AttachmentRepository:
                         "content_type": content_type,
                         "marime_octeti": size_bytes,
                         "text_extras": extracted_text,
+                        "directie": direction,
+                        "id_message": message_id,
                     }
                 )
                 .execute()
@@ -55,6 +59,24 @@ class AttachmentRepository:
         if not result.data:
             raise PersistenceError("Nu am putut salva atasamentul.")
         return self._to_attachment(result.data[0])
+
+    async def list_generated_for_messages(self, message_ids: list[str]) -> list[Attachment]:
+        """Fisierele generate ('iesire') legate de un set de mesaje — pentru list_messages,
+        care remintuieste URL-uri semnate proaspete la fiecare citire (nu se persista URL-ul)."""
+        if not message_ids:
+            return []
+
+        def interogare():
+            return (
+                self._client.table("ai_message_attachments")
+                .select("*")
+                .eq("directie", "iesire")
+                .in_("id_message", message_ids)
+                .execute()
+            )
+
+        result = await to_thread.run_sync(interogare)
+        return [self._to_attachment(row) for row in (result.data or [])]
 
     async def get_owned_many(self, user_id: str, attachment_ids: list[str]) -> list[Attachment]:
         if not attachment_ids:
@@ -92,4 +114,5 @@ class AttachmentRepository:
             id=row["id"], user_id=row["id_user"], kind=row["tip"], filename=row["nume_fisier"],
             storage_path=row["storage_path"], content_type=row["content_type"], size_bytes=row["marime_octeti"],
             extracted_text=row.get("text_extras"),
+            direction=row.get("directie", "intrare"), message_id=row.get("id_message"),
         )

@@ -13,6 +13,11 @@ export type Citare = {
 /** Afisat in loc de sursa exacta — vezi agents/base.py:confidence_from_tool_results. */
 export type NivelIncredere = "ridicat" | "mediu" | "scazut" | null;
 
+export type FisierGenerat = {
+  url: string;
+  nume: string;
+};
+
 export type MesajAsistent = {
   id: string;
   rol: "user" | "assistant";
@@ -21,6 +26,7 @@ export type MesajAsistent = {
   nivelIncredere: NivelIncredere;
   canal: "text" | "voce";
   creatLa: string;
+  fisierGenerat: FisierGenerat | null;
 };
 
 export type ConversatieAsistent = {
@@ -51,6 +57,7 @@ export async function obtineMesaje(idConversatie: string): Promise<MesajAsistent
       confidence: NivelIncredere;
       channel: "text" | "voce";
       created_at: string;
+      file: { url: string; filename: string; kind: string } | null;
     }[]
   >(`/assistant/conversations/${idConversatie}/messages`);
 
@@ -62,5 +69,6 @@ export async function obtineMesaje(idConversatie: string): Promise<MesajAsistent
     nivelIncredere: m.confidence,
     canal: m.channel,
     creatLa: m.created_at,
+    fisierGenerat: m.file ? { url: m.file.url, nume: m.file.filename } : null,
   }));
 }

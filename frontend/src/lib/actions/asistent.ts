@@ -1,6 +1,6 @@
 "use server";
 
-import { apelBackend, type Citare, type NivelIncredere } from "@/lib/data/asistent";
+import { apelBackend, type Citare, type FisierGenerat, type NivelIncredere } from "@/lib/data/asistent";
 
 export type RezultatMesaj = {
   conversatieId: string;
@@ -9,6 +9,7 @@ export type RezultatMesaj = {
   citari: Citare[];
   nivelIncredere: NivelIncredere;
   agentId: string;
+  fisierGenerat?: FisierGenerat | null;
   audioBase64?: string;
   eroare?: string;
 };
@@ -51,6 +52,7 @@ export async function trimiteMesaj(
     citations: { document_id: string; section: string | null; score: number }[];
     confidence: NivelIncredere;
     agent_id: string;
+    file: { url: string; filename: string; kind: string } | null;
   }>("/assistant/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -71,6 +73,7 @@ export async function trimiteMesaj(
     citari: date.citations.map(laCitare),
     nivelIncredere: date.confidence,
     agentId: date.agent_id,
+    fisierGenerat: date.file ? { url: date.file.url, nume: date.file.filename } : null,
   };
 }
 

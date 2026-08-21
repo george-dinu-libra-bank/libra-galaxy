@@ -33,6 +33,7 @@ from app.repositories.memory_repository import MemoryRepository
 from app.repositories.message_repository import MessageRepository
 from app.repositories.summary_repository import SummaryRepository
 from app.repositories.telemetry_repository import TelemetryRepository
+from app.services.transaction_export_service import TransactionExportService
 from app.telemetry.metrics import estimate_chat_cost
 from app.tools.base import SelectedTool, ToolResult
 from app.tools.executor import execute_tools
@@ -47,6 +48,16 @@ _EMPTY_ANSWER_FALLBACK_RO = (
     "sau încearcă din nou în câteva momente."
 )
 
+_EXPORT_REPLY_RO = "Am generat extrasul cu tranzacțiile tale. Îl poți descărca mai jos."
+_EXPORT_REPLY_EN = "I generated your transactions statement. You can download it below."
+
+
+@dataclass(frozen=True)
+class GeneratedFileResult:
+    url: str
+    filename: str
+    kind: str = "pdf"
+
 
 @dataclass(frozen=True)
 class OrchestratorResult:
@@ -56,6 +67,7 @@ class OrchestratorResult:
     citations: list[dict]
     confidence: str | None
     agent_id: str
+    generated_file: GeneratedFileResult | None = None
 
 
 def _derive_title(user_text: str) -> str:
@@ -104,6 +116,7 @@ class Orchestrator:
         environment: str,
         chat_price_in: float,
         chat_price_out: float,
+        export_service: TransactionExportService,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
@@ -119,6 +132,7 @@ class Orchestrator:
         self._environment = environment
         self._chat_price_in = chat_price_in
         self._chat_price_out = chat_price_out
+        self._export_service = export_service
 
     async def handle_message(
         self,
@@ -146,13 +160,16 @@ class Orchestrator:
                 principal, conversation.id, guardrail_hit, channel, started
             )
 
+        intent = classify_intent(user_text)
+        if intent == "export_request":
+            return await self._handle_export_request(principal, conversation.id, channel, started)
+
         await self._remember(principal.user_id, user_text)
         recent = await self._messages.recent_window(conversation.id, RECENT_WINDOW)
         attachment_contexts = await self._resolve_attachments(
             principal.user_id, attachment_ids or [], user_message.id
         )
 
-        intent = classify_intent(user_text)
         risk = classify_risk(intent)
         agent_id = self._select_agent_id(intent, recent)
         agent = self._agents[agent_id]
@@ -244,6 +261,43 @@ class Orchestrator:
         return OrchestratorResult(
             conversation_id=conversation_id, message_id=assistant_message.id, text=hit.refusal_text,
             citations=[], confidence=None, agent_id="input_guardrail",
+        )
+
+    async def _handle_export_request(
+        self, principal: Principal, conversation_id: str, channel: str, started: float
+    ) -> OrchestratorResult:
+        """Scurtcircuit determinist: o cerere de export nu ajunge la niciun agent
+        sau LLM — textul e fix, iar fisierul vine dintr-un serviciu tipizat
+        (services/transaction_export_service.py), niciodata din text generat de
+        model (CLAUDE.md #9, #25). Elimina complet halucinatia de formate/campuri
+        inventate, nu doar o reduce prin prompt."""
+        export = await self._export_service.generate_transactions_pdf(principal)
+        reply_text = redact(_EXPORT_REPLY_RO if principal.locale == "ro" else _EXPORT_REPLY_EN)
+
+        assistant_message = await self._messages.append(
+            conversation_id, principal.user_id, "assistant", reply_text, channel=channel
+        )
+        await self._attachments.create(
+            user_id=principal.user_id, kind="pdf", filename=export.filename,
+            storage_path=export.storage_path, content_type="application/pdf",
+            size_bytes=export.size_bytes, extracted_text=None, direction="iesire", message_id=assistant_message.id,
+        )
+
+        run_id = await self._telemetry.record_run(
+            user_id=principal.user_id, conversation_id=conversation_id, agent_id="transaction_export",
+            intent="export_request", risk_level="low", prompt_version="n/a",
+            deployment=self._chat_provider.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
+            tool_count=1, retrieved_chunks=0, context_chars=0, success=True, error_code=None,
+        )
+        await self._telemetry.record_tool_invocation(
+            run_id=run_id, tool_name="generate_transactions_pdf", success=True,
+            duration_ms=int((time.perf_counter() - started) * 1000), reason="export_request",
+        )
+
+        return OrchestratorResult(
+            conversation_id=conversation_id, message_id=assistant_message.id, text=reply_text,
+            citations=[], confidence=None, agent_id="transaction_export",
+            generated_file=GeneratedFileResult(url=export.url, filename=export.filename, kind="pdf"),
         )
 
     async def _resolve_attachments(

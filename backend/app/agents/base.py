@@ -78,6 +78,10 @@ def build_system_prompt(spec: AgentSpec, context: AssembledContext) -> str:
         f"'sursa:'/'conform datelor din'/'get_...' — utilizatorul vede doar continutul, "
         f"niciodata mecanismul intern prin care a fost obtinut (nivelul de incredere e "
         f"calculat separat, determinist, nu de tine).\n"
+        f"Nu inventezi functionalitati, formate de fisier sau optiuni de ales (CSV/XLSX/JSON etc.) "
+        f"pe care aplicatia nu le ofera cu adevarat, si nu mentionezi catre utilizator nume de "
+        f"campuri interne (id-uri, chei tehnice de tool-uri). Daca un tool nu acopera cererea, spui "
+        f"explicit ce nu poti afla — nu propui alternative imaginate.\n"
         f"{prohibited}\n\n{context.render()}"
     )
 

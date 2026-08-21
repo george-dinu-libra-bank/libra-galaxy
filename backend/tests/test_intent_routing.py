@@ -29,10 +29,24 @@ from app.orchestration.routing import AgentRouter
         ("What are the fees for a SEPA transfer?", "document_question"),
         ("Vreau sa fac verificare identitate", "kyc_workflow"),
         ("asdkjhasd random text fara sens", "unknown"),
+        ("Exporta-mi tranzactiile intr-un fisier", "export_request"),
+        ("Vreau sa descarc extrasul de cont", "export_request"),
+        ("Genereaza-mi un pdf cu tranzactiile", "export_request"),
+        ("Export my transactions please", "export_request"),
+        ("Download my transaction history", "export_request"),
+        ("I need an account statement", "export_request"),
     ],
 )
 def test_classify_intent(text, expected_intent):
     assert classify_intent(text) == expected_intent
+
+
+def test_export_request_wins_over_spending_analysis_stem():
+    # "tranzact" (spending_analysis) apare si aici, dar export_request e
+    # verificat inaintea lui — altfel o cerere de export ar cadea gresit pe
+    # spending_analysis si ar ajunge la LLM in loc sa se scurtcircuiteze
+    # determinist (orchestrator.py::_handle_export_request).
+    assert classify_intent("Exporta-mi tranzactiile din ultima luna") == "export_request"
 
 
 def test_diacritics_do_not_change_classification():

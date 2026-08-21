@@ -1,24 +1,30 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 
 from app.agents.specs import ALL_AGENT_SPECS
 from app.api.dependencies import (
+    get_attachment_repository,
     get_attachment_service,
     get_conversation_repository,
+    get_export_storage,
     get_message_repository,
     get_orchestrator,
     get_voice_provider,
 )
 from app.attachments.service import AttachmentService
+from app.core.config import Settings, get_settings
 from app.core.envelope import new_request_id, success
 from app.core.errors import ValidationError
 from app.core.security import Principal, get_principal
+from app.infrastructure.export_storage import ExportStorage
 from app.infrastructure.rate_limit import limiteaza
 from app.orchestration.orchestrator import Orchestrator
 from app.providers.voice import MicrosoftVoiceProvider
+from app.repositories.attachment_repository import AttachmentRepository
 from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.message_repository import MessageRepository
 from app.schemas.assistant import (
@@ -27,6 +33,7 @@ from app.schemas.assistant import (
     CapabilitiesResponse,
     CitationOut,
     ConversationOut,
+    GeneratedFileOut,
     MessageOut,
     SendMessageRequest,
     SendMessageResponse,
@@ -64,6 +71,8 @@ async def send_message(
         conversation_id=result.conversation_id, message_id=result.message_id, text=result.text,
         citations=[CitationOut(**citation) for citation in result.citations], confidence=result.confidence,
         agent_id=result.agent_id,
+        file=GeneratedFileOut(url=result.generated_file.url, filename=result.generated_file.filename,
+                               kind=result.generated_file.kind) if result.generated_file else None,
     )
     return success(response.model_dump(), request_id=_request_id(request))
 
@@ -140,15 +149,32 @@ async def list_messages(
     principal: Principal = Depends(get_principal),
     conversations: ConversationRepository = Depends(get_conversation_repository),
     messages: MessageRepository = Depends(get_message_repository),
+    attachments: AttachmentRepository = Depends(get_attachment_repository),
+    export_storage: ExportStorage = Depends(get_export_storage),
+    settings: Settings = Depends(get_settings),
 ):
     await conversations.get_owned(principal.user_id, conversation_id)  # ridica RESOURCE_NOT_FOUND daca nu e a lui
     rows = await messages.list_for_conversation(conversation_id)
+
+    # URL-ul semnat nu se persista (ar expira la o reincarcare mai tarzie) —
+    # se remintuieste proaspat la fiecare citire, exact tiparul
+    # identity_repository.url_semnat pentru pozele de buletin/selfie.
+    generated = await attachments.list_generated_for_messages([row.id for row in rows])
+    urls = await asyncio.gather(
+        *(export_storage.create_signed_url(record.storage_path, settings.export_signed_url_seconds)
+          for record in generated)
+    )
+    files_by_message = {
+        record.message_id: GeneratedFileOut(url=url, filename=record.filename, kind="pdf")
+        for record, url in zip(generated, urls)
+    }
 
     body = [
         MessageOut(
             id=row.id, role=row.role, text=row.text,
             citations=[CitationOut(**citation) for citation in row.citations],
             confidence=row.confidence, channel=row.channel, created_at=row.created_at,
+            file=files_by_message.get(row.id),
         ).model_dump()
         for row in rows
     ]

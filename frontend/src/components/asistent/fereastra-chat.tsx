@@ -185,6 +185,7 @@ export function FereastraChat({
               nivelIncredere={mesaj.nivelIncredere}
               canal={mesaj.canal}
               creatLa={mesaj.creatLa}
+              fisierGenerat={mesaj.fisierGenerat}
             />
           ))
         )}

@@ -6,6 +6,9 @@ from app.tools.base import RiskLevel
 
 _INTENT_RISK: dict[str, RiskLevel] = {
     "kyc_workflow": RiskLevel.MEDIUM,
+    # Explicit, desi ar fi oricum implicitul: export-ul e citire proprie,
+    # determinista (services/transaction_export_service.py), fara mutatie.
+    "export_request": RiskLevel.LOW,
 }
 
 

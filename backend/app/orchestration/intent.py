@@ -22,6 +22,21 @@ def _normalize(text: str) -> str:
 # Ordine: cele mai specifice intentii primele.
 _INTENT_PHRASES: list[tuple[str, tuple[str, ...]]] = [
     (
+        # Trebuie inaintea lui "spending_analysis": radacina "tranzact" de acolo
+        # ar prinde gresit "exporta-mi tranzactiile" ca simpla intrebare de
+        # cheltuieli, in loc sa declanseze scurtcircuitul determinist din
+        # orchestrator.py (_handle_export_request) — vezi orchestrator.py.
+        "export_request",
+        (
+            "exporta", "export ", "descarc", "download",  # "descarc" acopera descarca/descarcare/descarc-mi
+            "extras de cont", "genereaza-mi un pdf", "genereaza un pdf",
+            "fisier cu tranzact", "pdf cu tranzact", "document cu tranzact",
+            "trimite-mi un fisier", "vreau un fisier", "vreau un document",
+            "export transactions", "download my transactions", "export my transactions",
+            "account statement", "statement of my transactions",
+        ),
+    ),
+    (
         "what_if",
         ("ce-ar fi daca", "ce ar fi daca", "daca as economisi", "daca as pune", "what if", "if i save", "if i invest"),
     ),

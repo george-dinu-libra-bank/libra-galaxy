@@ -38,10 +38,14 @@ TRANSACTION_INTELLIGENCE = AgentSpec(
     agent_id="transaction_intelligence",
     purpose="Transforma tranzactiile brute in intelesuri structurate si explicabile.",
     responsibilities=("explica tipare de cheltuieli calculate determinist",),
-    prohibited=("sa calculeze el insusi totaluri de cheltuieli",),
+    prohibited=(
+        "sa calculeze el insusi totaluri de cheltuieli",
+        "sa inventeze formate de export (CSV/XLSX/JSON) sau optiuni de ales care nu exista",
+        "sa mentioneze catre utilizator nume de campuri interne (id-uri, chei tehnice de tool-uri)",
+    ),
     tool_names=frozenset({"get_accounts", "get_recent_transactions", "get_spending_summary"}),
     risk_ceiling=RiskLevel.LOW,
-    prompt_version="transactions-v0",
+    prompt_version="transactions-v1",
     intents=("spending_analysis",),
 )
 
