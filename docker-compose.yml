@@ -1,3 +1,11 @@
+# Singurul fisier compose al proiectului. Se cheama "docker-compose.yml", iar
+# scripturile il dau mereu explicit cu -f, ca sa nu conteze ce nume prefera Docker.
+#
+# Regula pentru "environment": doar chei cu valoare literala sau ${VAR:-default}.
+# NU folosi forma scurta "- NUME" (fara "="): daca variabila lipseste din mediu,
+# Compose o pune pe null si STERGE valoarea venita din env_file.
+name: libra-galaxy
+
 services:
   frontend:
     container_name: libra-frontend
@@ -16,13 +24,17 @@ services:
       # watch pe bind mount Windows are nevoie de polling
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
-      # Frontend-ul citeste NEXT_PUBLIC_SUPABASE_* (frontend/src/lib/env.ts) —
-      # aliasate aici peste cheile canonice din .env, ca valoarea sa nu fie
-      # duplicata in fisier. In compose, frontend-ul vorbeste cu backend-ul
-      # prin numele serviciului (DNS intern Docker), nu prin localhost.
+      # Frontend-ul citeste NEXT_PUBLIC_SUPABASE_* si BACKEND_INTERNAL_URL, un
+      # singur nume canonic (frontend/src/lib/env.ts) — aliasate aici peste
+      # cheile canonice din .env, ca valoarea sa nu fie duplicata in fisier.
+      # Interpolat cu fallback, nu literal: dev-local.ps1 suprascrie
+      # BACKEND_INTERNAL_URL cu host.docker.internal cand backend-ul ruleaza
+      # pe masina, nu in container — un literal fix ar ignora complet asta.
       - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-      - BACKEND_INTERNAL_URL=http://backend:8000
+      - BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL:-http://backend:8000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - backend
     stdin_open: true
@@ -42,5 +54,7 @@ services:
       - ./.env
     environment:
       - LIBRA_KNOWLEDGE_DIR=/galaxy-bank-knowledge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     stdin_open: true
     tty: true

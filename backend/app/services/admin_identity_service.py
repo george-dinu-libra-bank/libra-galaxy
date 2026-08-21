@@ -14,6 +14,8 @@ from app.schemas.identity import (
     ContNeinceput,
     DecizieResponse,
     ForteazaVerificareResponse,
+    ProfilAdmin,
+    RestabilireBiometrieResponse,
 )
 
 BUCKET_BULETIN = "buletine"
@@ -23,6 +25,11 @@ STATUS_DE_REVIZUIT = "pending_review"
 DECIZII_PERMISE = {"verified", "rejected"}
 
 
+# Erorile mostenesc din ierarhia app/core/errors.py, ca sa fie prinse de
+# handler-ul global din main.py si sa iasa in plicul standard. Branch-ul de unde
+# vine fisierul avea o a doua ierarhie proprie (ErrorAplicatie), disparuta la
+# unificarea backend-urilor; codul de status e acelasi, purtat acum de clasa in
+# loc de un parametru dat la fiecare ridicare.
 class CazNegasit(ResourceNotFoundError):
     def __init__(self) -> None:
         super().__init__("Cazul de verificare nu exista.")
@@ -148,3 +155,25 @@ def forteaza_verificare(id_user: str) -> ForteazaVerificareResponse:
         raise ContNegasit()
 
     return ForteazaVerificareResponse(id=str(rand["id"]), verification_status=rand["verification_status"])
+
+
+def toate_conturile(limita: int = 500) -> list[ProfilAdmin]:
+    randuri = depozit.listeaza_toate_profilurile(limita)
+    return [
+        ProfilAdmin(
+            id=str(r["id"]),
+            nume=r.get("nume", "necunoscut"),
+            email=r.get("email", ""),
+            verification_status=r.get("verification_status", "pending"),
+            creat_la=str(r["creat_la"]),
+        )
+        for r in randuri
+    ]
+
+
+def restabileste_biometrie(id_user: str, poza_path: str, id_administrator: str) -> RestabilireBiometrieResponse:
+    rand = depozit.restabileste_referinta_biometrica(id_user, poza_path, id_administrator)
+    if rand is None:
+        raise PersistenceError("Nu am putut salva referinta biometrica.")
+
+    return RestabilireBiometrieResponse(id=str(rand["id"]), verification_status=rand["status"])

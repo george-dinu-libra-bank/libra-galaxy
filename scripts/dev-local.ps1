@@ -19,7 +19,7 @@ if (-not (Test-Path $venv)) {
 
 # Frontend-ul ruleaza in container si trebuie sa iasa la backend-ul de pe host.
 $env:BACKEND_INTERNAL_URL = "http://host.docker.internal:8000"
-docker compose up --build -d --no-deps frontend
+docker compose -f "$PSScriptRoot/../docker-compose.yml" up --build -d --no-deps frontend
 if ($LASTEXITCODE -ne 0) { throw "Pornirea frontend-ului a esuat." }
 
 Write-Host ""

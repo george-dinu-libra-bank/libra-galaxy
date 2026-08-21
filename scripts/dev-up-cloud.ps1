@@ -32,16 +32,16 @@ Remove-Item Env:SUPABASE_INTERNAL_URL -ErrorAction SilentlyContinue
 
 # Supabase cloud nu are o adresa separata pentru containere (spre deosebire
 # de Supabase local, unde containerul iese prin host.docker.internal) —
-# SUPABASE_INTERNAL_URL trebuie sa fie acelasi URL public, altfel compose.yaml
-# ar cadea pe fallback-ul lui, gandit pentru Supabase local.
+# SUPABASE_INTERNAL_URL trebuie sa fie acelasi URL public, altfel
+# docker-compose.yml ar cadea pe fallback-ul lui, gandit pentru Supabase local.
 $env:SUPABASE_INTERNAL_URL = $valori["SUPABASE_URL"]
 
 Write-Host "Supabase: $($valori['SUPABASE_URL'])"
-docker compose up --build -d
+docker compose -f "$PSScriptRoot/../docker-compose.yml" up --build -d
 if ($LASTEXITCODE -ne 0) {
   throw "docker compose up a esuat (cod $LASTEXITCODE)."
 }
-docker compose ps
+docker compose -f "$PSScriptRoot/../docker-compose.yml" ps
 
 Write-Host "Frontend: http://localhost:3000"
 Write-Host "FastAPI docs: http://localhost:8000/docs"

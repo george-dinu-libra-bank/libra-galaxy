@@ -13,6 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
+import { IncarcaAdeverinta } from "@/components/credite/incarca-adeverinta";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -352,6 +353,10 @@ export function CerereWizard({
               ))}
             </ul>
           </details>
+        ) : null}
+
+        {decizie.cereDocument && idCerere ? (
+          <IncarcaAdeverinta idCerere={idCerere} />
         ) : null}
 
         {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}

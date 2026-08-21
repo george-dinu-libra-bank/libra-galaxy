@@ -32,4 +32,4 @@ if [ ! -f frontend/.env ]; then
 fi
 
 echo "Pornesc Libra Galaxy — frontend: http://localhost:3000, backend: http://localhost:8000"
-docker compose up --build "$@"
+docker compose -f docker-compose.yml up --build "$@"

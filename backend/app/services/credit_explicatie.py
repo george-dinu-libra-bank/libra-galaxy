@@ -72,11 +72,21 @@ def _indrumare(decizie: str, motive: list[dict]) -> str:
     return INCHEIERE.get(decizie, "")
 
 
+# Cand lipseste dovada de venit, sfatul generic („un coleg o verifica") e
+# adevarat dar inutil: omul n-are ce face cu el. Aici stie exact ce sa faca, si
+# de ce l-ar ajuta.
+INDRUMARE_DOCUMENT = (
+    "Ca să mergem mai departe avem nevoie de o dovadă a venitului. Încarcă o adeverință "
+    "de venit din aplicație — o citim automat, iar un coleg confirmă suma."
+)
+
+
 def explicatie_determinista(
     decizie: str,
     motive: list[dict],
     factori: list[dict],
     scor: int | None,
+    cere_document: bool = False,
 ) -> str:
     """Explicatia construita din datele deciziei, fara model de limbaj."""
     parti = [INTRO.get(decizie, "")]
@@ -97,7 +107,9 @@ def explicatie_determinista(
                 factor["explicatie"].rstrip(".").lower() for factor in _cele_mai_bune(factori)
             ) + ".")
 
-    parti.append(_indrumare(decizie, motive))
+    # Cererea de document bate indrumarea generica: e mai concreta si e singura
+    # pe care omul o poate urma imediat.
+    parti.append(INDRUMARE_DOCUMENT if cere_document else _indrumare(decizie, motive))
     return "\n\n".join(parte for parte in parti if parte)
 
 

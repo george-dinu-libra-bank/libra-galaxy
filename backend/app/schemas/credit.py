@@ -98,6 +98,7 @@ class DecizieResponse(BaseModel):
     rata_lunara: Decimal | None = None
     dae: Decimal | None = None
     oferta_expira_la: datetime | None = None
+    cere_document: bool = False
 
 
 class AcceptaRequest(BaseModel):
@@ -167,3 +168,80 @@ class RambursareResponse(BaseModel):
     sold_ramas: Decimal
     status: str
     sold_cont: Decimal
+
+
+class DecizieManualaRequest(BaseModel):
+    """Decizia unui om peste o cerere din zona gri."""
+
+    aproba: bool
+    nota: str | None = Field(default=None, max_length=500)
+
+
+class CerereAdminResponse(CerereResponse):
+    """Cererea, plus cine a depus-o.
+
+    CNP-ul nu apare deloc: pentru a decide asupra unui dosar e de ajuns numele,
+    scorul si cifrele. Ce nu se trimite nu se poate scurge.
+    """
+
+    nume: str
+    venit_folosit: Decimal | None = None
+    obligatii_folosite: Decimal | None = None
+    # Factorii scorecard-ului, sau motivele de respingere pe criterii hard —
+    # coloana `motive` tine si una si alta (vezi _finalizeaza). Un scor fara ele
+    # e un numar pe care analistul nu are cum sa il judece.
+    motive: list[dict] = Field(default_factory=list)
+
+
+# -----------------------------------------------------------------------------
+# Documente (adeverinta de venit)
+# -----------------------------------------------------------------------------
+
+
+class DocumentResponse(BaseModel):
+    """Un document al cererii.
+
+    `extras` si `venit_confirmat` stau separat dinadins: primul e ce a citit
+    OCR-ul, al doilea e ce a hotarat analistul. Cand difera, se vede.
+    """
+
+    id: str
+    tip: str
+    status: str
+    content_type: str | None = None
+    marime_octeti: int | None = None
+    extras: dict = Field(default_factory=dict)
+    venit_confirmat: Decimal | None = None
+    confirmat_la: datetime | None = None
+    sters_la: datetime | None = None
+    creat_la: str
+    # Link semnat, cu durata scurta. Lipseste cand fisierul a fost sters dupa
+    # expirarea retentiei — randul ramane, documentul nu.
+    url: str | None = None
+
+
+class ConfirmaDocumentRequest(BaseModel):
+    """Cifra pe care analistul o valideaza dupa ce s-a uitat la document."""
+
+    venit_confirmat: Decimal = Field(gt=0)
+
+
+class VerificareResponse(BaseModel):
+    sursa: str
+    venit_constatat: Decimal | None = None
+    obligatii_constatate: Decimal | None = None
+    incredere: Decimal | None = None
+    detalii: dict = Field(default_factory=dict)
+    creat_la: str
+
+
+class DosarResponse(BaseModel):
+    """Tot ce are nevoie un analist ca sa decida, intr-un singur raspuns."""
+
+    cerere: CerereAdminResponse
+    verificari: list[VerificareResponse]
+    documente: list[DocumentResponse]
+
+
+class CreditAdminResponse(CreditResponse):
+    nume: str

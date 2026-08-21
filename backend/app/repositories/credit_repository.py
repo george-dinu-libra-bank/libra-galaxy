@@ -37,6 +37,15 @@ CAMPURI_RATA = (
     "id,numar_rata,scadenta,principal_rata,dobanda_rata,rata_totala,"
     "sold_dupa,status,platita_la,id_tranzactie"
 )
+CAMPURI_DOCUMENT = (
+    "id,id_cerere,id_user,tip,storage_path,content_type,marime_octeti,extras,"
+    "status,hash_fisier,venit_confirmat,confirmat_de,confirmat_la,sters_la,creat_la"
+)
+
+BUCKET_DOCUMENTE = "credit-documente"
+# Cat traieste un link catre o adeverinta. Cinci minute inseamna ca un URL
+# copiat din bara de adrese nu mai deschide nimic pana ajunge altundeva.
+SECUNDE_URL_SEMNAT = 300
 
 
 class CreditRepository:
@@ -180,6 +189,59 @@ class CreditRepository:
 
         return await to_thread.run_sync(interogare)
 
+    async def cereri_in_analiza(self) -> list[dict]:
+        """Coada de analiza manuala, cea mai veche prima.
+
+        Nu filtreaza pe utilizator: e o vedere de administrator, iar accesul e
+        oprit mai sus, in dependinta de ruta si in politicile RLS.
+        """
+
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("credit_cereri")
+                .select(CAMPURI_CERERE + ",profiles(nume,cnp)")
+                .eq("status", "analiza_manuala")
+                .order("creat_la")
+                .execute()
+            )
+            return raspuns.data or []
+
+        return await to_thread.run_sync(interogare)
+
+    async def cereri_toate(self, status: str | None = None, limita: int = 200) -> list[dict]:
+        """Vederea de administrator peste toate cererile, optional filtrata.
+
+        Cea mai noua prima, invers fata de coada de analiza: acolo conteaza cine
+        asteapta de cel mai mult timp, aici ce s-a intamplat recent.
+        """
+
+        def interogare() -> list[dict]:
+            cerere = (
+                self._client.table("credit_cereri")
+                .select(CAMPURI_CERERE + ",profiles(nume)")
+                .order("creat_la", desc=True)
+                .limit(limita)
+            )
+            if status:
+                cerere = cerere.eq("status", status)
+            raspuns = cerere.execute()
+            return raspuns.data or []
+
+        return await to_thread.run_sync(interogare)
+
+    async def credite_toate(self, limita: int = 200) -> list[dict]:
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("credite")
+                .select(CAMPURI_CREDIT + ",profiles(nume)")
+                .order("creat_la", desc=True)
+                .limit(limita)
+                .execute()
+            )
+            return raspuns.data or []
+
+        return await to_thread.run_sync(interogare)
+
     async def actualizeaza_cerere(self, id_cerere: UUID, campuri: dict[str, Any]) -> dict:
         def interogare() -> dict:
             raspuns = (
@@ -220,6 +282,104 @@ class CreditRepository:
             return raspuns.data[0]
 
         return await to_thread.run_sync(interogare)
+
+    async def document(self, id_document: UUID) -> dict | None:
+        def interogare() -> dict | None:
+            raspuns = (
+                self._client.table("credit_documente")
+                .select(CAMPURI_DOCUMENT)
+                .eq("id", str(id_document))
+                .maybe_single()
+                .execute()
+            )
+            return raspuns.data if raspuns else None
+
+        return await to_thread.run_sync(interogare)
+
+    async def documente(self, id_cerere: UUID) -> list[dict]:
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("credit_documente")
+                .select(CAMPURI_DOCUMENT)
+                .eq("id_cerere", str(id_cerere))
+                .order("creat_la")
+                .execute()
+            )
+            return raspuns.data or []
+
+        return await to_thread.run_sync(interogare)
+
+    async def actualizeaza_document(self, id_document: UUID, campuri: dict[str, Any]) -> dict:
+        def interogare() -> dict:
+            raspuns = (
+                self._client.table("credit_documente")
+                .update(campuri)
+                .eq("id", str(id_document))
+                .execute()
+            )
+            return raspuns.data[0]
+
+        return await to_thread.run_sync(interogare)
+
+    async def documente_expirate(self, inainte_de: datetime) -> list[dict]:
+        """Documentele al caror fisier trebuie sters: dosar inchis de destul timp.
+
+        Filtrul `sters_la is null` e ce face curatarea idempotenta — un al doilea
+        apel, concurent sau nu, nu mai vede randurile deja curatate. Acelasi
+        tipar ca la incasarea ratelor, si din acelasi motiv: nu exista cron in
+        proiect, deci operatiunea se declanseaza din citiri obisnuite si trebuie
+        sa suporte sa fie pornita de doua ori deodata.
+        """
+
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("credit_documente")
+                .select(CAMPURI_DOCUMENT + ",credit_cereri!inner(finalizat_la)")
+                .is_("sters_la", "null")
+                .lte("credit_cereri.finalizat_la", inainte_de.isoformat())
+                .limit(50)
+                .execute()
+            )
+            return raspuns.data or []
+
+        return await to_thread.run_sync(interogare)
+
+    # -- storage (bucket privat 'credit-documente') -------------------------
+
+    async def urca_document(self, cale: str, continut: bytes, content_type: str) -> None:
+        def interogare() -> None:
+            self._client.storage.from_(BUCKET_DOCUMENTE).upload(
+                cale, continut, {"content-type": content_type}
+            )
+
+        await to_thread.run_sync(interogare)
+
+    async def url_document(self, cale: str, secunde: int = SECUNDE_URL_SEMNAT) -> str | None:
+        """Link temporar catre document. Niciodata public: bucket-ul e privat.
+
+        Intoarce None in loc sa arunce — un link care nu s-a putut genera nu
+        trebuie sa darame ecranul analistului, care are si restul dosarului de
+        citit.
+        """
+
+        def interogare() -> str | None:
+            try:
+                raspuns = self._client.storage.from_(BUCKET_DOCUMENTE).create_signed_url(
+                    cale, secunde
+                )
+            except Exception:
+                return None
+            if isinstance(raspuns, dict):
+                return raspuns.get("signedURL") or raspuns.get("signedUrl")
+            return None
+
+        return await to_thread.run_sync(interogare)
+
+    async def sterge_document(self, cale: str) -> None:
+        def interogare() -> None:
+            self._client.storage.from_(BUCKET_DOCUMENTE).remove([cale])
+
+        await to_thread.run_sync(interogare)
 
     # -- credite ------------------------------------------------------------
 

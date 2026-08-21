@@ -46,10 +46,18 @@ export async function pregatesteAvatar(sursa: Blob): Promise<File> {
 const LATURA_DOCUMENT = 1600;
 
 /**
- * Redimensioneaza poza buletinului fara sa o taie patrat (ar putea pierde
- * cifre din CNP) si o recomprima JPEG. Ruleaza in browser inainte de upload.
+ * Redimensioneaza poza unui document fara sa o taie patrat (ar putea pierde
+ * cifre — din CNP la buletin, din suma la adeverinta) si o recomprima JPEG.
+ * Ruleaza in browser inainte de upload.
+ *
+ * `nume` are valoare implicita ca sa nu se schimbe apelurile existente, dar
+ * merita dat: numele fisierului ajunge in storage si intr-un bucket de
+ * adeverinte un fisier numit "buletin.jpg" deruteaza pe oricine se uita acolo.
  */
-export async function pregatesteDocument(sursa: Blob): Promise<File> {
+export async function pregatesteDocument(
+  sursa: Blob,
+  nume = "buletin.jpg",
+): Promise<File> {
   const bitmap = await createImageBitmap(sursa);
 
   try {
@@ -69,7 +77,7 @@ export async function pregatesteDocument(sursa: Blob): Promise<File> {
 
     if (!blob) throw new Error("Nu s-a putut genera poza.");
 
-    return new File([blob], "buletin.jpg", { type: "image/jpeg" });
+    return new File([blob], nume, { type: "image/jpeg" });
   } finally {
     bitmap.close();
   }
