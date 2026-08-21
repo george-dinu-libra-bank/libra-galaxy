@@ -43,3 +43,32 @@ export async function decideVerificare(
     return { eroare: "Nu am putut salva decizia. Incearca din nou." };
   }
 }
+
+/**
+ * Marcheaza manual un cont ca verificat, fara OCR/selfie — pentru conturi
+ * ramase pe 'pending' fara sa apuce sa trimita dovezi.
+ */
+export async function forteazaVerificare(
+  userId: string,
+  note?: string,
+): Promise<RezultatDecizie> {
+  const admin = await checkAdmin();
+  if (!admin) return { eroare: "Nu ai dreptul sa faci asta." };
+
+  try {
+    const rezultat = await backendFetch<{ verification_status: string }>(
+      "api/identity/admin/forteaza-verificare",
+      admin.token,
+      {
+        method: "POST",
+        body: JSON.stringify({ user_id: userId, note: note?.trim() || null }),
+      },
+    );
+
+    revalidatePath("/admin");
+    return { status: rezultat.verification_status };
+  } catch (eroare) {
+    if (eroare instanceof BackendError) return { eroare: eroare.message };
+    return { eroare: "Nu am putut marca contul ca verificat. Incearca din nou." };
+  }
+}

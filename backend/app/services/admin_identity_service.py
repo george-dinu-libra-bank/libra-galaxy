@@ -11,7 +11,9 @@ from app.repositories import identity_repository as depozit
 from app.schemas.identity import (
     CazVerificare,
     CazVerificareDetaliu,
+    ContNeinceput,
     DecizieResponse,
+    ForteazaVerificareResponse,
 )
 
 BUCKET_BULETIN = "buletine"
@@ -36,6 +38,15 @@ class DecizieInvalida(ErrorAplicatie):
             cod="decizie_invalida",
             mesaj=f"Decizia '{decizie}' nu e permisa; se accepta verified sau rejected.",
             status_http=422,
+        )
+
+
+class ContNegasit(ErrorAplicatie):
+    def __init__(self) -> None:
+        super().__init__(
+            cod="cont_negasit",
+            mesaj="Contul nu exista sau verificarea lui a fost deja inceputa.",
+            status_http=404,
         )
 
 
@@ -125,3 +136,24 @@ def decide(id_verificare: str, decizie: str, id_administrator: str, note: str | 
         status=rand["status"],
         reviewed_at=str(rand["reviewed_at"]) if rand.get("reviewed_at") else None,
     )
+
+
+def conturi_neincepute(limita: int = 100) -> list[ContNeinceput]:
+    randuri = depozit.listeaza_neinceputi(limita)
+    return [
+        ContNeinceput(
+            id=str(r["id"]),
+            nume=r.get("nume", "necunoscut"),
+            email=r.get("email", ""),
+            creat_la=str(r["creat_la"]),
+        )
+        for r in randuri
+    ]
+
+
+def forteaza_verificare(id_user: str) -> ForteazaVerificareResponse:
+    rand = depozit.forteaza_verificat(id_user)
+    if rand is None:
+        raise ContNegasit()
+
+    return ForteazaVerificareResponse(id=str(rand["id"]), verification_status=rand["verification_status"])

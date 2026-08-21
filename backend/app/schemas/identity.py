@@ -88,3 +88,22 @@ class DecizieResponse(BaseModel):
     id: str
     status: str
     reviewed_at: str | None = None
+
+
+class ContNeinceput(BaseModel):
+    """Un cont ramas pe verification_status='pending' — nicio dovada trimisa."""
+
+    id: str
+    nume: str
+    email: str
+    creat_la: str
+
+
+class ForteazaVerificareRequest(BaseModel):
+    user_id: str
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class ForteazaVerificareResponse(BaseModel):
+    id: str
+    verification_status: str

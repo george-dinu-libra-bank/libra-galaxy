@@ -111,6 +111,41 @@ def obtine_caz(id_verificare: str) -> dict | None:
     return raspuns.data if raspuns else None
 
 
+def listeaza_neinceputi(limita: int = 100) -> list[dict]:
+    """Conturi ramase pe verification_status='pending' — nicio dovada trimisa
+    inca, deci nimic de revizuit in sensul obisnuit (vezi listeaza_dupa_status)."""
+    client = get_admin_client()
+    raspuns = (
+        client.table("profiles")
+        .select("id,nume,email,creat_la")
+        .eq("verification_status", "pending")
+        .order("creat_la", desc=True)
+        .limit(limita)
+        .execute()
+    )
+    return raspuns.data or []
+
+
+def forteaza_verificat(id_user: str) -> dict | None:
+    """Marcheaza manual contul ca verificat, ocolind fluxul OCR+selfie.
+
+    Garda `.eq("verification_status", "pending")` tine actiunea in granitele
+    ei: nu poate rescrie un cont deja respins sau in revizuire, unde exista
+    deja dovezi si eventual o decizie — pentru acelea e fluxul cu poze
+    (decide), nu acesta.
+    """
+    client = get_admin_client()
+    raspuns = (
+        client.table("profiles")
+        .update({"verification_status": "verified"})
+        .eq("id", id_user)
+        .eq("verification_status", "pending")
+        .execute()
+    )
+    date = raspuns.data or []
+    return date[0] if date else None
+
+
 def profiluri(ids: list[str]) -> dict[str, dict]:
     """Numele, emailul si CNP-ul declarat, pe id — o cerere, nu una de fiecare."""
     if not ids:
