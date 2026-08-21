@@ -8,7 +8,7 @@ import { obtineConturiUtilizator } from "@/lib/data/conturi";
 import { obtineProdusCredit } from "@/lib/data/credite";
 
 export const metadata: Metadata = {
-  title: "Cerere de credit · Libra",
+  title: "Cerere de credit · Galaxy Bank",
 };
 
 export default async function CererePage({

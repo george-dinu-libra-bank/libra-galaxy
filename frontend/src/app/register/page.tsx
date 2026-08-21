@@ -4,8 +4,8 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { RegisterForm } from "@/components/auth/register-form";
 
 export const metadata: Metadata = {
-  title: "Deschide cont · Libra",
-  description: "Deschide un cont curent Libra, cu IBAN romanesc, in cateva minute.",
+  title: "Deschide cont · Galaxy Bank",
+  description: "Deschide un cont curent Galaxy Bank, cu IBAN romanesc, in cateva minute.",
 };
 
 export default function RegisterPage() {

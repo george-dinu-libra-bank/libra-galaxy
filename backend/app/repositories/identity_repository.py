@@ -1,10 +1,45 @@
+import logging
+
 from app.infrastructure.supabase import get_admin_client
 from app.infrastructure.supabase_client import get_service_client
+
+logger = logging.getLogger(__name__)
 
 
 def descarca_imagine(bucket: str, cale: str) -> bytes:
     client = get_service_client()
     return client.storage.from_(bucket).download(cale)
+
+
+def sterge_imagine(bucket: str, cale: str) -> None:
+    """Sterge o poza din storage. Nu esueaza cererea care o cheama: o poza care
+    ramane in plus cateva zile e mai putin rau decat o verificare care pica
+    pentru ca stergerea ei a mers prost."""
+    client = get_service_client()
+    try:
+        client.storage.from_(bucket).remove([cale])
+    except Exception:
+        logger.exception("sterge_imagine: stergere esuata (bucket=%s, cale=%s)", bucket, cale)
+
+
+def gaseste_selfie_referinta(id_user: str) -> str | None:
+    """Selfie-ul retinut la inregistrare (sau la ultima verificare), pentru
+    cazul in care buletinul e trimis mai tarziu, fara un selfie nou."""
+    client = get_service_client()
+    raspuns = (
+        client.table("profiles")
+        .select("selfie_referinta_path")
+        .eq("id", id_user)
+        .maybe_single()
+        .execute()
+    )
+    date = raspuns.data if raspuns else None
+    return date.get("selfie_referinta_path") if date else None
+
+
+def seteaza_selfie_referinta(id_user: str, cale: str) -> None:
+    client = get_service_client()
+    client.table("profiles").update({"selfie_referinta_path": cale}).eq("id", id_user).execute()
 
 
 def gaseste_id_user_dupa_email(email: str) -> str | None:
@@ -109,6 +144,41 @@ def obtine_caz(id_verificare: str) -> dict | None:
         .execute()
     )
     return raspuns.data if raspuns else None
+
+
+def listeaza_neinceputi(limita: int = 100) -> list[dict]:
+    """Conturi ramase pe verification_status='pending' — nicio dovada trimisa
+    inca, deci nimic de revizuit in sensul obisnuit (vezi listeaza_dupa_status)."""
+    client = get_admin_client()
+    raspuns = (
+        client.table("profiles")
+        .select("id,nume,email,creat_la")
+        .eq("verification_status", "pending")
+        .order("creat_la", desc=True)
+        .limit(limita)
+        .execute()
+    )
+    return raspuns.data or []
+
+
+def forteaza_verificat(id_user: str) -> dict | None:
+    """Marcheaza manual contul ca verificat, ocolind fluxul OCR+selfie.
+
+    Garda `.eq("verification_status", "pending")` tine actiunea in granitele
+    ei: nu poate rescrie un cont deja respins sau in revizuire, unde exista
+    deja dovezi si eventual o decizie — pentru acelea e fluxul cu poze
+    (decide), nu acesta.
+    """
+    client = get_admin_client()
+    raspuns = (
+        client.table("profiles")
+        .update({"verification_status": "verified"})
+        .eq("id", id_user)
+        .eq("verification_status", "pending")
+        .execute()
+    )
+    date = raspuns.data or []
+    return date[0] if date else None
 
 
 def profiluri(ids: list[str]) -> dict[str, dict]:

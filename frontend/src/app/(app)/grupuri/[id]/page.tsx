@@ -16,7 +16,7 @@ import {
 import { formateazaSuma } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Grup · Libra",
+  title: "Grup · Galaxy Bank",
 };
 
 /**

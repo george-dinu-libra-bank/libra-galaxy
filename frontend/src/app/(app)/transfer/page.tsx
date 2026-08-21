@@ -3,7 +3,7 @@ import { TransferForm } from "@/components/transfer/transfer-form";
 import { obtineBeneficiariRecenti, obtineConturiTransfer } from "@/lib/data/transfer";
 
 export const metadata: Metadata = {
-  title: "Transfer · Libra",
+  title: "Transfer · Galaxy Bank",
 };
 
 export default async function TransferPage({

@@ -3,7 +3,7 @@ import { ProdusCard } from "@/components/shop/produs-card";
 import { PRODUSE } from "@/lib/data/produse";
 
 export const metadata: Metadata = {
-  title: "Galaxy Shop · Libra",
+  title: "Galaxy Shop · Galaxy Bank",
 };
 
 export default function ShopPage() {

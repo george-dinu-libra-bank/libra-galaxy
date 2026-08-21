@@ -24,7 +24,7 @@ export function ToastIncasare({
 }) {
   const router = useRouter();
 
-  const nume = eveniment.contraparte ?? "un cont Libra";
+  const nume = eveniment.contraparte ?? "un cont Galaxy Bank";
 
   return (
     <button

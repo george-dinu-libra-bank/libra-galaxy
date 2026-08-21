@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { TEMA_COOKIE, temaDinCookie } from "@/lib/tema";
 
 export const metadata: Metadata = {
-  title: "Setări · Libra",
+  title: "Setări · Galaxy Bank",
 };
 
 export default async function SetariPage() {

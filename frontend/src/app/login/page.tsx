@@ -4,8 +4,8 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { LoginForm } from "@/components/auth/login-form";
 
 export const metadata: Metadata = {
-  title: "Autentificare · Libra",
-  description: "Intra in contul tau Libra.",
+  title: "Autentificare · Galaxy Bank",
+  description: "Intra in contul tau Galaxy Bank.",
 };
 
 export default async function LoginPage({

@@ -58,7 +58,7 @@ export function DeschideContDrawer() {
 
       <DrawerContent
         title="Deschide un cont nou"
-        description="Primești un IBAN Libra nou, cu sold 0."
+        description="Primești un IBAN Galaxy Bank nou, cu sold 0."
         footer={
           <Button className="w-full" loading={seTrimite} onClick={trimite}>
             Deschide contul

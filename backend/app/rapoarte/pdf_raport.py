@@ -187,7 +187,7 @@ def randeaza(raport: Raport) -> bytes:
         topMargin=18 * mm,
         bottomMargin=18 * mm,
         title=f"Raport analiza {raport.nume}",
-        author="Libra",
+        author="Galaxy Bank",
     )
 
     povestea: list = [*_antet(raport, st)]

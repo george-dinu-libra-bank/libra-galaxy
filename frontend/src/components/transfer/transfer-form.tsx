@@ -96,7 +96,7 @@ export function TransferForm({
     return (
       <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
         <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Transfer</h1>
-        <p className="mt-1 text-[15px] text-ink-soft">Trimite bani catre un cont Libra.</p>
+        <p className="mt-1 text-[15px] text-ink-soft">Trimite bani catre un cont Galaxy Bank.</p>
 
         <section className="mt-6 flex flex-col items-center gap-4 rounded-card border border-dashed border-line bg-surface p-6 text-center shadow-sm">
           <p className="text-[15px] leading-[22px] text-ink-soft">
@@ -149,7 +149,7 @@ export function TransferForm({
   return (
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
       <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Transfer</h1>
-      <p className="mt-1 text-[15px] text-ink-soft">Trimite bani catre un cont Libra.</p>
+      <p className="mt-1 text-[15px] text-ink-soft">Trimite bani catre un cont Galaxy Bank.</p>
 
       <div className="mt-6 flex flex-col gap-4">
         {contSursa ? (

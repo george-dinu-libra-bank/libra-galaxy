@@ -12,7 +12,7 @@ import { ETICHETE_STIL_CARD, GRADIENTE_STIL_CARD } from "@/lib/stil-card";
 import { cn } from "@/lib/utils";
 
 const DESCRIERI_STIL_CARD: Record<StilCard, string> = {
-  standard: "Albastrul Libra, pentru orice zi.",
+  standard: "Albastrul Galaxy Bank, pentru orice zi.",
   silver: "Gri grafit, discret.",
   gold: "Auriu, pentru clienții premium.",
 };

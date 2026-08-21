@@ -47,7 +47,7 @@ export function PartajeazaGrupDrawer({ nume, token }: { nume: string; token: str
     try {
       await navigator.share({
         title: nume,
-        text: `Intră în grupul „${nume}" din Libra.`,
+        text: `Intră în grupul „${nume}" din Galaxy Bank.`,
         url: link(),
       });
     } catch {

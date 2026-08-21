@@ -208,7 +208,7 @@ export function CumparaDrawer({
                 href={`/login?redirectTo=${encodeURIComponent(`/shop/${slug}`)}`}
                 className="flex h-[52px] w-full items-center justify-center rounded-field bg-primary-600 text-[15px] font-semibold text-white shadow-btn transition-colors duration-150 ease-soft hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
               >
-                Autentifică-te în Libra
+                Autentifică-te în Galaxy Bank
               </Link>
             )
           ) : pas === "asteptare" ? null : (
@@ -235,7 +235,7 @@ export function CumparaDrawer({
             </p>
 
             <p className="max-w-xs text-[12.5px] leading-[18px] text-ink-faint">
-              Am trimis cererea pe contul tău Libra. Deschide aplicația și apasă
+              Am trimis cererea pe contul tău Galaxy Bank. Deschide aplicația și apasă
               „Confirmă”.
             </p>
           </div>
@@ -279,7 +279,7 @@ export function CumparaDrawer({
 
             {autentificat ? null : (
               <Banda ton="info">
-                Plata se face cu un card Libra, așa că ai nevoie de o sesiune activă.
+                Plata se face cu un card Galaxy Bank, așa că ai nevoie de o sesiune activă.
                 Autentifică-te și revino — comanda te așteaptă.
               </Banda>
             )}
