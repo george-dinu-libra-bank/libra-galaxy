@@ -84,7 +84,10 @@ async function aduDeLaBnr(): Promise<Cursuri | null> {
 
     throw new Error("BNR nu a returnat toate valutele cerute");
   } catch (eroare) {
-    console.error("ERROR curs valutar (BNR):", eroare);
+    // Nu console.error: Next.js arata orice console.error ca o eroare in
+    // overlay-ul de dev, desi cazul e deja tratat — cade pe sursa de rezerva
+    // doua linii mai jos (BCE), pagina nu se rupe.
+    console.warn("WARN curs valutar (BNR):", eroare);
     return null;
   }
 }
@@ -119,7 +122,9 @@ async function aduDeLaRezerva(): Promise<Cursuri | null> {
 
     return { cursuri, data: corp.date ?? null, sursa: "BCE (Frankfurter)" };
   } catch (eroare) {
-    console.error("ERROR curs valutar (rezerva):", eroare);
+    // Idem: tratat mai sus in improspateazaCursuri, care ramane pe ultimele
+    // cursuri cunoscute — nu merita overlay-ul de eroare din dev.
+    console.warn("WARN curs valutar (rezerva):", eroare);
     return null;
   }
 }
