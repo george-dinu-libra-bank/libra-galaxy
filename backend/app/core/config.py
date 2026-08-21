@@ -20,10 +20,18 @@ def _empty_string_to_none(value: object) -> object:
 OptionalFloat = Annotated[float | None, BeforeValidator(_empty_string_to_none)]
 
 _REPO_ROOT_KNOWLEDGE_DIR = Path(__file__).resolve().parents[3] / "galaxy-bank-knowledge"
+# Sursa unica de credentiale a proiectului (vezi .env.example la radacina) —
+# nu backend/.env. Cale absoluta, nu relativa la CWD: functioneaza identic
+# rulat din backend/ (uvicorn local), din radacina, sau in Docker (unde
+# oricum docker-compose injecteaza variabilele direct ca environment, care
+# au prioritate fata de orice fisier citit aici).
+_REPO_ROOT_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=str(_REPO_ROOT_ENV_FILE), env_file_encoding="utf-8", extra="ignore"
+    )
 
     environment: str = Field(default="local", alias="ENVIRONMENT")
 

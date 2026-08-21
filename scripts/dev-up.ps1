@@ -20,7 +20,7 @@ if (-not $supabaseValues.ContainsKey("ANON_KEY")) {
   throw "Supabase nu a returnat ANON_KEY. Verifica iesirea comenzii '.\scripts\supabase.ps1 status'."
 }
 
-$env:NEXT_PUBLIC_SUPABASE_ANON_KEY = $supabaseValues["ANON_KEY"]
+$env:SUPABASE_ANON_KEY = $supabaseValues["ANON_KEY"]
 docker compose up --build -d
 if ($LASTEXITCODE -ne 0) {
   throw "docker compose up a esuat (cod $LASTEXITCODE)."

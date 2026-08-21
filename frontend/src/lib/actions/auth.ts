@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { supabaseConfigurat } from "@/lib/supabase/configurat";
+import { SITE_URL, supabaseConfigurat } from "@/lib/env";
 import { genereazaIban } from "@/lib/iban";
 import { verificaIdentitateInregistrare, verificaLoginFata } from "@/lib/actions/identitate";
 import {
@@ -48,10 +48,10 @@ async function origine() {
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const protocol = h.get("x-forwarded-proto") ?? "http";
 
-  if (!process.env.NEXT_PUBLIC_SITE_URL && !host)
+  if (!SITE_URL && !host)
     console.error("[auth/origine] lipseste NEXT_PUBLIC_SITE_URL si headerul host");
 
-  return process.env.NEXT_PUBLIC_SITE_URL ?? `${protocol}://${host}`;
+  return SITE_URL ?? `${protocol}://${host}`;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -1,3 +1,4 @@
+import { BACKEND_INTERNAL_URL as BACKEND_URL } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -15,18 +16,6 @@ import { createClient } from "@/lib/supabase/server";
 
 type PlicSucces<T> = { success: true; body: T };
 type PlicEroare = { success: false; error: { code: string; message: string } };
-
-/**
- * Trei nume pentru acelasi backend au aparut in paralel: `BACKEND_API_URL` in
- * asistent, `BACKEND_URL` in identitate, `BACKEND_INTERNAL_URL` in proxy — si
- * numai ultimul e in `.env`. Se incearca toate, ca o configurare valida sa nu
- * cada din cauza numelui ales.
- */
-const BACKEND_URL =
-  process.env.BACKEND_INTERNAL_URL ??
-  process.env.BACKEND_API_URL ??
-  process.env.BACKEND_URL ??
-  "http://localhost:8000";
 
 export type RezultatBackend<T> = { date?: T; eroare?: string };
 

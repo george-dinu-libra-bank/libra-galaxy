@@ -1,5 +1,6 @@
 "use server";
 
+import { BACKEND_INTERNAL_API_KEY as CHEIE_INTERNA, BACKEND_INTERNAL_URL as BACKEND_URL } from "@/lib/env";
 import { createAdminClient } from "../supabase/admin";
 
 /**
@@ -8,9 +9,6 @@ import { createAdminClient } from "../supabase/admin";
  * BACKEND_URL e o variabila server-only (nu NEXT_PUBLIC_): apelurile pornesc
  * mereu din server actions, niciodata direct din browser.
  */
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
-const CHEIE_INTERNA = process.env.BACKEND_INTERNAL_API_KEY;
-
 const MAX_OCTETI_BULETIN = 8 * 1024 * 1024;
 
 /**

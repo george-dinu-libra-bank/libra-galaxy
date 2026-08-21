@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-
-const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? "http://localhost:8000";
+import { BACKEND_INTERNAL_URL as BACKEND_URL } from "@/lib/env";
 
 export async function GET() {
   try {

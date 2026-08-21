@@ -11,18 +11,17 @@ services:
       - /app/node_modules
       - /app/.next
     env_file:
-      - ./frontend/.env
+      - ./.env
     environment:
       # watch pe bind mount Windows are nevoie de polling
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
-      # In compose, frontend-ul vorbeste cu backend-ul prin numele serviciului
-      # (DNS intern Docker), nu prin localhost — suprascrie valoarea din .env.
-      # Trei nume diferite in cod pentru aceeasi adresa (asistent.ts, proxy-ul
-      # din app/api/backend, identitate.ts) — le setam pe toate ca sa nu cada
-      # vreunul pe fallback-ul localhost:8000, care in container e el insusi.
-      - BACKEND_API_URL=http://backend:8000
-      - BACKEND_URL=http://backend:8000
+      # Frontend-ul citeste NEXT_PUBLIC_SUPABASE_* (frontend/src/lib/env.ts) —
+      # aliasate aici peste cheile canonice din .env, ca valoarea sa nu fie
+      # duplicata in fisier. In compose, frontend-ul vorbeste cu backend-ul
+      # prin numele serviciului (DNS intern Docker), nu prin localhost.
+      - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
       - BACKEND_INTERNAL_URL=http://backend:8000
     depends_on:
       - backend
@@ -40,7 +39,7 @@ services:
       - ./backend:/app
       - ./galaxy-bank-knowledge:/galaxy-bank-knowledge:ro
     env_file:
-      - ./backend/.env
+      - ./.env
     environment:
       - LIBRA_KNOWLEDGE_DIR=/galaxy-bank-knowledge
     stdin_open: true

@@ -47,6 +47,9 @@ dependencies = [
 dev = [
   "httpx>=0.28,<1",
   "pytest>=8.4,<9",
+  # pytest.ini seteaza asyncio_mode = auto — testele async fara @pytest.mark.anyio
+  # (ex. tests/test_security_principal.py) au nevoie de acest plugin ca sa ruleze.
+  "pytest-asyncio>=0.25,<1",
 ]
 
 [tool.pytest.ini_options]

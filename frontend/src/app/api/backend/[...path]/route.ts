@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { BACKEND_INTERNAL_URL as BACKEND_URL } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
-
-const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? "http://localhost:8000";
 const METODE_CU_BODY = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 type RouteContext = { params: Promise<{ path: string[] }> };

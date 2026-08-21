@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { SUPABASE_ANON_KEY, SUPABASE_INTERNAL_URL } from "@/lib/env";
 
 /**
  * Client Supabase pentru Server Components, Route Handlers si Server Actions.
@@ -9,8 +10,8 @@ export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient(
-    process.env.SUPABASE_INTERNAL_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    SUPABASE_INTERNAL_URL,
+    SUPABASE_ANON_KEY,
     {
       cookies: {
         getAll() {

@@ -1,6 +1,5 @@
 import "server-only";
-
-const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? "http://localhost:8000";
+import { BACKEND_INTERNAL_URL as BACKEND_URL } from "@/lib/env";
 
 export class BackendError extends Error {
   constructor(

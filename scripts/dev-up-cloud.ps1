@@ -18,19 +18,25 @@ foreach ($linie in Get-Content $fisierEnv) {
   }
 }
 
-foreach ($cheie in @("NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_INTERNAL_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY")) {
+foreach ($cheie in @("SUPABASE_URL", "SUPABASE_ANON_KEY")) {
   if (-not $valori[$cheie]) {
     throw "$cheie lipseste din .env."
   }
 }
 
-# Un dev-up.ps1 rulat mai devreme in aceeasi consola ar lasa cheia locala in
-# mediu, iar mediul are prioritate fata de .env. O stergem ca sa castige .env.
-Remove-Item Env:NEXT_PUBLIC_SUPABASE_ANON_KEY -ErrorAction SilentlyContinue
+# Un dev-up.ps1 rulat mai devreme in aceeasi consola ar lasa cheile locale in
+# mediu, iar mediul are prioritate fata de .env. Le stergem ca sa castige .env.
+Remove-Item Env:SUPABASE_ANON_KEY -ErrorAction SilentlyContinue
+Remove-Item Env:SUPABASE_URL -ErrorAction SilentlyContinue
 Remove-Item Env:SUPABASE_INTERNAL_URL -ErrorAction SilentlyContinue
-Remove-Item Env:NEXT_PUBLIC_SUPABASE_URL -ErrorAction SilentlyContinue
 
-Write-Host "Supabase: $($valori['NEXT_PUBLIC_SUPABASE_URL'])"
+# Supabase cloud nu are o adresa separata pentru containere (spre deosebire
+# de Supabase local, unde containerul iese prin host.docker.internal) —
+# SUPABASE_INTERNAL_URL trebuie sa fie acelasi URL public, altfel compose.yaml
+# ar cadea pe fallback-ul lui, gandit pentru Supabase local.
+$env:SUPABASE_INTERNAL_URL = $valori["SUPABASE_URL"]
+
+Write-Host "Supabase: $($valori['SUPABASE_URL'])"
 docker compose up --build -d
 if ($LASTEXITCODE -ne 0) {
   throw "docker compose up a esuat (cod $LASTEXITCODE)."

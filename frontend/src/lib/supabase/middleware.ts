@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { supabaseConfigurat } from "@/lib/supabase/configurat";
+import { SUPABASE_ANON_KEY, SUPABASE_INTERNAL_URL, supabaseConfigurat } from "@/lib/env";
 
 /**
  * Rute pe care middleware-ul nu le redirectioneaza catre /login.
@@ -30,8 +30,8 @@ export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
-    process.env.SUPABASE_INTERNAL_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    SUPABASE_INTERNAL_URL,
+    SUPABASE_ANON_KEY,
     {
       cookies: {
         getAll() {

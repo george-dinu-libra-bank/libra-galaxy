@@ -6,7 +6,7 @@ spus la inregistrare; aici e vorba de cazurile in care nu a fost destul de
 sigura.
 """
 
-from app.infrastructure.errors import ErrorAplicatie
+from app.core.errors import PersistenceError, ResourceNotFoundError, ValidationError
 from app.repositories import identity_repository as depozit
 from app.schemas.identity import (
     CazVerificare,
@@ -21,22 +21,14 @@ STATUS_DE_REVIZUIT = "pending_review"
 DECIZII_PERMISE = {"verified", "rejected"}
 
 
-class CazNegasit(ErrorAplicatie):
+class CazNegasit(ResourceNotFoundError):
     def __init__(self) -> None:
-        super().__init__(
-            cod="caz_negasit",
-            mesaj="Cazul de verificare nu exista.",
-            status_http=404,
-        )
+        super().__init__("Cazul de verificare nu exista.")
 
 
-class DecizieInvalida(ErrorAplicatie):
+class DecizieInvalida(ValidationError):
     def __init__(self, decizie: str) -> None:
-        super().__init__(
-            cod="decizie_invalida",
-            mesaj=f"Decizia '{decizie}' nu e permisa; se accepta verified sau rejected.",
-            status_http=422,
-        )
+        super().__init__(f"Decizia '{decizie}' nu e permisa; se accepta verified sau rejected.")
 
 
 def _numar(valoare) -> float | None:
@@ -114,11 +106,7 @@ def decide(id_verificare: str, decizie: str, id_administrator: str, note: str | 
 
     rand = depozit.scrie_decizie(id_verificare, decizie, id_administrator, note)
     if rand is None:
-        raise ErrorAplicatie(
-            cod="decizie_nescrisa",
-            mesaj="Nu am putut salva decizia.",
-            status_http=502,
-        )
+        raise PersistenceError("Nu am putut salva decizia.")
 
     return DecizieResponse(
         id=str(rand["id"]),
