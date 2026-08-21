@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ScanFace, TrendingUp, Users } from "lucide-react";
+import { Landmark, ScanFace, TrendingUp, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const SECTIUNI = [
   { href: "/admin", eticheta: "Verificări identitate", icoana: ScanFace },
   { href: "/admin/tranzactii", eticheta: "Tranzacții suspecte", icoana: TrendingUp },
+  { href: "/admin/credite", eticheta: "Credite", icoana: Landmark },
   { href: "/admin/conturi", eticheta: "Toate conturile", icoana: Users },
 ];
 

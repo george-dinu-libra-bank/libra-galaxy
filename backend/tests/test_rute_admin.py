@@ -2,7 +2,7 @@
 
 Supabase e inlocuit cu un client fals; ce se verifica aici e bariera de acces si
 forma raspunsurilor, nu politicile RLS — acelea traiesc in baza de date si se
-verifica rulland 0004_rol_administrator.sql.
+verifica rulland 0008_rol_administrator.sql.
 """
 
 from datetime import datetime, timedelta, timezone

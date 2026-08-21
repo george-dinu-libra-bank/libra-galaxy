@@ -6,7 +6,7 @@ spus la inregistrare; aici e vorba de cazurile in care nu a fost destul de
 sigura.
 """
 
-from app.infrastructure.errors import ErrorAplicatie
+from app.core.errors import PersistenceError, ResourceNotFoundError, ValidationError
 from app.repositories import identity_repository as depozit
 from app.schemas.identity import (
     CazVerificare,
@@ -25,31 +25,26 @@ STATUS_DE_REVIZUIT = "pending_review"
 DECIZII_PERMISE = {"verified", "rejected"}
 
 
-class CazNegasit(ErrorAplicatie):
+# Erorile mostenesc din ierarhia app/core/errors.py, ca sa fie prinse de
+# handler-ul global din main.py si sa iasa in plicul standard. Branch-ul de unde
+# vine fisierul avea o a doua ierarhie proprie (ErrorAplicatie), disparuta la
+# unificarea backend-urilor; codul de status e acelasi, purtat acum de clasa in
+# loc de un parametru dat la fiecare ridicare.
+class CazNegasit(ResourceNotFoundError):
     def __init__(self) -> None:
-        super().__init__(
-            cod="caz_negasit",
-            mesaj="Cazul de verificare nu exista.",
-            status_http=404,
-        )
+        super().__init__("Cazul de verificare nu exista.")
 
 
-class DecizieInvalida(ErrorAplicatie):
+class DecizieInvalida(ValidationError):
     def __init__(self, decizie: str) -> None:
         super().__init__(
-            cod="decizie_invalida",
-            mesaj=f"Decizia '{decizie}' nu e permisa; se accepta verified sau rejected.",
-            status_http=422,
+            f"Decizia '{decizie}' nu e permisa; se accepta verified sau rejected."
         )
 
 
-class ContNegasit(ErrorAplicatie):
+class ContNegasit(ResourceNotFoundError):
     def __init__(self) -> None:
-        super().__init__(
-            cod="cont_negasit",
-            mesaj="Contul nu exista sau verificarea lui a fost deja inceputa.",
-            status_http=404,
-        )
+        super().__init__("Contul nu exista sau verificarea lui a fost deja inceputa.")
 
 
 def _numar(valoare) -> float | None:
@@ -128,11 +123,7 @@ def decide(id_verificare: str, decizie: str, id_administrator: str, note: str | 
 
     rand = depozit.scrie_decizie(id_verificare, decizie, id_administrator, note)
     if rand is None:
-        raise ErrorAplicatie(
-            cod="decizie_nescrisa",
-            mesaj="Nu am putut salva decizia.",
-            status_http=502,
-        )
+        raise PersistenceError("Nu am putut salva decizia.")
 
     # Fereastra in care buletinul are un motiv sa existe (revizuire de admin)
     # tocmai s-a inchis, indiferent de decizie. Selfie-ul ramane: cel aprobat
@@ -185,10 +176,6 @@ def toate_conturile(limita: int = 500) -> list[ProfilAdmin]:
 def restabileste_biometrie(id_user: str, poza_path: str, id_administrator: str) -> RestabilireBiometrieResponse:
     rand = depozit.restabileste_referinta_biometrica(id_user, poza_path, id_administrator)
     if rand is None:
-        raise ErrorAplicatie(
-            cod="restabilire_esuata",
-            mesaj="Nu am putut salva referinta biometrica.",
-            status_http=502,
-        )
+        raise PersistenceError("Nu am putut salva referinta biometrica.")
 
     return RestabilireBiometrieResponse(id=str(rand["id"]), verification_status=rand["status"])

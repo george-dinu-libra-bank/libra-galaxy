@@ -20,6 +20,9 @@ dependencies = [
   "scikit-learn>=1.5,<2",
   "supabase>=2.18,<3",
   "uvicorn[standard]>=0.35,<1",
+  # Importat direct in repository-uri si in dependencies.py (to_thread.run_sync),
+  # nu doar tras de starlette — deci declarat explicit.
+  "anyio>=4,<5",
   # Extractia de text din atasamentele PDF (app/attachments/extraction.py).
   "pypdf>=5.1,<6",
   # Sursele RAG (app/rag/registry.py).
@@ -47,6 +50,9 @@ dependencies = [
 dev = [
   "httpx>=0.28,<1",
   "pytest>=8.4,<9",
+  # pytest.ini are asyncio_mode = auto: fara plugin, testele async sunt sarite
+  # in tacere, nu raportate ca esec.
+  "pytest-asyncio>=0.25,<2",
 ]
 
 [tool.pytest.ini_options]

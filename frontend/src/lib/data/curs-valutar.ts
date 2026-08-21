@@ -84,10 +84,11 @@ async function aduDeLaBnr(): Promise<Cursuri | null> {
 
     throw new Error("BNR nu a returnat toate valutele cerute");
   } catch (eroare) {
-    // Nu console.error: Next.js arata orice console.error ca o eroare in
-    // overlay-ul de dev, desi cazul e deja tratat — cade pe sursa de rezerva
-    // doua linii mai jos (BCE), pagina nu se rupe.
-    console.warn("WARN curs valutar (BNR):", eroare);
+    // warn, nu error: BNR-ul care ne refuza e o situatie asteptata, cu rezerva
+    // pregatita imediat mai jos. Cu console.error, overlay-ul de dezvoltare din
+    // Next se ridica peste toata pagina si arata ca un ecran cazut, desi
+    // fallback-ul functioneaza si dashboard-ul s-ar randa normal.
+    console.warn("curs valutar: BNR indisponibil, incerc rezerva —", mesaj(eroare));
     return null;
   }
 }
@@ -122,11 +123,15 @@ async function aduDeLaRezerva(): Promise<Cursuri | null> {
 
     return { cursuri, data: corp.date ?? null, sursa: "BCE (Frankfurter)" };
   } catch (eroare) {
-    // Idem: tratat mai sus in improspateazaCursuri, care ramane pe ultimele
-    // cursuri cunoscute — nu merita overlay-ul de eroare din dev.
-    console.warn("WARN curs valutar (rezerva):", eroare);
+    // Nici asta nu e fatal: ramanem pe ultimele cursuri din tabela.
+    console.warn("curs valutar: nici sursa de rezerva nu raspunde —", mesaj(eroare));
     return null;
   }
+}
+
+/** Doar mesajul, nu obiectul Error: altfel Next ridica overlay-ul de eroare. */
+function mesaj(eroare: unknown): string {
+  return eroare instanceof Error ? eroare.message : String(eroare);
 }
 
 /**

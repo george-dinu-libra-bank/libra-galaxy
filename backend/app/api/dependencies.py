@@ -216,7 +216,6 @@ async def cere_administrator(
 
     if rol != "administrator":
         # Acelasi raspuns si cand contul nu exista, si cand exista dar e client:
-        # cine incearca ruta nu trebuie sa afle ce a nimerit.
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Aceasta zona e disponibila numai administratorilor.",

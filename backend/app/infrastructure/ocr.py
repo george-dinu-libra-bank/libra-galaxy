@@ -17,6 +17,17 @@ CNP_REGEX = re.compile(r"[1-8]\d{12}")
 # rateaza des. 6 = bloc uniform, 11 = text rasfirat, 4 = coloana unica, 3 = auto.
 PSM_MODURI = ("6", "11", "4", "3")
 
+# Pentru text curgator (adeverinta de venit) se folosesc doar modurile de bloc:
+# 11 ("text rasfirat") rupe randurile unei adeverinte in bucati si strica
+# vecinatatea dintre cuvantul "net" si suma de langa el, care e tot ce conteaza
+# acolo. 6 = bloc uniform, 4 = coloana unica.
+PSM_TEXT = ("6", "4")
+
+# Pachetul tesseract-ocr-ron e instalat in Dockerfile de la inceput, dar
+# `extrage_cnp` nu il foloseste: pe cifre, limba nu ajuta. Pe text conteaza —
+# fara el, Tesseract citeste diacriticele ca semne aleatorii.
+LIMBA = "ron"
+
 
 def _scaleaza(imagine: Image.Image) -> Image.Image:
     latura_scurta = min(imagine.size)
@@ -98,3 +109,38 @@ def extrage_cnp(imagine_bytes: bytes) -> tuple[str | None, float]:
     incredere = min(1.0, frecventa / max(incercari, 1))
 
     return cnp_castigator, incredere
+
+
+def extrage_text(imagine_bytes: bytes) -> str:
+    """
+    Tot textul citibil dintr-o poza, pentru documente scrise (adeverinta de venit).
+
+    Nu se poate folosi `extrage_cnp` pentru asta, si nu e o chestiune de
+    parametri: acolo se trimite `tessedit_char_whitelist=0123456789`, care ii
+    interzice lui Tesseract sa intoarca vreo litera. Un document din care nu poti
+    citi cuvantul "net" nu se poate interpreta — suma bruta si cea neta arata la
+    fel cand nu vezi eticheta de langa ele.
+
+    Se intorc toate variantele lipite, nu doar cea mai buna: preprocesarile
+    esueaza pe bucati diferite ale aceleiasi poze, iar un numar pierdut de
+    binarizare poate fi prins de grayscale. Parserul cauta oricum potriviri, deci
+    text in plus il incetineste, nu il induce in eroare.
+    """
+    try:
+        imagine = Image.open(io.BytesIO(imagine_bytes))
+        imagine.load()
+    except Exception:
+        logger.warning("extrage_text: imagine ilizibila")
+        return ""
+
+    bucati: list[str] = []
+    for varianta in _variante_preprocesare(imagine):
+        for psm in PSM_TEXT:
+            try:
+                bucati.append(
+                    pytesseract.image_to_string(varianta, lang=LIMBA, config=f"--psm {psm}")
+                )
+            except Exception:
+                logger.exception("extrage_text: tesseract a esuat pentru psm=%s", psm)
+
+    return "\n".join(bucata.strip() for bucata in bucati if bucata.strip())

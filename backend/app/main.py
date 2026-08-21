@@ -23,6 +23,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
+    # Lista explicita, nu "*": cu allow_credentials=True browserele resping
+    # wildcard-ul, iar antetele proprii (X-Internal-Api-Key, X-User-Id) trebuie
+    # oricum enumerate ca sa treaca de preflight.
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID", "Idempotency-Key",
                    "X-Internal-Api-Key", "X-User-Id"],
@@ -74,9 +77,12 @@ app.include_router(health.router)
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(assistant.router)
 app.include_router(identity.router)
+# Revizuirea manuala a verificarilor de identitate. Isi tine prefixul propriu
+# (/api/identity/admin) in router, langa rutele de identitate pe care le revizuieste.
 app.include_router(admin_identity_router)
 app.include_router(profiles.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(alerte.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(credite.router, prefix="/api/v1")
+app.include_router(credite.router_admin, prefix="/api/v1")

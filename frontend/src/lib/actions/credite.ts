@@ -32,6 +32,12 @@ export type Decizie = {
   rataLunara: number | null;
   dae: number | null;
   ofertaExpiraLa: string | null;
+  /**
+   * Banca n-a putut confirma niciun venit din sursele ei, deci o adeverință
+   * chiar ar schimba ceva. Fără semnalul ăsta, wizard-ul ar cere documente de
+   * la toată lumea sau de la nimeni.
+   */
+  cereDocument: boolean;
 };
 
 export type RezultatDecizie = { decizie?: Decizie; eroare?: string };
@@ -124,7 +130,51 @@ export async function evalueazaCerere(idCerere: string): Promise<RezultatDecizie
       rataLunara: date.rata_lunara === null ? null : Number(date.rata_lunara),
       dae: date.dae === null ? null : Number(date.dae),
       ofertaExpiraLa: (date.oferta_expira_la as string | null) ?? null,
+      cereDocument: date.cere_document === true,
     },
+  };
+}
+
+
+export type RezultatDocument = {
+  eroare?: string;
+  /** Ce a citit sistemul din document. Null când n-a putut citi nimic. */
+  venitCitit?: number | null;
+  angajator?: string | null;
+};
+
+/**
+ * Încarcă adeverința de venit.
+ *
+ * Trimiterea e multipart, nu JSON, dar trece tot prin `apelBackend`: acela nu
+ * impune `Content-Type` (o face helperul `json()`, folosit de celelalte
+ * acțiuni), deci `fetch` pune singur granița multipart. Antetul nu se setează
+ * de mână nicăieri aici — scris manual, ar rupe granița.
+ *
+ * Ce se întoarce e informativ: documentul e citit, nu crezut. Cifra nu intră în
+ * decizie până n-o confirmă un analist.
+ */
+export async function incarcaAdeverinta(
+  idCerere: string,
+  formular: FormData,
+): Promise<RezultatDocument> {
+  const fisier = formular.get("fisier");
+  if (!(fisier instanceof File) || fisier.size === 0) {
+    return { eroare: "Alege un fișier." };
+  }
+
+  const { date, eroare } = await apelBackend<Record<string, unknown>>(
+    `/api/v1/credite/cereri/${idCerere}/documente`,
+    { method: "POST", body: formular },
+    INDISPONIBIL,
+  );
+
+  if (eroare || !date) return { eroare: eroare ?? INDISPONIBIL };
+
+  const extras = (date.extras as Record<string, unknown>) ?? {};
+  return {
+    venitCitit: extras.venit_net ? Number(extras.venit_net) : null,
+    angajator: (extras.angajator as string | null) ?? null,
   };
 }
 

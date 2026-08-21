@@ -12,10 +12,9 @@ jos, si trebuie sa fie acolo pe fiecare ruta, fara exceptie.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.api.dependencies import UserContext, cere_administrator
-from app.infrastructure.errors import ErrorAplicatie
 from app.repositories import identity_repository as depozit
 from app.schemas.identity import (
     CazVerificare,
@@ -57,10 +56,6 @@ def _urma(
         )
 
 
-def _http(exc: ErrorAplicatie) -> HTTPException:
-    return HTTPException(status_code=exc.status_http, detail={"cod": exc.cod, "mesaj": exc.mesaj})
-
-
 @router.get("/pending", response_model=list[CazVerificare])
 def pending(
     limita: int = Query(default=100, ge=1, le=500),
@@ -78,10 +73,9 @@ def caz(
     administrator: UserContext = Depends(cere_administrator),
 ) -> CazVerificareDetaliu:
     """Un caz, cu link-uri temporare catre cele doua poze."""
-    try:
-        detaliu = serviciu.caz_cu_poze(id_verificare)
-    except ErrorAplicatie as exc:
-        raise _http(exc) from exc
+    # Fara try/except: erorile serviciului sunt AppError, iar handler-ul global
+    # din main.py le transforma in plicul standard, cu acelasi cod de status.
+    detaliu = serviciu.caz_cu_poze(id_verificare)
 
     _urma(administrator, "vede_verificare", detaliu.id_user, f"caz={id_verificare}")
     return detaliu
@@ -93,15 +87,12 @@ def review(
     administrator: UserContext = Depends(cere_administrator),
 ) -> DecizieResponse:
     """Aproba sau respinge un caz. Statusul ajunge si in profil, prin trigger."""
-    try:
-        rezultat = serviciu.decide(
-            cerere.verification_id,
-            cerere.decizie,
-            str(administrator.user_id),
-            cerere.note,
-        )
-    except ErrorAplicatie as exc:
-        raise _http(exc) from exc
+    rezultat = serviciu.decide(
+        cerere.verification_id,
+        cerere.decizie,
+        str(administrator.user_id),
+        cerere.note,
+    )
 
     _urma(
         administrator,
@@ -129,10 +120,7 @@ def forteaza(
 ) -> ForteazaVerificareResponse:
     """Marcheaza manual contul ca verificat, fara OCR/selfie — pentru conturi
     ramase blocate inainte sa apuce sa trimita dovezi."""
-    try:
-        rezultat = serviciu.forteaza_verificare(cerere.user_id)
-    except ErrorAplicatie as exc:
-        raise _http(exc) from exc
+    rezultat = serviciu.forteaza_verificare(cerere.user_id)
 
     _urma(administrator, "forteaza_verificare", cerere.user_id, detalii=cerere.note)
     return rezultat
@@ -158,12 +146,9 @@ def restabileste(
     """Marcheaza poza data ca noul reper biometric al contului, cu status
     verified direct — administratorul atesta identitatea, nu mai trece prin
     OCR/comparatie automata."""
-    try:
-        rezultat = serviciu.restabileste_biometrie(
-            cerere.user_id, cerere.poza_path, str(administrator.user_id)
-        )
-    except ErrorAplicatie as exc:
-        raise _http(exc) from exc
+    rezultat = serviciu.restabileste_biometrie(
+        cerere.user_id, cerere.poza_path, str(administrator.user_id)
+    )
 
     _urma(administrator, "restabileste_biometrie", cerere.user_id)
     return rezultat

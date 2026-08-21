@@ -21,11 +21,11 @@ if (-not $supabaseValues.ContainsKey("ANON_KEY")) {
 }
 
 $env:NEXT_PUBLIC_SUPABASE_ANON_KEY = $supabaseValues["ANON_KEY"]
-docker compose up --build -d
+docker compose -f "$PSScriptRoot/../docker-compose.yml" up --build -d
 if ($LASTEXITCODE -ne 0) {
   throw "docker compose up a esuat (cod $LASTEXITCODE)."
 }
-docker compose ps
+docker compose -f "$PSScriptRoot/../docker-compose.yml" ps
 
 Write-Host "Frontend: http://localhost:3000"
 Write-Host "FastAPI docs: http://localhost:8000/docs"

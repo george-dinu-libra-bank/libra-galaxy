@@ -21,7 +21,6 @@ COPY pyproject.toml ./
 COPY app ./app
 RUN pip install --upgrade pip && pip install -e ".[dev]"
 
-# Descarca greutatile ArcFace la build, nu la prima cerere de verificare identitate.
 RUN python -c "from deepface import DeepFace; DeepFace.build_model('ArcFace')"
 
 EXPOSE 8000

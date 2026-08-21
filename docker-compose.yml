@@ -1,3 +1,11 @@
+# Singurul fisier compose al proiectului. Se cheama "docker-compose.yml", iar
+# scripturile il dau mereu explicit cu -f, ca sa nu conteze ce nume prefera Docker.
+#
+# Regula pentru "environment": doar chei cu valoare literala sau ${VAR:-default}.
+# NU folosi forma scurta "- NUME" (fara "="): daca variabila lipseste din mediu,
+# Compose o pune pe null si STERGE valoarea venita din env_file.
+name: libra-galaxy
+
 services:
   frontend:
     container_name: libra-frontend
@@ -16,14 +24,18 @@ services:
       # watch pe bind mount Windows are nevoie de polling
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
-      # In compose, frontend-ul vorbeste cu backend-ul prin numele serviciului
-      # (DNS intern Docker), nu prin localhost — suprascrie valoarea din .env.
-      # Trei nume diferite in cod pentru aceeasi adresa (asistent.ts, proxy-ul
-      # din app/api/backend, identitate.ts) — le setam pe toate ca sa nu cada
-      # vreunul pe fallback-ul localhost:8000, care in container e el insusi.
-      - BACKEND_API_URL=http://backend:8000
-      - BACKEND_URL=http://backend:8000
-      - BACKEND_INTERNAL_URL=http://backend:8000
+      # Codul citeste URL-ul backendului sub trei nume diferite:
+      #   BACKEND_INTERNAL_URL -> app/api/health, app/api/backend/[...path]
+      #   BACKEND_URL          -> lib/actions/identitate.ts
+      #   BACKEND_API_URL      -> lib/data/asistent.ts
+      # Toate trei trebuie setate aici: frontend/.env are localhost:8000, care in
+      # container ar nimeri chiar frontendul, nu backendul. dev-local.ps1
+      # suprascrie cu host.docker.internal, ca sa iasa la backendul de pe masina.
+      - BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL:-http://backend:8000}
+      - BACKEND_URL=${BACKEND_INTERNAL_URL:-http://backend:8000}
+      - BACKEND_API_URL=${BACKEND_INTERNAL_URL:-http://backend:8000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - backend
     stdin_open: true
@@ -43,5 +55,7 @@ services:
       - ./backend/.env
     environment:
       - LIBRA_KNOWLEDGE_DIR=/galaxy-bank-knowledge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     stdin_open: true
     tty: true
