@@ -6,5 +6,5 @@ if (-not $env:NEXT_PUBLIC_SUPABASE_ANON_KEY) {
   $env:NEXT_PUBLIC_SUPABASE_ANON_KEY = "unused-by-compose-down"
 }
 
-docker compose down
+docker compose -f "$PSScriptRoot/../docker-compose.yml" down
 & "$PSScriptRoot\supabase.ps1" stop
