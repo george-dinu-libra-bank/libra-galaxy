@@ -14,17 +14,22 @@ const CHEIE_INTERNA = process.env.BACKEND_INTERNAL_API_KEY;
 const MAX_OCTETI_BULETIN = 8 * 1024 * 1024;
 
 /**
- * Backend-ul raspunde la orice eroare cu {"detail": {"cod": "...", "mesaj": "..."}}
- * (vezi backend/app/infrastructure/errors.py si main.py) — un cod stabil de
- * diagnostic, nu doar un status HTTP gol. Cand nu putem parsa raspunsul (ex.
- * backend-ul e complet picat si nu raspunde deloc JSON), cazul e tot logat,
- * doar cu cod generic.
+ * Backend-ul raspunde la orice eroare cu plicul standard
+ * {"success": false, "error": {"code": "...", "message": "..."}} (vezi
+ * backend/app/core/errors.py si envelope.py) — un cod stabil de diagnostic,
+ * nu doar un status HTTP gol. Validarea automata FastAPI (422, cerere
+ * malformata) ocoleste plicul si raspunde cu {"detail": "..."} — tratata
+ * separat mai jos. Cand nu putem parsa raspunsul deloc (backend-ul e complet
+ * picat), cazul e tot logat, doar cu cod generic.
  */
 async function citesteEroare(raspuns: Response): Promise<{ cod: string; mesaj: string }> {
   try {
-    const corp = (await raspuns.json()) as { detail?: { cod?: string; mesaj?: string } | string };
+    const corp = (await raspuns.json()) as {
+      error?: { code?: string; message?: string };
+      detail?: string;
+    };
+    if (corp.error?.code) return { cod: corp.error.code, mesaj: corp.error.message ?? "" };
     if (typeof corp.detail === "string") return { cod: "eroare_http", mesaj: corp.detail };
-    if (corp.detail?.cod) return { cod: corp.detail.cod, mesaj: corp.detail.mesaj ?? "" };
   } catch {
     // corpul nu era JSON — backend-ul probabil a picat complet
   }

@@ -1,5 +1,6 @@
 services:
   frontend:
+    container_name: libra-frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
@@ -15,12 +16,21 @@ services:
       # watch pe bind mount Windows are nevoie de polling
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
-    stdin_open: true
-    tty: true
+      # In compose, frontend-ul vorbeste cu backend-ul prin numele serviciului
+      # (DNS intern Docker), nu prin localhost — suprascrie valoarea din .env.
+      # Trei nume diferite in cod pentru aceeasi adresa (asistent.ts, proxy-ul
+      # din app/api/backend, identitate.ts) — le setam pe toate ca sa nu cada
+      # vreunul pe fallback-ul localhost:8000, care in container e el insusi.
+      - BACKEND_API_URL=http://backend:8000
+      - BACKEND_URL=http://backend:8000
+      - BACKEND_INTERNAL_URL=http://backend:8000
     depends_on:
       - backend
+    stdin_open: true
+    tty: true
 
   backend:
+    container_name: libra-backend
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
@@ -28,7 +38,10 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./galaxy-bank-knowledge:/galaxy-bank-knowledge:ro
     env_file:
       - ./backend/.env
+    environment:
+      - LIBRA_KNOWLEDGE_DIR=/galaxy-bank-knowledge
     stdin_open: true
     tty: true

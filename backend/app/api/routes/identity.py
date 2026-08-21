@@ -1,15 +1,15 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 
-from app.api.dependencies import AuthContext, get_current_user_or_internal
-from app.infrastructure.errors import ErrorAplicatie
+from app.core.errors import PermissionDeniedError, ValidationError
+from app.core.security import Principal, get_principal_or_internal
 from app.infrastructure.rate_limit import limiteaza
-from app.services import identity_service
 from app.schemas.identity import (
     ExtrageCnpResponse,
     LoginFataResponse,
     VerificaIdentitateRequest,
     VerificaIdentitateResponse,
 )
+from app.services import identity_service
 
 router = APIRouter(prefix="/api/identity", tags=["identity"])
 
@@ -19,9 +19,9 @@ MAX_OCTETI_IMAGINE = 8 * 1024 * 1024
 async def _citeste_imagine(fisier: UploadFile) -> bytes:
     date = await fisier.read()
     if not date:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Fisier gol.")
+        raise ValidationError("Fisier gol.")
     if len(date) > MAX_OCTETI_IMAGINE:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Imagine prea mare.")
+        raise ValidationError("Imagine prea mare.")
     return date
 
 
@@ -41,18 +41,14 @@ async def extract_cnp(buletin: UploadFile) -> ExtrageCnpResponse:
 @router.post("/verify", response_model=VerificaIdentitateResponse)
 async def verify(
     cerere: VerificaIdentitateRequest,
-    context: AuthContext = Depends(get_current_user_or_internal),
+    principal: Principal = Depends(get_principal_or_internal),
 ) -> VerificaIdentitateResponse:
-    if cerere.user_id != context.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"cod": "user_id_neconcordant", "mesaj": "user_id nu corespunde contextului autentificat."},
-        )
+    if cerere.user_id != principal.user_id:
+        raise PermissionDeniedError("user_id nu corespunde contextului autentificat.")
 
-    try:
-        return identity_service.verifica_identitate(cerere)
-    except ErrorAplicatie as exc:
-        raise HTTPException(status_code=exc.status_http, detail={"cod": exc.cod, "mesaj": exc.mesaj}) from exc
+    # IdentityImageDownloadError/IdentityResultWriteError (core/errors.py) trec
+    # neprinse pana la handler-ul global din main.py — acelasi plic ca restul API-ului.
+    return identity_service.verifica_identitate(cerere)
 
 
 @router.post("/login-match", response_model=LoginFataResponse)

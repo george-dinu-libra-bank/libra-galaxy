@@ -1,13 +1,13 @@
-from app.infrastructure.supabase import get_admin_client
+from app.infrastructure.supabase_client import get_service_client
 
 
 def descarca_imagine(bucket: str, cale: str) -> bytes:
-    client = get_admin_client()
+    client = get_service_client()
     return client.storage.from_(bucket).download(cale)
 
 
 def gaseste_id_user_dupa_email(email: str) -> str | None:
-    client = get_admin_client()
+    client = get_service_client()
     raspuns = (
         client.table("profiles")
         .select("id")
@@ -23,7 +23,7 @@ def gaseste_id_user_dupa_email(email: str) -> str | None:
 def gaseste_selfie_verificat(id_user: str) -> str | None:
     """Ultima poza selfie cu status 'verified' a userului — singura acceptata
     ca referinta pentru login biometric (nu 'pending_review'/'rejected')."""
-    client = get_admin_client()
+    client = get_service_client()
     raspuns = (
         client.table("identity_verifications")
         .select("selfie_image_path")
@@ -47,12 +47,12 @@ def inregistreaza_verificare(
     threshold_folosit: float,
     status: str,
 ) -> None:
-    """Scrie o incercare de verificare — trigger-ul din 0004 sincronizeaza profiles.verification_status.
+    """Scrie o incercare de verificare — trigger-ul din 0007 sincronizeaza profiles.verification_status.
 
     similarity_score poate fi None cand DeepFace n-a gasit o fata clara
     intr-una din poze (vezi face_match.verifica_fete) — nu inseamna scor 0.
     """
-    client = get_admin_client()
+    client = get_service_client()
     client.table("identity_verifications").insert(
         {
             "id_user": id_user,

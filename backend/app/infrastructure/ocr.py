@@ -1,4 +1,5 @@
 import io
+import logging
 import re
 from collections import Counter
 
@@ -6,9 +7,7 @@ import numpy as np
 import pytesseract
 from PIL import Image, ImageOps
 
-from app.infrastructure.logging import obtine_logger
-
-logger = obtine_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # CNP romanesc: prima cifra 1-8 (sex+secol), urmata de 12 cifre.
 CNP_REGEX = re.compile(r"[1-8]\d{12}")

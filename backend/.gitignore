@@ -1,6 +1,17 @@
+# env files
+.env
+.env*.local
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
 .venv/
 venv/
-.env
+*.egg-info/
+
+# greutati de model descarcate de DeepFace la runtime/build
 .deepface/
+
+# Artefact antrenat, se regenereaza cu python -m app.ml.antrenare
+app/ml/model.joblib

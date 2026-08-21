@@ -1,13 +1,13 @@
 import io
+import logging
 
 import numpy as np
 from deepface import DeepFace
 from PIL import Image
 
-from app.infrastructure.config import get_settings
-from app.infrastructure.logging import obtine_logger
+from app.core.config import get_settings
 
-logger = obtine_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class RezultatVerificare:

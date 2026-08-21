@@ -1,11 +1,12 @@
-from app.infrastructure.errors import DescarcareImagineError, ScriereRezultatError
+import logging
+
+from app.core.errors import IdentityImageDownloadError, IdentityResultWriteError
 from app.infrastructure.face_match import verifica_fete
-from app.infrastructure.logging import obtine_logger
 from app.infrastructure.ocr import extrage_cnp
 from app.repositories import identity_repository
 from app.schemas.identity import VerificaIdentitateRequest, VerificaIdentitateResponse
 
-logger = obtine_logger(__name__)
+logger = logging.getLogger(__name__)
 
 BUCKET_BULETINE = "buletine"
 BUCKET_SELFIE = "selfie-uri"
@@ -20,7 +21,7 @@ def _descarca(bucket: str, cale: str) -> bytes:
         return identity_repository.descarca_imagine(bucket, cale)
     except Exception:
         logger.exception("verifica_identitate: descarcare esuata (bucket=%s, cale=%s)", bucket, cale)
-        raise DescarcareImagineError(bucket, cale) from None
+        raise IdentityImageDownloadError(f"Nu am putut descarca imaginea din storage ({bucket}/{cale}).") from None
 
 
 def verifica_identitate(cerere: VerificaIdentitateRequest) -> VerificaIdentitateResponse:
@@ -46,7 +47,9 @@ def verifica_identitate(cerere: VerificaIdentitateRequest) -> VerificaIdentitate
         )
     except Exception:
         logger.exception("verifica_identitate: scriere in identity_verifications esuata (id_user=%s)", cerere.user_id)
-        raise ScriereRezultatError() from None
+        raise IdentityResultWriteError(
+            "Am comparat fetele, dar nu am putut salva rezultatul in baza de date."
+        ) from None
 
     if not rezultat.fata_detectata:
         logger.info("verifica_identitate: fata nedetectata, marcat pending_review (id_user=%s)", cerere.user_id)

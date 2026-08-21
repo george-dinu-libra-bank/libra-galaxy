@@ -2,7 +2,7 @@ import time
 from collections import defaultdict
 from threading import Lock
 
-from fastapi import HTTPException, status
+from app.core.errors import RateLimitError
 
 _LOCK = Lock()
 _INCERCARI: dict[str, list[float]] = defaultdict(list)
@@ -27,10 +27,7 @@ def limiteaza(cheie: str, max_incercari: int, fereastra_secunde: int) -> None:
         incercari = [t for t in _INCERCARI[cheie] if t > prag]
 
         if len(incercari) >= max_incercari:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail={"cod": "prea_multe_incercari", "mesaj": "Prea multe incercari. Asteapta putin si reia."},
-            )
+            raise RateLimitError("Prea multe incercari. Asteapta putin si reia.")
 
         incercari.append(acum)
         _INCERCARI[cheie] = incercari

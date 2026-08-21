@@ -30,10 +30,3 @@ class LoginFataResponse(BaseModel):
     """
 
     matched: bool
-
-
-class EroareResponse(BaseModel):
-    """Forma standard a oricarei erori intoarse de API — vezi app/main.py si infrastructure/errors.py."""
-
-    cod: str
-    mesaj: str

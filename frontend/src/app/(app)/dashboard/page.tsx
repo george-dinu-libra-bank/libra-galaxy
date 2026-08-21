@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeftRight, Bell, CreditCard, Users } from "lucide-react";
+import { ArrowLeftRight, Banknote, Bell, ChevronRight, CreditCard, Users } from "lucide-react";
 import { AvatarUtilizator } from "@/components/dashboard/avatar-utilizator";
 import { DetaliiContDrawer } from "@/components/dashboard/detalii-cont-drawer";
 import { ListaConturi } from "@/components/dashboard/lista-conturi";
@@ -117,6 +117,22 @@ export default async function DashboardPage() {
           </p>
         </section>
       )}
+
+      <Link
+        href="/credite"
+        className="mt-6 flex items-center gap-3 rounded-card bg-surface p-5 shadow-sm transition-[transform,box-shadow] duration-[180ms] ease-soft hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-600">
+          <Banknote size={20} strokeWidth={1.75} aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-medium text-ink">Credite</span>
+          <span className="block text-[13px] text-ink-faint">
+            Simuleaza o rata sau vezi creditele tale
+          </span>
+        </span>
+        <ChevronRight size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-ink-faint" />
+      </Link>
 
       <h2 className="mt-8 text-lg font-semibold text-ink">Actiuni rapide</h2>
 

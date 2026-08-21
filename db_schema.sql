@@ -9,9 +9,17 @@
 --   0001_profiles.sql            profiles + trigger pe auth.users + IBAN
 --   0002_carduri_tranzactii.sql  carduri + tranzactii + generator de card
 --   0003_card_style.sql          coloana card_style (standard | silver | gold)
+--   0004_ai_asistent.sql                    conversatii, memorie, RAG si telemetrie AI
+--   0005_ai_asistent_atasamente_voce.sql    atasamente PDF/poze + coloana canal
+--   0006_ai_asistent_nivel_incredere.sql    nivel de incredere pe mesajele asistentului
+--   0007_identity_verification.sql          verificare identitate (OCR buletin + DeepFace)
 --
 -- Relatii:
 --   auth.users 1 ── 1 profiles 1 ── N carduri 1 ── N tranzactii
+--
+-- Tabelele conturi_bancare si groups (folosite de frontend) au fost create
+-- direct in proiectul Supabase, fara o migratie commit-uita in acest depozit
+-- — nu apar mai jos din acest motiv, nu pentru ca nu ar exista.
 -- =============================================================================
 
 
@@ -110,3 +118,20 @@ create index tranzactii_recieve_idx on public.tranzactii (id_user_recieve, creat
 -- inchiderii unui card sau stergerii unui cont.
 -- RLS: select daca auth.uid() e expeditor sau destinatar. Insert doar din
 -- backend, ca scrierea tranzactiei si actualizarea soldurilor sa fie atomice.
+
+
+-- -----------------------------------------------------------------------------
+-- asistent AI — vezi 0004_ai_asistent.sql pentru definitia completa (coloane,
+-- constrangeri, RLS, functia match_knowledge_chunks). Rezumat aici doar ca sa
+-- ramana usor de citit structura generala:
+--
+--   ai_conversations, ai_messages, ai_conversation_summaries   — sesiuni de chat, proprietar id_user
+--   ai_user_memories                                           — memorie per utilizator, expirabila
+--   knowledge_documents, knowledge_chunks                      — corpus RAG indexat, partajat, doar citire pentru client
+--   embedding_cache, query_embedding_cache                     — cache de vectori, doar service_role
+--   agent_runs, tool_invocations, ai_usage_records             — telemetrie AI, fara continut de mesaj, doar service_role
+--
+-- Relatii noi:
+--   profiles 1 ── N ai_conversations 1 ── N ai_messages
+--   ai_conversations 1 ── 1 ai_conversation_summaries
+-- -----------------------------------------------------------------------------

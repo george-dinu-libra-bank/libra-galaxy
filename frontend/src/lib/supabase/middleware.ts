@@ -7,7 +7,8 @@ import { supabaseConfigurat } from "@/lib/supabase/configurat";
  *
  * „/api" nu inseamna „fara autentificare": rutele de acolo raspund in JSON, deci
  * isi verifica singure sesiunea si intorc 401, nu un redirect 307 catre o pagina
- * de login pe care un fetch() n-are ce sa faca.
+ * de login pe care un fetch() n-are ce sa faca. /shop e vitrina publica (Galaxy
+ * Shop), navigabila fara cont.
  */
 const RUTE_PUBLICE = ["/", "/login", "/register", "/auth", "/shop", "/api"];
 
@@ -29,7 +30,7 @@ export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_INTERNAL_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
