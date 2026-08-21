@@ -124,3 +124,54 @@ export function putereParola(valoare: string): number {
 
   return Math.min(scor, 4);
 }
+
+// ---------------------------------------------------------------------------
+// Creditare
+//
+// Aceeasi forma ca restul: (string) => string | null, ca sa intre in tabelul de
+// VALIDATORI din formulare fara caz special. Pragurile de produs (venit minim,
+// limite de suma) NU sunt aici — ele vin din catalog, prin /api/v1/credite/produs,
+// si se verifica pe server. Aici raman doar regulile de forma.
+// ---------------------------------------------------------------------------
+
+/** Sume in lei, cu virgula sau punct zecimal, fara separator de mii. */
+function numar(valoare: string): number | null {
+  const curat = valoare.trim().replace(/\s/g, "").replace(",", ".");
+  if (!/^\d+(\.\d{1,2})?$/.test(curat)) return null;
+  return Number(curat);
+}
+
+export function validVenit(valoare: string): string | null {
+  const suma = numar(valoare);
+  if (suma === null) return "Scrie venitul net lunar, în lei.";
+  if (suma <= 0) return "Venitul trebuie să fie mai mare decât 0.";
+  if (suma > 1_000_000) return "Verifică suma — pare prea mare.";
+  return null;
+}
+
+export function validObligatii(valoare: string): string | null {
+  if (valoare.trim() === "") return null;
+  const suma = numar(valoare);
+  if (suma === null) return "Scrie suma ratelor lunare, în lei.";
+  if (suma < 0) return "Suma nu poate fi negativă.";
+  return null;
+}
+
+export function validAngajator(valoare: string): string | null {
+  const nume = valoare.trim();
+  if (nume.length < 2) return "Scrie numele angajatorului.";
+  if (nume.length > 120) return "Numele e prea lung.";
+  return null;
+}
+
+export function validVechime(valoare: string): string | null {
+  const luni = valoare.trim();
+  if (!/^\d{1,3}$/.test(luni)) return "Scrie vechimea în luni, doar cifre.";
+  if (Number(luni) > 720) return "Verifică vechimea — pare prea mare.";
+  return null;
+}
+
+/** Suma in lei ca number, pentru trimitere. Presupune ca a trecut validarea. */
+export function sumaDinText(valoare: string): number {
+  return numar(valoare) ?? 0;
+}

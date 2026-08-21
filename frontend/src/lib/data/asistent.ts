@@ -1,4 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
+import { apelBackend } from "@/lib/data/backend";
+
+// Reexportat pentru importurile existente: helperul a fost mutat in
+// lib/data/backend.ts cand creditarea a devenit al doilea consumator.
+export { apelBackend };
 
 export type Citare = {
   documentId: string;
@@ -24,50 +28,6 @@ export type ConversatieAsistent = {
   titlu: string;
   actualizatLa: string;
 };
-
-type PlicSucces<T> = { success: true; body: T };
-type PlicEroare = { success: false; error: { code: string; message: string } };
-
-const BACKEND_URL = process.env.BACKEND_API_URL ?? "http://localhost:8000";
-
-/**
- * Apel catre FastAPI, cu tokenul Supabase al utilizatorului curent — backend-ul
- * nu e niciodata expus catre browser (ARCHITECTURE.md 4.2).
- */
-export async function apelBackend<T>(
-  cale: string,
-  optiuni: RequestInit = {},
-): Promise<{ date?: T; eroare?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) return { eroare: "Trebuie sa fii autentificat." };
-
-  let raspuns: Response;
-  try {
-    raspuns = await fetch(`${BACKEND_URL}${cale}`, {
-      ...optiuni,
-      headers: {
-        ...(optiuni.headers ?? {}),
-        Authorization: `Bearer ${session.access_token}`,
-        "Accept-Language": "ro",
-      },
-      cache: "no-store",
-    });
-  } catch {
-    return { eroare: "Asistentul nu este disponibil momentan. Incearca din nou." };
-  }
-
-  const corp = (await raspuns.json().catch(() => null)) as PlicSucces<T> | PlicEroare | null;
-
-  if (!corp || !corp.success) {
-    return { eroare: corp?.error?.message ?? "A aparut o eroare neasteptata." };
-  }
-
-  return { date: corp.body };
-}
 
 function laCitare(citare: { document_id: string; section: string | null; score: number }): Citare {
   return { documentId: citare.document_id, sectiune: citare.section, scor: citare.score };

@@ -28,10 +28,12 @@ from app.agents.engagement import EngagementAgent
 from app.agents.financial_advisor import FinancialAdvisorAgent
 from app.agents.transaction_intelligence import TransactionIntelligenceAgent
 from app.attachments.service import AttachmentService
+from app.services.credit_service import CreditService
 from app.core.config import Settings, get_settings
 from app.infrastructure.attachment_storage import AttachmentStorage
 from app.infrastructure.supabase import create_auth_client, create_user_client
 from app.infrastructure.supabase_client import get_service_client
+from app.ml.neregularitati import DetectorNeregularitati
 from app.orchestration.orchestrator import Orchestrator
 from app.orchestration.routing import AgentRouter
 from app.providers.foundry import MicrosoftFoundryChatProvider, MicrosoftFoundryEmbeddingProvider
@@ -40,6 +42,7 @@ from app.rag.retrieval import RetrievalService
 from app.repositories.attachment_repository import AttachmentRepository
 from app.repositories.banking_read_repository import BankingReadRepository
 from app.repositories.conversation_repository import ConversationRepository
+from app.repositories.credit_repository import CreditRepository
 from app.repositories.embedding_cache_repository import EmbeddingCacheRepository
 from app.repositories.knowledge_repository import KnowledgeRepository
 from app.repositories.memory_repository import MemoryRepository
@@ -88,6 +91,21 @@ def get_orchestrator() -> Orchestrator:
         tool_registry=tools, agents=agents, router=AgentRouter(),
         chat_provider=chat_provider, environment=settings.environment,
         chat_price_in=settings.chat_price_per_million_input, chat_price_out=settings.chat_price_per_million_output,
+    )
+
+
+@lru_cache
+def get_credit_service() -> CreditService:
+    """Serviciul de creditare, construit o data.
+
+    Primeste clientul cu service_role: tabelele credit_* nu accepta scrieri de la
+    'authenticated', iar RPC-urile de operatiuni sunt revocate pentru orice alt rol.
+    Detectorul de neregularitati e cel cu model de pe disc — acelasi artefact pe
+    care il foloseste analiza de alerte, refolosit ca factor de scoring.
+    """
+    return CreditService(
+        CreditRepository(get_service_client()),
+        DetectorNeregularitati.cu_model_de_pe_disc(),
     )
 
 
