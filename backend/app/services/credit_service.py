@@ -20,12 +20,15 @@ import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from hashlib import sha256
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.core.errors import ResourceNotFoundError, ValidationError
 from app.credit import amortizare, reguli, scorecard
+from app.credit.adeverinta import citeste_adeverinta
 from app.credit.venit import VenitConstatat, detecteaza_venit
+from app.infrastructure.document_text import text_din_document
 from app.ml.caracteristici import normalizeaza
 from app.ml.neregularitati import DetectorNeregularitati
 from app.repositories.credit_repository import CreditRepository
@@ -40,6 +43,30 @@ ZILE_VALABILITATE_OFERTA = 7
 INCREDERE_ADEVERINTA = 0.6
 # Fereastra pe care se numara platile atipice pentru factorul de comportament.
 ZILE_ISTORIC_COMPORTAMENT = 180
+
+STATUSURI_CERERE = (
+    "ciorna", "in_analiza", "oferta", "analiza_manuala",
+    "respinsa", "acceptata", "anulata", "expirata",
+)
+# Stari din care o cerere nu mai iese. Din momentul in care ajunge intr-una,
+# incepe sa curga retentia documentelor.
+STATUSURI_FINALE = ("respinsa", "acceptata", "anulata", "expirata")
+
+# Cat mai traieste fisierul dupa ce dosarul s-a inchis. Randul din
+# credit_documente ramane pentru totdeauna, cu ce s-a citit si cine a confirmat;
+# doar adeverinta propriu-zisa dispare. O luna acopera o contestatie facuta la
+# cald, care e singurul motiv realist de a te intoarce la document.
+ZILE_RETENTIE_DOCUMENTE = 30
+
+# Ce se accepta la incarcare. Aceeasi lista e pusa si pe bucket in 0013: aici
+# opreste devreme, acolo e ultima bariera pentru cine ar ocoli aplicatia.
+TIPURI_DOCUMENT = {
+    "application/pdf": "pdf",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+}
+MAX_OCTETI_DOCUMENT = 10 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +92,10 @@ class Decizie:
     rata_lunara: Decimal | None = None
     dae: Decimal | None = None
     oferta_expira_la: datetime | None = None
+    # Adevarat cand banca n-a putut confirma niciun venit din surse proprii, deci
+    # o adeverinta chiar ar schimba ceva. Fara semnalul asta, interfata ar cere
+    # documente de la toata lumea sau de la nimeni.
+    cere_document: bool = False
 
 
 class CreditNegasit(ResourceNotFoundError):
@@ -221,7 +252,7 @@ class CreditService:
                 cerere, Decizie(
                     decizie="respins", scor=None, dti=dti,
                     motive=[{"cod": m.cod, "text": m.text} for m in motive],
-                    factori=[], explicatie="",
+                    factori=[], explicatie="", cere_document=incredere == 0.0,
                 ), venit, obligatii,
             )
 
@@ -244,6 +275,7 @@ class CreditService:
             dae=amortizare.dae(principal_bani, rata_bani, luni) if scor.aprobat else None,
             oferta_expira_la=(datetime.now(timezone.utc) + timedelta(days=ZILE_VALABILITATE_OFERTA))
             if scor.aprobat else None,
+            cere_document=incredere == 0.0,
         )
         return await self._finalizeaza(cerere, decizie, venit, obligatii)
 
@@ -324,11 +356,21 @@ class CreditService:
         return constatat
 
     async def _venit_din_adeverinta(self, id_cerere: UUID) -> Decimal | None:
-        """Venitul extras dintr-o adeverinta incarcata, daca exista una procesata."""
+        """Venitul dintr-o adeverinta **confirmata de un analist**.
+
+        Randul exista numai dupa ce un om s-a uitat la document si a validat
+        cifra (vezi `confirma_document`) — ce a citit OCR-ul singur nu ajunge
+        niciodata aici. De-asta poate primi INCREDERE_ADEVERINTA fara rezerve.
+
+        Se ia ultima confirmare, nu prima: daca analistul revine si corecteaza,
+        corectura trebuie sa fie cea care conteaza. `verificari()` intoarce
+        randurile in ordinea scrierii, deci ultima potrivire e cea mai recenta.
+        """
+        venit = None
         for verificare in await self._depozit.verificari(id_cerere):
             if verificare["sursa"] == "adeverinta" and verificare["venit_constatat"]:
-                return Decimal(str(verificare["venit_constatat"]))
-        return None
+                venit = Decimal(str(verificare["venit_constatat"]))
+        return venit
 
     async def _obligatii(self, id_cerere: UUID, user_id: UUID, profil: dict) -> Decimal:
         expuneri = await self._depozit.expuneri_birou(profil["cnp"])
@@ -365,7 +407,46 @@ class CreditService:
     # -- analiza manuala ----------------------------------------------------
 
     async def cereri_in_analiza(self) -> list[dict]:
+        # Coada e citita des si numai de administratori, deci e locul potrivit ca
+        # sa se declanseze curatarea documentelor expirate: nu exista cron in
+        # proiect, iar operatiunea trebuie sa porneasca din ceva ce se intampla
+        # oricum. Nu poate darama citirea — vezi `_curata_documente_expirate`.
+        await self._curata_documente_expirate()
         return await self._depozit.cereri_in_analiza()
+
+    async def cereri_toate(self, status: str | None = None) -> list[dict]:
+        if status and status not in STATUSURI_CERERE:
+            raise OperatiuneRefuzata(f"Statusul '{status}' nu exista.")
+        return await self._depozit.cereri_toate(status)
+
+    async def credite_toate(self) -> list[dict]:
+        return await self._depozit.credite_toate()
+
+    async def dosar(self, id_cerere: UUID) -> dict:
+        """Tot ce trebuie sa vada un analist despre o cerere, intr-un singur apel.
+
+        Verificarile si documentele vin impreuna cu cererea fiindca fara ele
+        scorul e un numar fara explicatie: „58 din 100" nu spune nimic, „58
+        fiindca venitul e doar declarat" spune tot.
+        """
+        cerere = await self._depozit.cerere(id_cerere)
+        if not cerere:
+            raise CreditNegasit("Cererea nu exista.")
+
+        documente = await self._depozit.documente(id_cerere)
+        return {
+            "cerere": cerere,
+            "verificari": await self._depozit.verificari(id_cerere),
+            "documente": [
+                {**document, "url": await self._url_document(document)} for document in documente
+            ],
+        }
+
+    async def _url_document(self, document: dict) -> str | None:
+        """Link temporar, doar cat timp fisierul mai exista."""
+        if document.get("sters_la"):
+            return None
+        return await self._depozit.url_document(document["storage_path"])
 
     async def decide_manual(
         self, id_cerere: UUID, id_admin: UUID, aproba: bool, nota: str | None = None
@@ -424,6 +505,178 @@ class CreditService:
             "detalii": {"nota": motivare or None, "scor_automat": cerere.get("scor")},
         })
         return actualizata
+
+    # -- documente ----------------------------------------------------------
+
+    async def incarca_document(
+        self, id_cerere: UUID, user_id: UUID, continut: bytes, content_type: str | None
+    ) -> dict:
+        """Urca adeverinta, o citeste, si atat.
+
+        **Nu scrie nicio verificare de venit.** Aici documentul e citit, nu
+        crezut: cifra propusa de OCR ramane in `extras`, unde n-are niciun efect
+        asupra deciziei pana cand un analist o confirma. Diferenta asta e tot
+        rostul fluxului — o suma citita gresit dintr-o poza inclinata ar da
+        altfel un credit pe date inventate.
+        """
+        cerere = await self._cerere_proprie(id_cerere, user_id)
+        if cerere["status"] in STATUSURI_FINALE:
+            raise OperatiuneRefuzata(
+                f"Cererea e in starea '{cerere['status']}'; nu mai primeste documente."
+            )
+
+        extensie = TIPURI_DOCUMENT.get((content_type or "").split(";")[0].strip().lower())
+        if not extensie:
+            raise OperatiuneRefuzata(
+                "Se accepta doar PDF sau poza (JPEG, PNG, WebP)."
+            )
+        if not continut:
+            raise OperatiuneRefuzata("Fisierul e gol.")
+        if len(continut) > MAX_OCTETI_DOCUMENT:
+            raise OperatiuneRefuzata(
+                f"Fisierul depaseste {MAX_OCTETI_DOCUMENT // (1024 * 1024)} MB."
+            )
+
+        cale = f"{user_id}/{id_cerere}/{uuid4().hex}.{extensie}"
+        await self._depozit.urca_document(cale, continut, content_type)
+
+        date = citeste_adeverinta(text_din_document(continut, content_type))
+
+        document = await self._depozit.salveaza_document({
+            "id_cerere": str(id_cerere),
+            "id_user": str(user_id),
+            "tip": "adeverinta_venit",
+            "storage_path": cale,
+            "content_type": content_type,
+            "marime_octeti": len(continut),
+            "hash_fisier": sha256(continut).hexdigest(),
+            "status": "procesat" if date.utilizabila else "ilizibil",
+            "extras": {
+                "venit_net": str(date.venit_net) if date.venit_net is not None else None,
+                "angajator": date.angajator,
+                "vechime_luni": date.vechime_luni,
+                "incredere": date.incredere,
+                # Textul brut ramane ca sa se poata verifica de ce a iesit cifra
+                # aia, dupa ce fisierul e sters. Taiat, ca sa nu umple randul.
+                "text": date.text_brut[:4000],
+            },
+        })
+
+        await self._depozit.eveniment({
+            "id_cerere": str(id_cerere), "tip": "document_incarcat", "actor": "client",
+            "detalii": {
+                "tip": "adeverinta_venit",
+                "citit": date.utilizabila,
+                "incredere": date.incredere,
+            },
+        })
+        return document
+
+    async def documente(self, id_cerere: UUID, user_id: UUID) -> list[dict]:
+        await self._cerere_proprie(id_cerere, user_id)
+        return await self._depozit.documente(id_cerere)
+
+    async def confirma_document(
+        self, id_document: UUID, id_admin: UUID, venit_confirmat: Decimal
+    ) -> dict:
+        """Analistul valideaza cifra din adeverinta, si abia atunci ea conteaza.
+
+        Se scriu doua lucruri, nu unul: randul din `credit_verificari_venit` care
+        intra in decizie, si `venit_confirmat` pe document. `extras` ramane
+        neatins, cu ce citise OCR-ul. Cand cele doua difera — si vor diferi — se
+        vede peste sase luni ca a fost nevoie de o corectie omeneasca, si cat de
+        mare. Daca am suprascrie `extras`, am pierde exact dovada asta.
+
+        Dupa confirmare cererea se reevalueaza: venitul e o intrare a motorului
+        de scoring, iar motorul trebuie sa ruleze din nou cu ea. Decizia ramane
+        deterministica — analistul a completat un camp, nu a ales un rezultat.
+        """
+        document = await self._depozit.document(id_document)
+        if not document:
+            raise CreditNegasit("Documentul nu exista.")
+        if venit_confirmat <= 0:
+            raise OperatiuneRefuzata("Venitul confirmat trebuie sa fie pozitiv.")
+
+        id_cerere = UUID(str(document["id_cerere"]))
+        cerere = await self._depozit.cerere(id_cerere)
+        if not cerere:
+            raise CreditNegasit("Cererea nu exista.")
+        if cerere["status"] in STATUSURI_FINALE:
+            raise OperatiuneRefuzata(
+                f"Cererea e in starea '{cerere['status']}'; decizia ei nu se mai schimba."
+            )
+
+        citit = (document.get("extras") or {}).get("venit_net")
+
+        await self._depozit.salveaza_verificare({
+            "id_cerere": str(id_cerere),
+            "sursa": "adeverinta",
+            "venit_constatat": str(venit_confirmat),
+            "incredere": INCREDERE_ADEVERINTA,
+            "detalii": {
+                "id_document": str(id_document),
+                "citit_de_ocr": citit,
+                "confirmat_de": str(id_admin),
+                "corectat": citit is not None and Decimal(str(citit)) != venit_confirmat,
+            },
+        })
+
+        await self._depozit.actualizeaza_document(id_document, {
+            "status": "confirmat",
+            "venit_confirmat": str(venit_confirmat),
+            "confirmat_de": str(id_admin),
+            "confirmat_la": datetime.now(timezone.utc).isoformat(),
+        })
+
+        await self._depozit.eveniment({
+            "id_cerere": str(id_cerere), "tip": "document_confirmat", "actor": "administrator",
+            "id_actor": str(id_admin),
+            "detalii": {"venit_confirmat": str(venit_confirmat), "citit_de_ocr": citit},
+        })
+
+        # `evalueaza` accepta doar 'ciorna' si 'in_analiza' — pe buna dreptate, ca
+        # o oferta emisa sa nu se schimbe sub picioarele clientului. Aici insa
+        # datele de intrare chiar s-au schimbat, deci cererea se intoarce
+        # explicit in analiza inainte de a rula din nou motorul.
+        await self._depozit.actualizeaza_cerere(id_cerere, {"status": "in_analiza"})
+        await self.evalueaza(id_cerere, UUID(str(cerere["id_user"])))
+
+        return await self.dosar(id_cerere)
+
+    async def _curata_documente_expirate(self) -> int:
+        """Sterge fisierele dosarelor inchise de peste ZILE_RETENTIE_DOCUMENTE.
+
+        Randul din baza ramane intact — cu `extras`, cu hash-ul si cu cine a
+        confirmat. Dispare doar fisierul, care e si singurul lucru care ocupa
+        spatiu, si singurul care contine date personale in clar.
+
+        Nu arunca niciodata: curatarea e un efect secundar al unei citiri, iar o
+        eroare de storage n-are voie sa lase un analist fara coada de lucru.
+        """
+        limita = datetime.now(timezone.utc) - timedelta(days=ZILE_RETENTIE_DOCUMENTE)
+
+        try:
+            expirate = await self._depozit.documente_expirate(limita)
+        except Exception:
+            logger.exception("curatare documente: nu am putut citi lista")
+            return 0
+
+        sterse = 0
+        for document in expirate:
+            try:
+                await self._depozit.sterge_document(document["storage_path"])
+                await self._depozit.actualizeaza_document(UUID(str(document["id"])), {
+                    "sters_la": datetime.now(timezone.utc).isoformat(),
+                })
+                sterse += 1
+            except Exception:
+                # Un fisier care nu se sterge azi se incearca din nou la
+                # urmatoarea citire: `sters_la` ramane null, deci ramane in lista.
+                logger.exception("curatare documente: %s", document["storage_path"])
+
+        if sterse:
+            logger.info("curatare documente: %d fisiere sterse dupa retentie", sterse)
+        return sterse
 
     # -- acordare -----------------------------------------------------------
 

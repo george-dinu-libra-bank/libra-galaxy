@@ -12,7 +12,7 @@ o data in serviciu, si inca o data in RPC-ul din baza.
 from dataclasses import asdict
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 
 from app.api.dependencies import (
     UserContext,
@@ -23,20 +23,25 @@ from app.api.dependencies import (
 from app.core.errors import ValidationError
 from app.schemas.credit import (
     AcceptaRequest,
-    CerereAdminResponse,
     AcordareResponse,
+    CerereAdminResponse,
     CerereRequest,
     CerereResponse,
+    ConfirmaDocumentRequest,
+    CreditAdminResponse,
     CreditResponse,
     DecizieManualaRequest,
     DecizieResponse,
     DetaliuCreditResponse,
+    DocumentResponse,
+    DosarResponse,
     ProdusResponse,
     RambursareCalculResponse,
     RambursareRequest,
     RambursareResponse,
     SimulareRequest,
     SimulareResponse,
+    VerificareResponse,
 )
 from app.services.credit_service import CreditService
 
@@ -120,6 +125,37 @@ async def evalueaza(
     configurat, modelul care formuleaza motivarea.
     """
     return DecizieResponse(**asdict(await serviciu.evalueaza(id_cerere, user.user_id)))
+
+
+@router.post("/cereri/{id_cerere}/documente", response_model=DocumentResponse)
+async def incarca_document(
+    id_cerere: UUID,
+    fisier: UploadFile = File(...),
+    user: UserContext = Depends(get_current_user),
+    serviciu: CreditService = Depends(get_credit_service),
+) -> DocumentResponse:
+    """Incarca o adeverinta de venit si o citeste.
+
+    Documentul e citit, nu crezut: ce extrage OCR-ul ramane in `extras` si nu
+    atinge decizia pana cand un analist confirma cifra. Raspunsul arata ce s-a
+    citit, ca omul sa stie daca a iesit ceva din poza lui.
+    """
+    document = await serviciu.incarca_document(
+        id_cerere, user.user_id, await fisier.read(), fisier.content_type
+    )
+    return DocumentResponse(**_document_public(document))
+
+
+@router.get("/cereri/{id_cerere}/documente", response_model=list[DocumentResponse])
+async def documentele_cererii(
+    id_cerere: UUID,
+    user: UserContext = Depends(get_current_user),
+    serviciu: CreditService = Depends(get_credit_service),
+) -> list[DocumentResponse]:
+    return [
+        DocumentResponse(**_document_public(document))
+        for document in await serviciu.documente(id_cerere, user.user_id)
+    ]
 
 
 @router.post("/cereri/{id_cerere}/accepta", response_model=AcordareResponse)
@@ -229,15 +265,7 @@ async def coada_analiza(
     serviciu: CreditService = Depends(get_credit_service),
 ) -> list[CerereAdminResponse]:
     """Cererile care asteapta decizia unui om, cea mai veche prima."""
-    return [
-        CerereAdminResponse(
-            **_cerere_publica(cerere),
-            nume=(cerere.get("profiles") or {}).get("nume", "necunoscut"),
-            venit_folosit=cerere.get("venit_folosit"),
-            obligatii_folosite=cerere.get("obligatii_folosite"),
-        )
-        for cerere in await serviciu.cereri_in_analiza()
-    ]
+    return [_cerere_admin(cerere) for cerere in await serviciu.cereri_in_analiza()]
 
 
 @router_admin.post("/cereri/{id_cerere}/decizie", response_model=CerereResponse)
@@ -256,6 +284,91 @@ async def decizie_manuala(
         id_cerere, administrator.user_id, cerere.aproba, cerere.nota
     )
     return CerereResponse(**_cerere_publica(rezultat))
+
+
+@router_admin.get("/cereri", response_model=list[CerereAdminResponse])
+async def toate_cererile(
+    status: str | None = Query(default=None),
+    serviciu: CreditService = Depends(get_credit_service),
+) -> list[CerereAdminResponse]:
+    """Toate cererile, optional filtrate — ca sa poata fi auditate si cele automate."""
+    return [_cerere_admin(cerere) for cerere in await serviciu.cereri_toate(status)]
+
+
+@router_admin.get("/cereri/{id_cerere}", response_model=DosarResponse)
+async def dosar(
+    id_cerere: UUID,
+    serviciu: CreditService = Depends(get_credit_service),
+) -> DosarResponse:
+    """Cererea, cele patru verificari de venit si documentele, cu link-uri semnate."""
+    date = await serviciu.dosar(id_cerere)
+    return DosarResponse(
+        cerere=_cerere_admin(date["cerere"]),
+        verificari=[VerificareResponse(**_verificare_publica(v)) for v in date["verificari"]],
+        documente=[DocumentResponse(**_document_public(d)) for d in date["documente"]],
+    )
+
+
+@router_admin.post("/documente/{id_document}/confirma", response_model=DosarResponse)
+async def confirma_document(
+    id_document: UUID,
+    cerere: ConfirmaDocumentRequest,
+    administrator: UserContext = Depends(cere_administrator),
+    serviciu: CreditService = Depends(get_credit_service),
+) -> DosarResponse:
+    """Valideaza cifra din adeverinta si reevalueaza cererea cu ea.
+
+    Analistul completeaza o intrare a motorului de scoring, nu alege un
+    rezultat: dupa confirmare ruleaza acelasi calcul determinist, cu venitul in
+    plus. De-aia raspunsul e dosarul intreg — scorul se poate fi schimbat.
+    """
+    date = await serviciu.confirma_document(
+        id_document, administrator.user_id, cerere.venit_confirmat
+    )
+    return DosarResponse(
+        cerere=_cerere_admin(date["cerere"]),
+        verificari=[VerificareResponse(**_verificare_publica(v)) for v in date["verificari"]],
+        documente=[DocumentResponse(**_document_public(d)) for d in date["documente"]],
+    )
+
+
+@router_admin.get("/acordate", response_model=list[CreditAdminResponse])
+async def credite_acordate(
+    serviciu: CreditService = Depends(get_credit_service),
+) -> list[CreditAdminResponse]:
+    return [
+        CreditAdminResponse(
+            **_credit_public(credit),
+            nume=(credit.get("profiles") or {}).get("nume", "necunoscut"),
+        )
+        for credit in await serviciu.credite_toate()
+    ]
+
+
+def _cerere_admin(cerere: dict) -> CerereAdminResponse:
+    return CerereAdminResponse(
+        **_cerere_publica(cerere),
+        nume=(cerere.get("profiles") or {}).get("nume", "necunoscut"),
+        venit_folosit=cerere.get("venit_folosit"),
+        obligatii_folosite=cerere.get("obligatii_folosite"),
+    )
+
+
+def _document_public(document: dict) -> dict:
+    campuri = (
+        "id tip status content_type marime_octeti extras venit_confirmat "
+        "confirmat_la sters_la creat_la url"
+    ).split()
+    date = {cheie: document.get(cheie) for cheie in campuri}
+    date["extras"] = date["extras"] or {}
+    return date
+
+
+def _verificare_publica(verificare: dict) -> dict:
+    campuri = "sursa venit_constatat obligatii_constatate incredere detalii creat_la".split()
+    date = {cheie: verificare.get(cheie) for cheie in campuri}
+    date["detalii"] = date["detalii"] or {}
+    return date
 
 
 def _cerere_publica(cerere: dict) -> dict:

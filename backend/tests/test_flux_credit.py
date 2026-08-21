@@ -64,6 +64,10 @@ class DepozitFals:
         self._rate: dict[str, list[dict]] = {}
         self.verificari_scrise: list[dict] = []
         self.evenimente: list[dict] = []
+        self.documente_scrise: dict[str, dict] = {}
+        # Storage-ul, ca dictionar: cale -> continut. Curatarea trebuie sa poata
+        # fi verificata, iar asta inseamna sa se vada ca fisierul chiar a disparut.
+        self.fisiere: dict[str, bytes] = {}
 
     # -- citiri -------------------------------------------------------------
 
@@ -113,7 +117,7 @@ class DepozitFals:
             "id": str(uuid.uuid4()), "creat_la": datetime.now(timezone.utc).isoformat(),
             "venit_folosit": None, "obligatii_folosite": None, "dti": None, "scor": None,
             "motive": [], "explicatie": None, "rata_lunara": None, "dae": None,
-            "oferta_expira_la": None, **campuri,
+            "oferta_expira_la": None, "finalizat_la": None, **campuri,
         }
         self.cereri[rand["id"]] = rand
         return rand
@@ -124,23 +128,91 @@ class DepozitFals:
     async def cereri_utilizator(self, user_id) -> list[dict]:
         return [c for c in self.cereri.values() if c["id_user"] == str(user_id)]
 
+    async def cereri_in_analiza(self) -> list[dict]:
+        return [c for c in self.cereri.values() if c["status"] == "analiza_manuala"]
+
+    async def cereri_toate(self, status: str | None = None, limita: int = 200) -> list[dict]:
+        return [c for c in self.cereri.values() if status is None or c["status"] == status]
+
+    async def credite_toate(self, limita: int = 200) -> list[dict]:
+        return list(self.credite.values())
+
     async def actualizeaza_cerere(self, id_cerere, campuri: dict[str, Any]) -> dict:
         self.cereri[str(id_cerere)].update(campuri)
+        self._marcheaza_finalul(self.cereri[str(id_cerere)])
         return self.cereri[str(id_cerere)]
+
+    @staticmethod
+    def _marcheaza_finalul(cerere: dict) -> None:
+        """Ce face trigger-ul `credit_cereri_before_write` din 0014.
+
+        E imitat aici fiindca retentia documentelor atarna de el: fara
+        `finalizat_la`, un dosar inchis n-ar intra niciodata in curatare, iar
+        testul ar trece degeaba.
+        """
+        final = cerere.get("status") in ("respinsa", "acceptata", "anulata", "expirata")
+        if final:
+            cerere.setdefault("finalizat_la", None)
+            if cerere["finalizat_la"] is None:
+                cerere["finalizat_la"] = datetime.now(timezone.utc).isoformat()
+        else:
+            cerere["finalizat_la"] = None
 
     async def salveaza_verificare(self, campuri: dict[str, Any]) -> dict:
         self.verificari_scrise.append(campuri)
         return campuri
 
     async def verificari(self, id_cerere) -> list[dict]:
+        # `creat_la` e pus de baza de date, deci nu vine din `campuri`; fara el
+        # aici, raspunsul rutei de dosar n-ar mai trece de response_model.
         return [
-            {"venit_constatat": None, "obligatii_constatate": None, "incredere": 0, **v}
+            {
+                "venit_constatat": None, "obligatii_constatate": None, "incredere": 0,
+                "creat_la": datetime.now(timezone.utc).isoformat(), **v,
+            }
             for v in self.verificari_scrise
             if v["id_cerere"] == str(id_cerere)
         ]
 
     async def salveaza_document(self, campuri: dict[str, Any]) -> dict:
-        return campuri
+        rand = {
+            "id": str(uuid.uuid4()), "creat_la": datetime.now(timezone.utc).isoformat(),
+            "venit_confirmat": None, "confirmat_de": None, "confirmat_la": None,
+            "sters_la": None, **campuri,
+        }
+        self.documente_scrise[rand["id"]] = rand
+        return rand
+
+    async def document(self, id_document) -> dict | None:
+        return self.documente_scrise.get(str(id_document))
+
+    async def documente(self, id_cerere) -> list[dict]:
+        return [
+            d for d in self.documente_scrise.values() if d["id_cerere"] == str(id_cerere)
+        ]
+
+    async def actualizeaza_document(self, id_document, campuri: dict[str, Any]) -> dict:
+        self.documente_scrise[str(id_document)].update(campuri)
+        return self.documente_scrise[str(id_document)]
+
+    async def documente_expirate(self, inainte_de) -> list[dict]:
+        return [
+            d for d in self.documente_scrise.values()
+            if d.get("sters_la") is None
+            and (self.cereri.get(d["id_cerere"], {}).get("finalizat_la") or "") != ""
+            and datetime.fromisoformat(self.cereri[d["id_cerere"]]["finalizat_la"]) <= inainte_de
+        ]
+
+    # -- storage ------------------------------------------------------------
+
+    async def urca_document(self, cale: str, continut: bytes, content_type: str) -> None:
+        self.fisiere[cale] = continut
+
+    async def url_document(self, cale: str, secunde: int = 300) -> str | None:
+        return f"https://semnat.test/{cale}" if cale in self.fisiere else None
+
+    async def sterge_document(self, cale: str) -> None:
+        self.fisiere.pop(cale, None)
 
     async def eveniment(self, campuri: dict[str, Any]) -> None:
         self.evenimente.append(campuri)
