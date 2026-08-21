@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SetariClient } from "@/components/setari/setari-client";
+import { checkAdmin } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
 import { TEMA_COOKIE, temaDinCookie } from "@/lib/tema";
 
@@ -33,6 +34,8 @@ export default async function SetariPage() {
   }
 
   const tema = temaDinCookie((await cookies()).get(TEMA_COOKIE)?.value);
+  // Zona de administrare nu se anunta celor care n-au ce cauta in ea.
+  const esteAdmin = (await checkAdmin()) !== null;
 
-  return <SetariClient profil={profil} tema={tema} />;
+  return <SetariClient profil={profil} tema={tema} esteAdmin={esteAdmin} />;
 }

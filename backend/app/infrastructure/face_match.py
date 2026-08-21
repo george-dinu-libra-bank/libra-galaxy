@@ -2,7 +2,6 @@ import io
 import logging
 
 import numpy as np
-from deepface import DeepFace
 from PIL import Image
 
 from app.core.config import get_settings
@@ -35,6 +34,12 @@ def verifica_fete(buletin_bytes: bytes, selfie_bytes: bytes) -> RezultatVerifica
     nu comparata "pe ghicite".
     """
     setari = get_settings()
+
+    # Importat aici, nu la incarcarea modulului: DeepFace trage TensorFlow dupa
+    # el, cateva sute de MB si secunde bune de pornire. Restul aplicatiei
+    # (alerte, agenti, rapoarte) n-are nevoie de el, iar cu importul sus n-ar
+    # porni deloc fara TensorFlow instalat.
+    from deepface import DeepFace
 
     try:
         rezultat = DeepFace.verify(

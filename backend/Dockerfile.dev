@@ -1,7 +1,11 @@
-FROM python:3.11-slim
+# Varianta de dezvoltare: acelasi mediu ca Dockerfile, plus reincarcare la salvare.
+FROM python:3.12-slim
 
-# tesseract: OCR pentru buletin (identity_service). libgl1/libglib2.0-0:
-# dependinte native pentru opencv-python-headless/DeepFace.
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# tesseract: OCR-ul care citeste CNP-ul de pe buletin (ron = limba romana).
+# libgl1 + libglib2.0-0: cerute de opencv, pe care il foloseste DeepFace.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       tesseract-ocr \
       tesseract-ocr-ron \
@@ -11,13 +15,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Dependintele se citesc din pyproject.toml, la fel ca in imaginea de productie:
+# doua liste care pot ajunge sa difere sunt mai rele decat una singura.
+COPY pyproject.toml ./
+COPY app ./app
+RUN pip install --upgrade pip && pip install -e ".[dev]"
 
-# Descarca greutatile ArcFace la build, nu la prima cerere de verificare identitate.
 RUN python -c "from deepface import DeepFace; DeepFace.build_model('ArcFace')"
-
-COPY . .
 
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

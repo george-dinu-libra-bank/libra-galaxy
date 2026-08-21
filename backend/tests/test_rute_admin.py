@@ -2,7 +2,7 @@
 
 Supabase e inlocuit cu un client fals; ce se verifica aici e bariera de acces si
 forma raspunsurilor, nu politicile RLS — acelea traiesc in baza de date si se
-verifica rulland 0004_rol_administrator.sql.
+verifica rulland 0012_admin_verificari_identitate.sql.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -10,7 +10,13 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import UserContext, get_current_user, get_user_supabase
+from app.api.dependencies import (
+    ROLURI_ADMIN,
+    UserContext,
+    get_admin_supabase,
+    get_current_user,
+    get_user_supabase,
+)
 from app.infrastructure.config import Settings, get_settings
 from app.main import app
 
@@ -69,9 +75,18 @@ class _ClientFals:
     def table(self, nume: str):
         # Rolul se citeste din user_roles, nu din profiles.rol: coloana aceea nu
         # exista in proiectul real (migrarea 0008 din repo n-a fost aplicata),
-        # iar `cere_administrator` a fost consolidat pe user_roles.
+        # iar `cere_administrator` a fost consolidat pe user_roles — prin clientul
+        # privilegiat, nu prin RLS.
+        #
+        # Filtrarea se face aici, nu in _Interogare: lantul fals inghite orice
+        # .eq()/.in_() si intoarce ce i s-a dat. Daca ar intoarce randul neconditionat,
+        # testul care cere 403 pentru un client obisnuit ar trece degeaba.
         if nume == "user_roles":
-            return _Interogare([{"user_id": str(ADMIN.user_id), "role": self._rol}])
+            return _Interogare(
+                [{"user_id": str(ADMIN.user_id), "role": self._rol}]
+                if self._rol in ROLURI_ADMIN
+                else []
+            )
         if nume == "profiles":
             return _Interogare(
                 [
@@ -107,6 +122,7 @@ def _plata(zile_in_urma: float, suma: float, descriere: str) -> dict:
 def _cu_client(client: _ClientFals) -> None:
     app.dependency_overrides[get_current_user] = lambda: ADMIN
     app.dependency_overrides[get_user_supabase] = lambda: client
+    app.dependency_overrides[get_admin_supabase] = lambda: client
     app.dependency_overrides[get_settings] = lambda: Settings(
         supabase_url="http://supabase.invalid", supabase_anon_key="test-anon-key"
     )
@@ -121,7 +137,7 @@ def test_zona_de_administrator_cere_autentificare() -> None:
 
 
 def test_un_client_obisnuit_primeste_403() -> None:
-    _cu_client(_ClientFals(rol="client"))
+    _cu_client(_ClientFals(rol="user"))
     try:
         raspuns = TestClient(app).get("/api/v1/admin/conturi-semnalate")
     finally:

@@ -31,7 +31,11 @@ from app.attachments.service import AttachmentService
 from app.services.credit_service import CreditService
 from app.core.config import Settings, get_settings
 from app.infrastructure.attachment_storage import AttachmentStorage
-from app.infrastructure.supabase import create_auth_client, create_user_client
+from app.infrastructure.supabase import (
+    create_auth_client,
+    create_user_client,
+    get_admin_client,
+)
 from app.infrastructure.supabase_client import get_service_client
 from app.ml.neregularitati import DetectorNeregularitati
 from app.orchestration.orchestrator import Orchestrator
@@ -133,6 +137,11 @@ def get_voice_provider() -> MicrosoftVoiceProvider:
     return MicrosoftVoiceProvider(get_settings())
 
 
+# Valorile de rol acceptate ca administrator. Vezi este_admin() pentru de ce
+# sunt doua, si migrarea 0011 pentru perechea corespunzatoare din SQL.
+ROLURI_ADMIN = ("admin", "administrator")
+
+
 @dataclass(frozen=True, slots=True)
 class UserContext:
     user_id: UUID
@@ -180,50 +189,73 @@ def get_user_supabase(
     return create_user_client(settings, user.access_token)
 
 
-async def cere_administrator(
-    user: UserContext = Depends(get_current_user),
-    client: Client = Depends(get_user_supabase),
-) -> UserContext:
-    """Lasa sa treaca numai administratorii.
+def get_admin_supabase() -> Client:
+    """Clientul privilegiat, ca dependinta — ca sa poata fi inlocuit in teste."""
+    return get_admin_client()
 
-    Verificarea intreaba baza de date, nu tokenul: un rol pus in JWT ar fi mai
-    ieftin de citit, dar ar ramane valabil pana expira tokenul, inclusiv dupa ce
-    i-a fost luat cuiva dreptul.
 
-    Chiar daca cineva ar ocoli verificarea de aici, RLS ramane bariera reala:
-    politicile de pe credit_* cer public.este_administrator() in baza de date.
+async def este_admin(user_id: UUID | str, client: Client) -> bool:
+    """Are utilizatorul un rol de administrator in public.user_roles?
 
-    Citea din `profiles.rol`, coloana care NU EXISTA in proiectul real: migrarea
-    0008 din repo n-a fost niciodata aplicata, iar rolurile traiesc in
-    `public.user_roles`. Interogarea intorcea eroare, deci toate rutele de admin
-    erau inaccesibile. Se consolideaza pe user_roles, ca si este_administrator()
-    (REGULI.md #2: o singura implementare per responsabilitate).
+    Interogarea merge cu service-role dinadins: verificarea de drepturi nu
+    trebuie sa depinda de politicile pe care tot ea le deblocheaza. Fiindca
+    ocoleste RLS, raspunsul e folosit numai ca sa se decida daca cererea trece
+    mai departe — datele propriu-zise se citesc dupa aceea cu clientul
+    utilizatorului, unde RLS ramane a doua bariera.
 
-    Valorile acceptate sunt doua fiindca ambele exista in proiect: randurile reale
-    au 'admin', iar 0008 vorbeste despre 'administrator'.
+    Se accepta doua valori fiindca ambele circula prin proiect: randurile reale,
+    puse din consola, au 'admin', iar migrarea 0008 vorbeste despre
+    'administrator'. Aceeasi pereche e acceptata si de public.este_administrator()
+    in baza de date (0011), ca sa nu existe cont pe care Python il refuza si SQL
+    il lasa sa treaca, sau invers.
     """
 
-    def interogare() -> str | None:
+    def interogare() -> list[dict]:
         raspuns = (
             client.table("user_roles")
             .select("role")
-            .eq("user_id", str(user.user_id))
+            .eq("user_id", str(user_id))
+            .in_("role", list(ROLURI_ADMIN))
             .limit(1)
             .execute()
         )
-        randuri = raspuns.data if raspuns else None
-        return randuri[0].get("role") if randuri else None
+        return raspuns.data or []
 
+    return bool(await to_thread.run_sync(interogare))
+
+
+async def cere_administrator(
+    user: UserContext = Depends(get_current_user),
+    client_admin: Client = Depends(get_admin_supabase),
+) -> UserContext:
+    """Lasa sa treaca numai administratorii. Verificarea e mereu pe server.
+
+    Ascunderea butonului in interfata nu e o bariera; oricine poate chema ruta
+    direct. Rolul se citeste din baza de date la fiecare cerere, nu din token:
+    un rol pus in JWT ar ramane valabil pana expira tokenul, inclusiv dupa ce
+    i-a fost luat cuiva dreptul.
+
+    Chiar daca verificarea de aici ar fi ocolita, RLS ramane bariera reala:
+    politicile de pe credit_* si de pe identity_verifications cer
+    public.este_administrator() in baza de date.
+
+    Nota istorica: pana la unificare, functia citea din `profiles.rol` — o
+    coloana care nu exista in proiectul real, fiindca migrarea 0008 n-a fost
+    niciodata aplicata. Toate rutele de admin erau deci inchise pentru toata
+    lumea. Rolurile traiesc in public.user_roles, si acolo se citesc.
+    """
     try:
-        rol = await to_thread.run_sync(interogare)
+        admin = await este_admin(user.user_id, client_admin)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Nu am putut verifica drepturile contului.",
         ) from exc
 
-    if rol not in ("admin", "administrator"):
-        # Acelasi raspuns si cand contul nu exista, si cand exista dar e client:
+    if not admin:
+        # Acelasi raspuns si cand contul nu are rol, si cand nu exista deloc:
         # cine incearca ruta nu trebuie sa afle ce a nimerit.
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
