@@ -50,7 +50,7 @@ export function ListaCereriCredit({
   // aplicat peste o lista deja taiata ar minti.
   function schimbaFiltrul(nou: StatusCerere | null) {
     startTransition(() => {
-      router.push(nou ? `/admin/credite?status=${nou}` : "/admin/credite");
+      router.push(`/admin/credite?status=${nou ?? "toate"}`);
     });
   }
 
