@@ -8,6 +8,7 @@ import { ListaConturi } from "@/components/dashboard/lista-conturi";
 import { SchimbValutarDrawer } from "@/components/dashboard/schimb-valutar-drawer";
 import { SoldAnimat } from "@/components/dashboard/sold-animat";
 import { UltimeleTranzactii } from "@/components/dashboard/ultimele-tranzactii";
+import { VerificaIdentitateBanner } from "@/components/dashboard/verifica-identitate-banner";
 import { Banda } from "@/components/ui/banda";
 import { obtineConturiUtilizator, totalSold } from "@/lib/data/conturi";
 import { obtineCursuri } from "@/lib/data/curs-valutar";
@@ -96,7 +97,7 @@ export default async function DashboardPage() {
             </div>
           ) : profil.verification_status === "pending" ? (
             <div className="mt-4">
-              <Banda ton="info">Verificarea identitatii este in curs.</Banda>
+              <VerificaIdentitateBanner />
             </div>
           ) : null}
 

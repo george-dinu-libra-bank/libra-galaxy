@@ -20,8 +20,11 @@ type Pas = "alegere" | "camera" | "confirmare";
  */
 export function BuletinCapture({
   onFinalizat,
+  onSarit,
 }: {
   onFinalizat: (file: File, cnp: string) => void;
+  /** Cand e prezent, userul poate trimite buletinul mai tarziu, din aplicatie. */
+  onSarit?: () => void;
 }) {
   const [pas, setPas] = useState<Pas>("alegere");
   const [poza, setPoza] = useState<File | null>(null);
@@ -201,6 +204,16 @@ export function BuletinCapture({
             className="sr-only"
             onChange={alegeFisier}
           />
+
+          {onSarit ? (
+            <button
+              type="button"
+              onClick={onSarit}
+              className="mt-1 rounded text-center text-[13px] font-semibold text-primary-600 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+            >
+              Trimit buletinul mai târziu
+            </button>
+          ) : null}
         </div>
       )}
     </div>

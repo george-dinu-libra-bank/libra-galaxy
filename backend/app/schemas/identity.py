@@ -12,7 +12,11 @@ class ExtrageCnpResponse(BaseModel):
 class VerificaIdentitateRequest(BaseModel):
     user_id: str
     buletin_path: str = Field(..., description="Cale in bucket-ul 'buletine'")
-    selfie_path: str = Field(..., description="Cale in bucket-ul 'selfie-uri'")
+    selfie_path: str | None = Field(
+        default=None,
+        description="Cale in bucket-ul 'selfie-uri'. Omisa cand buletinul vine "
+        "mai tarziu decat inregistrarea — se foloseste profiles.selfie_referinta_path.",
+    )
     extracted_cnp: str | None = None
 
 

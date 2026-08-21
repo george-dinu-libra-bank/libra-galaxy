@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient } from "../supabase/admin";
+import { createClient } from "../supabase/server";
 
 /**
  * Verificarea identitatii (OCR buletin + comparare fete cu DeepFace) traieste
@@ -169,6 +170,119 @@ export async function verificaIdentitateInregistrare(
     return date.status;
   } catch (eroare) {
     console.error("[identitate/verificaIdentitateInregistrare] cod=fetch_esuat — backend-ul nu raspunde deloc?", eroare);
+    return "eroare";
+  }
+}
+
+/**
+ * Inregistrare fara buletin: doar selfie-ul se urca si se retine ca reper
+ * (profiles.selfie_referinta_path), fara nicio comparatie — nu exista inca cu
+ * ce sa fie comparat. Contul ramane verification_status='pending' (valoarea
+ * implicita); userul poate trimite buletinul mai tarziu, din aplicatie, vezi
+ * trimiteBuletinUlterior().
+ *
+ * La fel ca verificaIdentitateInregistrare: nu arunca, un esec aici nu trebuie
+ * sa blocheze crearea contului.
+ */
+export async function inregistreazaSelfieReferinta(userId: string, selfie: File): Promise<void> {
+  let supabaseAdmin: Awaited<ReturnType<typeof createAdminClient>>;
+  try {
+    supabaseAdmin = await createAdminClient();
+  } catch (eroare) {
+    console.error("[identitate/inregistreazaSelfieReferinta] cod=admin_client_esuat", eroare);
+    return;
+  }
+
+  const caleSelfie = `${userId}/selfie-${Date.now()}.jpg`;
+
+  const { error: eroareIncarcare } = await supabaseAdmin.storage
+    .from("selfie-uri")
+    .upload(caleSelfie, selfie, { contentType: selfie.type || "image/jpeg", upsert: false });
+
+  if (eroareIncarcare) {
+    console.error("[identitate/inregistreazaSelfieReferinta] cod=upload_storage_esuat", eroareIncarcare.message);
+    return;
+  }
+
+  const { error: eroareProfil } = await supabaseAdmin
+    .from("profiles")
+    .update({ selfie_referinta_path: caleSelfie })
+    .eq("id", userId);
+
+  if (eroareProfil) {
+    console.error("[identitate/inregistreazaSelfieReferinta] cod=update_profil_esuat", eroareProfil.message);
+  }
+}
+
+/**
+ * Trimite buletinul dupa ce contul exista deja (userul are sesiune) — comparat
+ * fata de selfie-ul retinut la inregistrare (backend/app/services/identity_service.py
+ * cade pe profiles.selfie_referinta_path cand selfie_path lipseste din cerere).
+ *
+ * Spre deosebire de verificaIdentitateInregistrare, foloseste sesiunea reala a
+ * userului (exista deja), nu cheia interna — la fel ca orice alta ruta
+ * autentificata din aplicatie.
+ */
+export async function trimiteBuletinUlterior(
+  buletin: File,
+  cnpExtras: string,
+): Promise<StatusVerificare> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: eroareUser,
+  } = await supabase.auth.getUser();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (eroareUser || !user || !session?.access_token) {
+    return "eroare";
+  }
+
+  let supabaseAdmin: Awaited<ReturnType<typeof createAdminClient>>;
+  try {
+    supabaseAdmin = await createAdminClient();
+  } catch (eroare) {
+    console.error("[identitate/trimiteBuletinUlterior] cod=admin_client_esuat", eroare);
+    return "eroare";
+  }
+
+  const caleBuletin = `${user.id}/buletin-${Date.now()}.jpg`;
+
+  const { error: eroareIncarcare } = await supabaseAdmin.storage
+    .from("buletine")
+    .upload(caleBuletin, buletin, { contentType: buletin.type || "image/jpeg", upsert: false });
+
+  if (eroareIncarcare) {
+    console.error("[identitate/trimiteBuletinUlterior] cod=upload_storage_esuat", eroareIncarcare.message);
+    return "eroare";
+  }
+
+  try {
+    const raspuns = await fetch(`${BACKEND_URL}/api/identity/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        user_id: user.id,
+        buletin_path: caleBuletin,
+        extracted_cnp: cnpExtras,
+      }),
+    });
+
+    if (!raspuns.ok) {
+      const { cod, mesaj } = await citesteEroare(raspuns);
+      console.error("[identitate/trimiteBuletinUlterior] verify a esuat", { status: raspuns.status, cod, mesaj });
+      return "eroare";
+    }
+
+    const date = (await raspuns.json()) as { status: "verified" | "pending_review" };
+    return date.status;
+  } catch (eroare) {
+    console.error("[identitate/trimiteBuletinUlterior] cod=fetch_esuat — backend-ul nu raspunde deloc?", eroare);
     return "eroare";
   }
 }

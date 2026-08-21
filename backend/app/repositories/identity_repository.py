@@ -22,6 +22,26 @@ def sterge_imagine(bucket: str, cale: str) -> None:
         logger.exception("sterge_imagine: stergere esuata (bucket=%s, cale=%s)", bucket, cale)
 
 
+def gaseste_selfie_referinta(id_user: str) -> str | None:
+    """Selfie-ul retinut la inregistrare (sau la ultima verificare), pentru
+    cazul in care buletinul e trimis mai tarziu, fara un selfie nou."""
+    client = get_service_client()
+    raspuns = (
+        client.table("profiles")
+        .select("selfie_referinta_path")
+        .eq("id", id_user)
+        .maybe_single()
+        .execute()
+    )
+    date = raspuns.data if raspuns else None
+    return date.get("selfie_referinta_path") if date else None
+
+
+def seteaza_selfie_referinta(id_user: str, cale: str) -> None:
+    client = get_service_client()
+    client.table("profiles").update({"selfie_referinta_path": cale}).eq("id", id_user).execute()
+
+
 def gaseste_id_user_dupa_email(email: str) -> str | None:
     client = get_service_client()
     raspuns = (
