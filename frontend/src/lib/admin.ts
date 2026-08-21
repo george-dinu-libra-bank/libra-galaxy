@@ -33,12 +33,16 @@ export async function checkAdmin(): Promise<UtilizatorAdmin | null> {
   if (!user || !session?.access_token) return null;
 
   const { data, error } = await supabase
-    .from("profiles")
-    .select("rol")
-    .eq("id", user.id)
-    .maybeSingle();
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .single();
 
-  if (error || !data || data.rol !== "administrator") return null;
+
+  if (error || !data || data.role !== "admin") {
+    console.error(`Acces interzis la admin de catre id: ${user.id}`)
+    return null
+  };
 
   return { id: user.id, email: user.email ?? "", token: session.access_token };
 }

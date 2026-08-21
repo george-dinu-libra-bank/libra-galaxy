@@ -82,13 +82,17 @@ async function aduDeLaBnr(): Promise<Cursuri | null> {
 
     if (STRAINE.every((valuta) => rezultat.cursuri.has(valuta))) return rezultat;
 
-    throw new Error("BNR nu a returnat toate valutele cerute");
+    //throw new Error("BNR nu a returnat toate valutele cerute");
   } catch (eroare) {
+<<<<<<< HEAD
     // warn, nu error: BNR-ul care ne refuza e o situatie asteptata, cu rezerva
     // pregatita imediat mai jos. Cu console.error, overlay-ul de dezvoltare din
     // Next se ridica peste toata pagina si arata ca un ecran cazut, desi
     // fallback-ul functioneaza si dashboard-ul s-ar randa normal.
     console.warn("curs valutar: BNR indisponibil, incerc rezerva —", mesaj(eroare));
+=======
+    //console.error("ERROR curs valutar (BNR):", eroare);
+>>>>>>> b4a75b3 (Update admin and curs valutar)
     return null;
   }
 }
