@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import admin, agents, alerte, assistant, credite, health, identity, profiles
+from app.api.routes.admin_identity import router as admin_identity_router
 from app.core.config import get_settings
 from app.core.envelope import error_response, new_request_id
 from app.core.errors import AppError
@@ -22,8 +23,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "Idempotency-Key",
+                   "X-Internal-Api-Key", "X-User-Id"],
 )
 
 
@@ -72,6 +74,7 @@ app.include_router(health.router)
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(assistant.router)
 app.include_router(identity.router)
+app.include_router(admin_identity_router)
 app.include_router(profiles.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(alerte.router, prefix="/api/v1")
