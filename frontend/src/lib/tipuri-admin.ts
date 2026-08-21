@@ -47,6 +47,15 @@ export type ContNeinceput = {
   creat_la: string;
 };
 
+/** Un cont, asa cum apare in lista completa a administratorului. */
+export type ProfilAdmin = {
+  id: string;
+  nume: string;
+  email: string;
+  verification_status: string;
+  creat_la: string;
+};
+
 // -----------------------------------------------------------------------------
 // Tranzactii semnalate
 // -----------------------------------------------------------------------------

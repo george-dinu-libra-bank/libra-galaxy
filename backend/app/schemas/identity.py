@@ -94,6 +94,26 @@ class DecizieResponse(BaseModel):
     reviewed_at: str | None = None
 
 
+class ProfilAdmin(BaseModel):
+    """Un cont, asa cum apare in lista completa a administratorului."""
+
+    id: str
+    nume: str
+    email: str
+    verification_status: str
+    creat_la: str
+
+
+class RestabilireBiometrieRequest(BaseModel):
+    user_id: str
+    poza_path: str = Field(..., description="Cale in bucket-ul 'selfie-uri'")
+
+
+class RestabilireBiometrieResponse(BaseModel):
+    id: str
+    verification_status: str
+
+
 class ContNeinceput(BaseModel):
     """Un cont ramas pe verification_status='pending' — nicio dovada trimisa."""
 

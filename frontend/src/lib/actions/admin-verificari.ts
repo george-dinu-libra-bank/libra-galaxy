@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { checkAdmin } from "@/lib/admin";
 import { backendFetch, BackendError } from "@/lib/backend";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export type RezultatDecizie = { eroare?: string; status?: string };
 
@@ -70,5 +71,47 @@ export async function forteazaVerificare(
   } catch (eroare) {
     if (eroare instanceof BackendError) return { eroare: eroare.message };
     return { eroare: "Nu am putut marca contul ca verificat. Incearca din nou." };
+  }
+}
+
+/**
+ * Restabileste manual referinta biometrica a unui cont, cu o poza noua —
+ * pentru cazul in care pozele din storage au disparut si login-ul biometric
+ * nu mai are cu ce sa compare.
+ */
+export async function restabilesteBiometrie(
+  userId: string,
+  poza: File,
+): Promise<RezultatDecizie> {
+  const admin = await checkAdmin();
+  if (!admin) return { eroare: "Nu ai dreptul sa faci asta." };
+
+  const supabaseAdmin = await createAdminClient();
+  const calePoza = `${userId}/selfie-admin-${Date.now()}.jpg`;
+
+  const { error: eroareIncarcare } = await supabaseAdmin.storage
+    .from("selfie-uri")
+    .upload(calePoza, poza, { contentType: poza.type || "image/jpeg", upsert: false });
+
+  if (eroareIncarcare) {
+    console.error("[admin-verificari/restabilesteBiometrie] cod=upload_storage_esuat", eroareIncarcare.message);
+    return { eroare: "Nu am putut incarca poza." };
+  }
+
+  try {
+    const rezultat = await backendFetch<{ verification_status: string }>(
+      "api/identity/admin/restabileste-biometrie",
+      admin.token,
+      {
+        method: "POST",
+        body: JSON.stringify({ user_id: userId, poza_path: calePoza }),
+      },
+    );
+
+    revalidatePath("/admin/conturi");
+    return { status: rezultat.verification_status };
+  } catch (eroare) {
+    if (eroare instanceof BackendError) return { eroare: eroare.message };
+    return { eroare: "Nu am putut salva referinta biometrica. Incearca din nou." };
   }
 }

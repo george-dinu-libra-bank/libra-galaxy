@@ -25,6 +25,9 @@ from app.schemas.identity import (
     DecizieResponse,
     ForteazaVerificareRequest,
     ForteazaVerificareResponse,
+    ProfilAdmin,
+    RestabilireBiometrieRequest,
+    RestabilireBiometrieResponse,
 )
 from app.services import admin_identity_service as serviciu
 
@@ -132,4 +135,35 @@ def forteaza(
         raise _http(exc) from exc
 
     _urma(administrator, "forteaza_verificare", cerere.user_id, detalii=cerere.note)
+    return rezultat
+
+
+@router.get("/conturi", response_model=list[ProfilAdmin])
+def conturi(
+    limita: int = Query(default=500, ge=1, le=1000),
+    administrator: UserContext = Depends(cere_administrator),
+) -> list[ProfilAdmin]:
+    """Toate conturile — pentru cazul in care trebuie restabilita manual o
+    referinta biometrica (poze disparute din storage)."""
+    lista = serviciu.toate_conturile(limita)
+    _urma(administrator, "lista_conturi", detalii=f"conturi={len(lista)}")
+    return lista
+
+
+@router.post("/restabileste-biometrie", response_model=RestabilireBiometrieResponse)
+def restabileste(
+    cerere: RestabilireBiometrieRequest,
+    administrator: UserContext = Depends(cere_administrator),
+) -> RestabilireBiometrieResponse:
+    """Marcheaza poza data ca noul reper biometric al contului, cu status
+    verified direct — administratorul atesta identitatea, nu mai trece prin
+    OCR/comparatie automata."""
+    try:
+        rezultat = serviciu.restabileste_biometrie(
+            cerere.user_id, cerere.poza_path, str(administrator.user_id)
+        )
+    except ErrorAplicatie as exc:
+        raise _http(exc) from exc
+
+    _urma(administrator, "restabileste_biometrie", cerere.user_id)
     return rezultat

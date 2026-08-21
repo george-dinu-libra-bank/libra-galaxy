@@ -252,3 +252,46 @@ def scrie_acces(
             "detalii": detalii,
         }
     ).execute()
+
+
+def listeaza_toate_profilurile(limita: int = 500) -> list[dict]:
+    client = get_admin_client()
+    raspuns = (
+        client.table("profiles")
+        .select("id,nume,email,verification_status,creat_la")
+        .order("creat_la", desc=True)
+        .limit(limita)
+        .execute()
+    )
+    return raspuns.data or []
+
+
+def restabileste_referinta_biometrica(id_user: str, cale_poza: str, id_administrator: str) -> dict | None:
+    """Insereaza o verificare noua, deja 'verified', cu poza data de admin ca
+    reper biometric — pentru conturile ramase fara nimic de comparat dupa ce
+    pozele din storage au disparut.
+
+    Foloseste aceeasi poza si pentru buletin_image_path (coloana e NOT NULL
+    in schema): nu exista un buletin nou aici, doar reperul de fata pe care
+    administratorul il atesta direct, fara OCR/comparatie automata.
+    """
+    from datetime import datetime, timezone
+
+    client = get_admin_client()
+    raspuns = (
+        client.table("identity_verifications")
+        .insert(
+            {
+                "id_user": id_user,
+                "buletin_image_path": cale_poza,
+                "selfie_image_path": cale_poza,
+                "status": "verified",
+                "reviewed_by": id_administrator,
+                "reviewed_at": datetime.now(timezone.utc).isoformat(),
+                "notes": "Referinta biometrica restabilita manual de admin (poze sterse din storage).",
+            }
+        )
+        .execute()
+    )
+    date = raspuns.data or []
+    return date[0] if date else None
