@@ -92,9 +92,15 @@ class Decizie:
     rata_lunara: Decimal | None = None
     dae: Decimal | None = None
     oferta_expira_la: datetime | None = None
-    # Adevarat cand banca n-a putut confirma niciun venit din surse proprii, deci
-    # o adeverinta chiar ar schimba ceva. Fara semnalul asta, interfata ar cere
-    # documente de la toata lumea sau de la nimeni.
+    # Adevarat cand o adeverinta chiar ar schimba ceva: banca n-a confirmat
+    # niciun venit din sursele ei, **si** dosarul e inca deschis.
+    #
+    # A doua conditie nu e un detaliu. O cerere respinsa e dosar inchis si
+    # refuza documente (STATUSURI_FINALE), deci a cere unul acolo ar trimite
+    # omul sa incarce un fisier care e garantat respins. Iar pe respingerile pe
+    # criterii hard — venit sub minim, identitate neverificata — o adeverinta
+    # oricum n-ar ajuta: clientul si-a declarat singur venitul, iar identitatea
+    # se rezolva din alta parte.
     cere_document: bool = False
 
 
@@ -252,7 +258,7 @@ class CreditService:
                 cerere, Decizie(
                     decizie="respins", scor=None, dti=dti,
                     motive=[{"cod": m.cod, "text": m.text} for m in motive],
-                    factori=[], explicatie="", cere_document=incredere == 0.0,
+                    factori=[], explicatie="",
                 ), venit, obligatii,
             )
 
@@ -266,16 +272,35 @@ class CreditService:
             neregularitati_recente=await self._neregularitati(user_id),
         ))
 
+        # Un venit pe care banca nu l-a putut confirma din nicio sursa proprie nu
+        # duce niciodata la o aprobare automata, oricat de bun ar fi restul.
+        #
+        # Scorecard-ul singur nu acopera asta: `dovada_venit` valoreaza 15 din
+        # 100, deci cineva cu DTI bun, vechime buna si relatie lunga cu banca
+        # ajunge la 85 si trece pragul de 70 **cu zero dovezi** — declarand o
+        # cifra pe care nimeni n-a verificat-o. Verificat pe cazul real: 85/100,
+        # aprobat, 30.000 RON pe o suma scrisa de mana.
+        #
+        # Nu se rezolva umfland ponderea factorului, fiindca atunci dovada de
+        # venit ar incepe sa compenseze un grad de indatorare prost. E o poarta,
+        # nu o nuanta: fara dovada, cel mult analiza manuala — unde omul poate
+        # cere o adeverinta si o poate confirma.
+        venit_doar_declarat = incredere == 0.0
+        verdict = scor.decizie
+        if venit_doar_declarat and verdict == "aprobat":
+            verdict = "analiza_manuala"
+        aprobat = verdict == "aprobat"
+
         decizie = Decizie(
-            decizie=scor.decizie, scor=scor.total, dti=dti, motive=[],
+            decizie=verdict, scor=scor.total, dti=dti, motive=[],
             factori=[{"cod": f.cod, "puncte": f.puncte, "maxim": f.maxim, "explicatie": f.explicatie}
                      for f in scor.factori],
             explicatie="",
-            rata_lunara=rata_lunara if scor.aprobat else None,
-            dae=amortizare.dae(principal_bani, rata_bani, luni) if scor.aprobat else None,
+            rata_lunara=rata_lunara if aprobat else None,
+            dae=amortizare.dae(principal_bani, rata_bani, luni) if aprobat else None,
             oferta_expira_la=(datetime.now(timezone.utc) + timedelta(days=ZILE_VALABILITATE_OFERTA))
-            if scor.aprobat else None,
-            cere_document=incredere == 0.0,
+            if aprobat else None,
+            cere_document=venit_doar_declarat and verdict == "analiza_manuala",
         )
         return await self._finalizeaza(cerere, decizie, venit, obligatii)
 
@@ -916,7 +941,9 @@ def _cu_explicatie(decizie: Decizie, explica) -> Decizie:
 
     from app.services.credit_explicatie import explicatie_determinista
 
-    text = explicatie_determinista(decizie.decizie, decizie.motive, decizie.factori, decizie.scor)
+    text = explicatie_determinista(
+        decizie.decizie, decizie.motive, decizie.factori, decizie.scor, decizie.cere_document
+    )
     if explica is not None:
         try:
             text = explica(decizie) or text

@@ -327,3 +327,47 @@ def test_curatarea_e_idempotenta(client, depozit: DepozitFals) -> None:
     client.get("/api/v1/admin/credite/analiza-manuala")
 
     assert depozit.documente_scrise[document["id"]]["sters_la"] == sters_la
+
+
+def test_venitul_doar_declarat_nu_se_aproba_automat(client, depozit: DepozitFals) -> None:
+    """Regresie: 85 din 100 si aprobat, pe o cifra scrisa de mana.
+
+    Solicitantul din fixture are grad de indatorare bun, vechime buna si relatie
+    lunga cu banca, dar niciun venit vizibil in cont. Scorecard-ul ii dadea 85 —
+    `dovada_venit` valoreaza doar 15 din 100 — si trecea pragul de 70. Adica
+    oricine putea declara orice suma si primea creditul automat.
+
+    Poarta e separata de punctaj dinadins: umfland ponderea factorului, dovada
+    de venit ar fi inceput sa compenseze un grad de indatorare prost.
+    """
+    id_cerere = _cerere(client)
+
+    decizie = client.post("/api/v1/credite/cereri/" + id_cerere + "/evalueaza").json()
+
+    assert decizie["scor"] >= 70, "fixture-ul nu mai reproduce cazul; scorul a scazut"
+    assert decizie["decizie"] == "analiza_manuala"
+    assert decizie["rata_lunara"] is None, "o cerere neaprobata nu are oferta"
+    assert depozit.cereri[id_cerere]["status"] == "analiza_manuala"
+
+
+def test_explicatia_spune_omului_ce_are_de_facut(client) -> None:
+    """Un sfat generic („un coleg o verifica") e adevarat, dar inutil."""
+    id_cerere = _cerere(client)
+
+    decizie = client.post("/api/v1/credite/cereri/" + id_cerere + "/evalueaza").json()
+
+    assert "adeverin" in decizie["explicatie"].lower()
+
+
+def test_dupa_confirmare_venitul_nu_mai_e_doar_declarat(client, depozit: DepozitFals) -> None:
+    """Bucla se inchide: documentul confirmat scoate cererea din zona gri."""
+    id_cerere = _cerere_evaluata(client)
+    document = _incarca(client, id_cerere, net="9.400,00")
+
+    dosar = client.post(
+        "/api/v1/admin/credite/documente/" + document["id"] + "/confirma",
+        json={"venit_confirmat": "9400.00"},
+    ).json()
+
+    assert dosar["cerere"]["status"] == "oferta"
+    assert dosar["cerere"]["rata_lunara"] is not None

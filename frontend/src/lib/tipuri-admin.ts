@@ -102,3 +102,140 @@ export function tonScor(scor: number): "grav" | "atentie" | "usor" {
   if (scor >= 5) return "atentie";
   return "usor";
 }
+
+// ---- Creditare ------------------------------------------------------------
+//
+// Sumele sosesc ca STRING, nu ca number: backendul le tine in `Decimal`, iar
+// pydantic le serializeaza ca text tocmai ca sa nu treaca printr-un float pe
+// drum. Se convertesc cu `Number()` la afisare, niciodata mai devreme.
+
+export type StatusCerere =
+  | "ciorna"
+  | "in_analiza"
+  | "oferta"
+  | "analiza_manuala"
+  | "respinsa"
+  | "acceptata"
+  | "anulata"
+  | "expirata";
+
+/** Un factor al scorecard-ului, sau un motiv de respingere pe criterii hard. */
+export type MotivSauFactor = {
+  cod: string;
+  text?: string;
+  puncte?: number;
+  maxim?: number;
+  explicatie?: string;
+};
+
+export type CerereCredit = {
+  id: string;
+  nume: string;
+  status: StatusCerere;
+  suma_ceruta: string;
+  luni: number;
+  creat_la: string;
+  scor: number | null;
+  dti: string | null;
+  rata_lunara: string | null;
+  dae: string | null;
+  explicatie: string | null;
+  oferta_expira_la: string | null;
+  venit_folosit: string | null;
+  obligatii_folosite: string | null;
+  motive: MotivSauFactor[];
+};
+
+export type VerificareVenit = {
+  sursa: "tranzactii" | "adeverinta" | "declarat" | "birou_credit";
+  venit_constatat: string | null;
+  obligatii_constatate: string | null;
+  incredere: string | null;
+  detalii: Record<string, unknown>;
+  creat_la: string;
+};
+
+export type DocumentCerere = {
+  id: string;
+  tip: string;
+  status: "incarcat" | "procesat" | "ilizibil" | "confirmat";
+  content_type: string | null;
+  marime_octeti: number | null;
+  /** Ce a citit masina. Ramane neatins si dupa ce analistul corecteaza. */
+  extras: {
+    venit_net?: string | null;
+    angajator?: string | null;
+    vechime_luni?: number | null;
+    incredere?: number;
+    text?: string;
+  };
+  /** Ce a hotarat omul. Separat de `extras` dinadins — cand difera, se vede. */
+  venit_confirmat: string | null;
+  confirmat_la: string | null;
+  /** Cand a fost sters fisierul dupa retentie. Randul ramane, documentul nu. */
+  sters_la: string | null;
+  creat_la: string;
+  /** Link semnat, cu durata scurta. Lipseste dupa stergere. */
+  url: string | null;
+};
+
+export type DosarCredit = {
+  cerere: CerereCredit;
+  verificari: VerificareVenit[];
+  documente: DocumentCerere[];
+};
+
+export type CreditAcordat = {
+  id: string;
+  nume: string;
+  principal: string;
+  dobanda_anuala: string;
+  luni: number;
+  rata_lunara: string;
+  dae: string | null;
+  sold_ramas: string;
+  data_acordarii: string;
+  status: string;
+  inchis_la: string | null;
+};
+
+export const ETICHETE_STATUS: Record<StatusCerere, string> = {
+  ciorna: "Ciornă",
+  in_analiza: "În analiză",
+  oferta: "Ofertă emisă",
+  analiza_manuala: "Așteaptă decizie",
+  respinsa: "Respinsă",
+  acceptata: "Acceptată",
+  anulata: "Anulată",
+  expirata: "Expirată",
+};
+
+export const ETICHETE_SURSA: Record<VerificareVenit["sursa"], string> = {
+  tranzactii: "Încasări în cont",
+  adeverinta: "Adeverință de venit",
+  declarat: "Declarat de client",
+  birou_credit: "Expuneri la alte bănci",
+};
+
+/**
+ * Tonul unui status, pentru culoarea etichetei.
+ *
+ * `analiza_manuala` e „atentie", nu „rau": nu s-a hotarat nimic inca, doar ca
+ * hotararea o ia un om. O eticheta rosie ar face un dosar in lucru sa para deja
+ * pierdut, si ar impinge analistul spre respingere inainte sa se uite la el.
+ */
+export function tonStatus(status: StatusCerere): "bun" | "rau" | "atentie" | "neutru" {
+  if (status === "oferta" || status === "acceptata") return "bun";
+  if (status === "respinsa") return "rau";
+  if (status === "analiza_manuala") return "atentie";
+  return "neutru";
+}
+
+/** Suma din backend (string zecimal) in lei formatati romaneste. */
+export function lei(valoare: string | number | null | undefined): string {
+  if (valoare === null || valoare === undefined) return "—";
+  return Number(valoare).toLocaleString("ro-RO", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}

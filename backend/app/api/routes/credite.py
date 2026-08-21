@@ -351,6 +351,7 @@ def _cerere_admin(cerere: dict) -> CerereAdminResponse:
         nume=(cerere.get("profiles") or {}).get("nume", "necunoscut"),
         venit_folosit=cerere.get("venit_folosit"),
         obligatii_folosite=cerere.get("obligatii_folosite"),
+        motive=cerere.get("motive") or [],
     )
 
 

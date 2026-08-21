@@ -187,6 +187,10 @@ class CerereAdminResponse(CerereResponse):
     nume: str
     venit_folosit: Decimal | None = None
     obligatii_folosite: Decimal | None = None
+    # Factorii scorecard-ului, sau motivele de respingere pe criterii hard —
+    # coloana `motive` tine si una si alta (vezi _finalizeaza). Un scor fara ele
+    # e un numar pe care analistul nu are cum sa il judece.
+    motive: list[dict] = Field(default_factory=list)
 
 
 # -----------------------------------------------------------------------------
