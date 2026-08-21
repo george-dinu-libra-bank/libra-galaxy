@@ -186,25 +186,33 @@ async def cere_administrator(
 ) -> UserContext:
     """Lasa sa treaca numai administratorii.
 
-    Verificarea intreaba baza de date, nu tokenul: rolul sta in profiles si e
-    inghetat de trigger, deci nu poate fi ridicat din aplicatie. Un rol pus in
-    JWT ar fi mai ieftin de citit, dar ar ramane valabil pana expira tokenul,
-    inclusiv dupa ce i-a fost luat cuiva dreptul.
+    Verificarea intreaba baza de date, nu tokenul: un rol pus in JWT ar fi mai
+    ieftin de citit, dar ar ramane valabil pana expira tokenul, inclusiv dupa ce
+    i-a fost luat cuiva dreptul.
 
     Chiar daca cineva ar ocoli verificarea de aici, RLS ramane bariera reala:
-    politicile de la 0004 cer public.este_administrator() in baza de date.
+    politicile de pe credit_* cer public.este_administrator() in baza de date.
+
+    Citea din `profiles.rol`, coloana care NU EXISTA in proiectul real: migrarea
+    0008 din repo n-a fost niciodata aplicata, iar rolurile traiesc in
+    `public.user_roles`. Interogarea intorcea eroare, deci toate rutele de admin
+    erau inaccesibile. Se consolideaza pe user_roles, ca si este_administrator()
+    (REGULI.md #2: o singura implementare per responsabilitate).
+
+    Valorile acceptate sunt doua fiindca ambele exista in proiect: randurile reale
+    au 'admin', iar 0008 vorbeste despre 'administrator'.
     """
 
     def interogare() -> str | None:
         raspuns = (
-            client.table("profiles")
-            .select("rol")
-            .eq("id", str(user.user_id))
-            .maybe_single()
+            client.table("user_roles")
+            .select("role")
+            .eq("user_id", str(user.user_id))
+            .limit(1)
             .execute()
         )
-        date = raspuns.data if raspuns else None
-        return date.get("rol") if date else None
+        randuri = raspuns.data if raspuns else None
+        return randuri[0].get("role") if randuri else None
 
     try:
         rol = await to_thread.run_sync(interogare)
@@ -214,7 +222,7 @@ async def cere_administrator(
             detail="Nu am putut verifica drepturile contului.",
         ) from exc
 
-    if rol != "administrator":
+    if rol not in ("admin", "administrator"):
         # Acelasi raspuns si cand contul nu exista, si cand exista dar e client:
         # cine incearca ruta nu trebuie sa afle ce a nimerit.
         raise HTTPException(

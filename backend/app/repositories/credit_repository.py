@@ -180,6 +180,25 @@ class CreditRepository:
 
         return await to_thread.run_sync(interogare)
 
+    async def cereri_in_analiza(self) -> list[dict]:
+        """Coada de analiza manuala, cea mai veche prima.
+
+        Nu filtreaza pe utilizator: e o vedere de administrator, iar accesul e
+        oprit mai sus, in dependinta de ruta si in politicile RLS.
+        """
+
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("credit_cereri")
+                .select(CAMPURI_CERERE + ",profiles(nume,cnp)")
+                .eq("status", "analiza_manuala")
+                .order("creat_la")
+                .execute()
+            )
+            return raspuns.data or []
+
+        return await to_thread.run_sync(interogare)
+
     async def actualizeaza_cerere(self, id_cerere: UUID, campuri: dict[str, Any]) -> dict:
         def interogare() -> dict:
             raspuns = (

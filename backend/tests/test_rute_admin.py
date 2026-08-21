@@ -61,18 +61,22 @@ class _Urma(_Interogare):
 
 
 class _ClientFals:
-    def __init__(self, rol: str = "administrator", tranzactii: list[dict] | None = None) -> None:
+    def __init__(self, rol: str = "admin", tranzactii: list[dict] | None = None) -> None:
         self._rol = rol
         self._tranzactii = tranzactii or []
         self.inserari: list[dict] = []
 
     def table(self, nume: str):
+        # Rolul se citeste din user_roles, nu din profiles.rol: coloana aceea nu
+        # exista in proiectul real (migrarea 0008 din repo n-a fost aplicata),
+        # iar `cere_administrator` a fost consolidat pe user_roles.
+        if nume == "user_roles":
+            return _Interogare([{"user_id": str(ADMIN.user_id), "role": self._rol}])
         if nume == "profiles":
             return _Interogare(
                 [
                     {
                         "id": str(ADMIN.user_id),
-                        "rol": self._rol,
                         "nume": "Ana Popescu",
                         "email": "ana@exemplu.ro",
                         "telefon": "+40712345678",

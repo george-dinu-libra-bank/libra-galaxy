@@ -84,7 +84,11 @@ async function aduDeLaBnr(): Promise<Cursuri | null> {
 
     throw new Error("BNR nu a returnat toate valutele cerute");
   } catch (eroare) {
-    console.error("ERROR curs valutar (BNR):", eroare);
+    // warn, nu error: BNR-ul care ne refuza e o situatie asteptata, cu rezerva
+    // pregatita imediat mai jos. Cu console.error, overlay-ul de dezvoltare din
+    // Next se ridica peste toata pagina si arata ca un ecran cazut, desi
+    // fallback-ul functioneaza si dashboard-ul s-ar randa normal.
+    console.warn("curs valutar: BNR indisponibil, incerc rezerva —", mesaj(eroare));
     return null;
   }
 }
@@ -119,9 +123,15 @@ async function aduDeLaRezerva(): Promise<Cursuri | null> {
 
     return { cursuri, data: corp.date ?? null, sursa: "BCE (Frankfurter)" };
   } catch (eroare) {
-    console.error("ERROR curs valutar (rezerva):", eroare);
+    // Nici asta nu e fatal: ramanem pe ultimele cursuri din tabela.
+    console.warn("curs valutar: nici sursa de rezerva nu raspunde —", mesaj(eroare));
     return null;
   }
+}
+
+/** Doar mesajul, nu obiectul Error: altfel Next ridica overlay-ul de eroare. */
+function mesaj(eroare: unknown): string {
+  return eroare instanceof Error ? eroare.message : String(eroare);
 }
 
 /**

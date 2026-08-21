@@ -362,6 +362,69 @@ class CreditService:
         randuri = await self._depozit.tranzactii_pentru_venit(user_id, luni=6)
         return len(self._detector.evalueaza(normalizeaza(randuri, user_id)))
 
+    # -- analiza manuala ----------------------------------------------------
+
+    async def cereri_in_analiza(self) -> list[dict]:
+        return await self._depozit.cereri_in_analiza()
+
+    async def decide_manual(
+        self, id_cerere: UUID, id_admin: UUID, aproba: bool, nota: str | None = None
+    ) -> dict:
+        """Decizia unui om peste o cerere din zona gri.
+
+        Scorul si factorii NU se recalculeaza si nu se sterg: raman exact cum
+        i-a produs motorul. Un dosar aprobat manual trebuie sa arate ulterior si
+        ca a fost la limita, si cine a decis altfel — altfel auditul nu poate
+        distinge o aprobare automata de una omeneasca.
+
+        Administratorul nu poate atinge o cerere care nu e in analiza manuala:
+        nu are ce cauta peste un refuz pe criterii hard (acolo decizia nu e
+        discretionara) si nici peste o oferta deja emisa.
+        """
+        cerere = await self._depozit.cerere(id_cerere)
+        if not cerere:
+            raise CreditNegasit("Cererea nu exista.")
+        if cerere["status"] != "analiza_manuala":
+            raise OperatiuneRefuzata(
+                f"Doar o cerere in analiza manuala poate fi decisa de un administrator; "
+                f"asta e in starea '{cerere['status']}'."
+            )
+
+        motivare = (nota or "").strip()
+
+        if aproba:
+            produs = await self._produs_dupa_id(cerere["id_produs"])
+            principal_bani = amortizare.bani_din_lei(cerere["suma_ceruta"])
+            luni = int(cerere["luni"])
+            rata_bani = amortizare.rata_lunara_bani(
+                principal_bani, Decimal(str(produs["dobanda_anuala"])), luni
+            )
+            campuri = {
+                "status": "oferta",
+                "rata_lunara": str(amortizare.lei_din_bani(rata_bani)),
+                "dae": str(amortizare.dae(principal_bani, rata_bani, luni)),
+                "oferta_expira_la": (
+                    datetime.now(timezone.utc) + timedelta(days=ZILE_VALABILITATE_OFERTA)
+                ).isoformat(),
+                "explicatie": _explicatie_manuala(True, motivare, cerere.get("scor")),
+            }
+        else:
+            campuri = {
+                "status": "respinsa",
+                "explicatie": _explicatie_manuala(False, motivare, cerere.get("scor")),
+            }
+
+        actualizata = await self._depozit.actualizeaza_cerere(id_cerere, campuri)
+
+        await self._depozit.eveniment({
+            "id_cerere": str(id_cerere),
+            "tip": "decizie_manuala_aprobat" if aproba else "decizie_manuala_respins",
+            "actor": "administrator",
+            "id_actor": str(id_admin),
+            "detalii": {"nota": motivare or None, "scor_automat": cerere.get("scor")},
+        })
+        return actualizata
+
     # -- acordare -----------------------------------------------------------
 
     async def accepta(
@@ -622,3 +685,28 @@ async def _rpc(apel):
         detaliu = getattr(eroare, "message", None) or str(eroare)
         logger.warning("rpc credit refuzat: %s", detaliu)
         raise OperatiuneEsuata(detaliu) from None
+
+
+def _explicatie_manuala(aprobat: bool, nota: str, scor: int | None) -> str:
+    """Textul care inlocuieste motivarea automata dupa decizia unui om.
+
+    Scorul ramane in text: clientul aprobat la limita merita sa stie ca a fost
+    la limita, nu sa creada ca dosarul lui era fara probleme.
+    """
+    parti = []
+    if aprobat:
+        parti.append("Cererea ta a fost aprobată după analiza unui coleg de la creditare.")
+    else:
+        parti.append("După analiza unui coleg de la creditare, nu putem aproba cererea.")
+
+    if scor is not None:
+        parti.append(f"Punctajul automat a fost {scor} din 100, în zona care cere decizie umană.")
+    if nota:
+        parti.append(nota)
+
+    parti.append(
+        "Oferta e valabilă 7 zile — o poți accepta din aplicație."
+        if aprobat
+        else "Poți relua cererea cu o sumă mai mică sau o perioadă mai lungă."
+    )
+    return "\n\n".join(parti)

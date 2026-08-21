@@ -167,3 +167,22 @@ class RambursareResponse(BaseModel):
     sold_ramas: Decimal
     status: str
     sold_cont: Decimal
+
+
+class DecizieManualaRequest(BaseModel):
+    """Decizia unui om peste o cerere din zona gri."""
+
+    aproba: bool
+    nota: str | None = Field(default=None, max_length=500)
+
+
+class CerereAdminResponse(CerereResponse):
+    """Cererea, plus cine a depus-o.
+
+    CNP-ul nu apare deloc: pentru a decide asupra unui dosar e de ajuns numele,
+    scorul si cifrele. Ce nu se trimite nu se poate scurge.
+    """
+
+    nume: str
+    venit_folosit: Decimal | None = None
+    obligatii_folosite: Decimal | None = None

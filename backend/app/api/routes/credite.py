@@ -14,14 +14,21 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from app.api.dependencies import UserContext, get_credit_service, get_current_user
+from app.api.dependencies import (
+    UserContext,
+    cere_administrator,
+    get_credit_service,
+    get_current_user,
+)
 from app.core.errors import ValidationError
 from app.schemas.credit import (
     AcceptaRequest,
+    CerereAdminResponse,
     AcordareResponse,
     CerereRequest,
     CerereResponse,
     CreditResponse,
+    DecizieManualaRequest,
     DecizieResponse,
     DetaliuCreditResponse,
     ProdusResponse,
@@ -34,6 +41,13 @@ from app.schemas.credit import (
 from app.services.credit_service import CreditService
 
 router = APIRouter(prefix="/credite", tags=["credite"])
+
+# Router separat, cu alta dependinta de acces. Nu e o subruta a celui de sus
+# tocmai ca sa nu poata cineva adauga din greseala un endpoint de admin fara
+# `cere_administrator` — aici garda e pe router, nu pe fiecare functie.
+router_admin = APIRouter(
+    prefix="/admin/credite", tags=["credite-admin"], dependencies=[Depends(cere_administrator)]
+)
 
 
 @router.get("/produs", response_model=ProdusResponse)
@@ -203,6 +217,45 @@ async def avanseaza_timp(
         urmatoarea_rata=rezultat["urmatoarea_rata"],
         rate_platite=rezultat["rate_platite"],
     )
+
+
+# ---------------------------------------------------------------------------
+# Analiza manuala — zona gri a scorecard-ului (45-69 puncte)
+# ---------------------------------------------------------------------------
+
+
+@router_admin.get("/analiza-manuala", response_model=list[CerereAdminResponse])
+async def coada_analiza(
+    serviciu: CreditService = Depends(get_credit_service),
+) -> list[CerereAdminResponse]:
+    """Cererile care asteapta decizia unui om, cea mai veche prima."""
+    return [
+        CerereAdminResponse(
+            **_cerere_publica(cerere),
+            nume=(cerere.get("profiles") or {}).get("nume", "necunoscut"),
+            venit_folosit=cerere.get("venit_folosit"),
+            obligatii_folosite=cerere.get("obligatii_folosite"),
+        )
+        for cerere in await serviciu.cereri_in_analiza()
+    ]
+
+
+@router_admin.post("/cereri/{id_cerere}/decizie", response_model=CerereResponse)
+async def decizie_manuala(
+    id_cerere: UUID,
+    cerere: DecizieManualaRequest,
+    administrator: UserContext = Depends(cere_administrator),
+    serviciu: CreditService = Depends(get_credit_service),
+) -> CerereResponse:
+    """Aproba sau respinge o cerere din analiza manuala.
+
+    Aprobarea nu acorda creditul — genereaza oferta. Clientul o accepta tot el,
+    din aplicatie: semnatura ramane a lui, nu a administratorului.
+    """
+    rezultat = await serviciu.decide_manual(
+        id_cerere, administrator.user_id, cerere.aproba, cerere.nota
+    )
+    return CerereResponse(**_cerere_publica(rezultat))
 
 
 def _cerere_publica(cerere: dict) -> dict:
