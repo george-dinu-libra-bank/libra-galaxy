@@ -74,9 +74,9 @@ async function aduDeLaBnr(): Promise<Cursuri | null> {
     // WAF-ul BNR raspunde uneori cu 200 si pagina de start (sau cu „Request
     // Rejected"), in loc de XML. Fara verificarea asta am fi crezut ca a mers si
     // am fi scris zero cursuri.
-    // if (!text.includes("<Rate")) {
-    //   throw new Error("BNR a raspuns cu HTML, nu cu XML (probabil filtru anti-bot)");
-    // }
+    if (!text.includes("<Rate")) {
+      throw new Error("BNR a raspuns cu HTML, nu cu XML (probabil filtru anti-bot)");
+    }
 
     const rezultat = extrageDinBnr(text);
 
