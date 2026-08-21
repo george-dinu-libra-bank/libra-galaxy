@@ -10,6 +10,7 @@ import { SoldAnimat } from "@/components/dashboard/sold-animat";
 import { UltimeleTranzactii } from "@/components/dashboard/ultimele-tranzactii";
 import { VerificaIdentitateBanner } from "@/components/dashboard/verifica-identitate-banner";
 import { Banda } from "@/components/ui/banda";
+import { Logo } from "@/components/ui/logo";
 import { obtineConturiUtilizator, totalSold } from "@/lib/data/conturi";
 import { obtineCursuri } from "@/lib/data/curs-valutar";
 import { obtineTranzactiiUtilizator } from "@/lib/data/tranzactii";
@@ -60,8 +61,8 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
-      <header className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
+      <header className="grid grid-cols-[1fr_auto_1fr] items-start gap-3">
+        <div className="min-w-0">
           <p className="text-[13px] text-ink-faint">Salut,</p>
           <h1 className="truncate text-xl font-bold tracking-[-0.02em] text-ink">
             {prenume || "client Galaxy Bank"}
@@ -76,14 +77,18 @@ export default async function DashboardPage() {
           />
         </div>
 
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface text-ink-soft shadow-sm">
-          <Bell size={20} strokeWidth={1.75} aria-hidden />
-        </span>
+        <Logo size={44} className="justify-self-center" />
 
-        <AvatarUtilizator
-          avatarUrl={profil?.avatar_url ?? null}
-          nume={profil?.nume ?? "client Galaxy Bank"}
-        />
+        <div className="flex items-start justify-end gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface text-ink-soft shadow-sm">
+            <Bell size={20} strokeWidth={1.75} aria-hidden />
+          </span>
+
+          <AvatarUtilizator
+            avatarUrl={profil?.avatar_url ?? null}
+            nume={profil?.nume ?? "client Galaxy Bank"}
+          />
+        </div>
       </header>
 
       {profil ? (

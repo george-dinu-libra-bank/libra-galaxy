@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { ChevronLeft, Landmark, type LucideIcon } from "lucide-react";
+import { ChevronLeft, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { Logo } from "@/components/ui/logo";
 
 type Props = {
   /** Titlul mic din bara hero. */
@@ -31,9 +32,7 @@ export function AuthShell({
       {/* Panou de brand — doar pe ecrane mari */}
       <aside className="hidden max-w-sm lg:block">
         <div className="mb-6 flex items-center gap-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-600 shadow-btn">
-            <Landmark size={24} strokeWidth={1.75} className="text-white" aria-hidden />
-          </span>
+          <Logo size={64} />
           <span className="text-2xl font-bold tracking-[-0.02em] text-ink">Galaxy Bank</span>
         </div>
 
@@ -59,7 +58,13 @@ export function AuthShell({
             className="pointer-events-none absolute -bottom-20 -left-12 h-48 w-48 rounded-full bg-white/8 blur-2xl"
           />
 
-          <div className="relative flex items-center gap-3">
+          <div className="relative flex justify-center">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-md">
+              <Logo size={42} />
+            </span>
+          </div>
+
+          <div className="relative mt-5 flex items-center gap-3">
             {inapoi ? (
               <Link
                 href={inapoi}

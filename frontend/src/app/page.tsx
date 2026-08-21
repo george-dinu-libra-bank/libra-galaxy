@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Landmark, ShieldCheck, Zap } from "lucide-react";
+import { Logo } from "@/components/ui/logo";
 
 const AVANTAJE = [
   { icoana: Zap, titlu: "Transfer instant", text: "Trimiti bani in cateva secunde, oricand." },
@@ -12,9 +13,9 @@ export default function Home() {
     <main className="min-h-dvh">
       <div className="mx-auto flex min-h-dvh w-full max-w-[440px] flex-col justify-center gap-10 px-6 py-12 sm:max-w-xl">
         <div className="animate-fade-up">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-600 shadow-btn">
-            <Landmark size={24} strokeWidth={1.75} className="text-white" aria-hidden />
-          </span>
+          <div className="flex justify-center">
+            <Logo size={80} />
+          </div>
 
           <h1 className="mt-6 text-[32px] font-bold leading-[38px] tracking-[-0.02em] text-ink">
             Banca ta, in buzunar.

@@ -82,7 +82,7 @@ async function aduDeLaBnr(): Promise<Cursuri | null> {
 
     if (STRAINE.every((valuta) => rezultat.cursuri.has(valuta))) return rezultat;
 
-    //throw new Error("BNR nu a returnat toate valutele cerute");
+    throw new Error("BNR nu a returnat toate valutele cerute");
   } catch (eroare) {
     // warn, nu error: BNR-ul care ne refuza e o situatie asteptata, cu rezerva
     // pregatita imediat mai jos. Cu console.error, overlay-ul de dezvoltare din
