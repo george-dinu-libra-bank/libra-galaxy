@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase/server";
  * care faci parte — destinatia ramane mereu un cont, dupa IBAN.
  */
 
-export const BANCA_INTERNA = "Libra Bank";
+export const BANCA_INTERNA = "Galaxy Bank";
 export const VALUTA_IMPLICITA = "RON";
 
 export type ContSursa = {
@@ -137,7 +137,7 @@ export async function obtineBeneficiariRecenti(): Promise<BeneficiarTransfer[]> 
         cont.id as string,
         {
           id: cont.id as string,
-          nume: proprietar?.nume ?? "Cont Libra",
+          nume: proprietar?.nume ?? "Cont Galaxy Bank",
           iban: cont.iban as string,
           banca: BANCA_INTERNA,
         },

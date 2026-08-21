@@ -44,7 +44,7 @@ export async function cautaBeneficiarDupaIban(
     .maybeSingle();
 
   if (error) return { eroare: "Nu am putut cauta beneficiarul. Incearca din nou." };
-  if (!data) return { eroare: "Nu exista niciun cont Libra cu acest IBAN." };
+  if (!data) return { eroare: "Nu exista niciun cont Galaxy Bank cu acest IBAN." };
 
   const relatie = data.profiles as { nume: string } | { nume: string }[] | null;
   const proprietar = Array.isArray(relatie) ? relatie[0] : relatie;
@@ -54,7 +54,7 @@ export async function cautaBeneficiarDupaIban(
       id: data.id as string,
       // Un cont propriu ramane o destinatie valida: se pot muta bani intre
       // conturile aceleiasi persoane. Doar acelasi cont e respins, in RPC.
-      nume: proprietar?.nume ?? "Cont Libra",
+      nume: proprietar?.nume ?? "Cont Galaxy Bank",
       iban: data.iban as string,
       banca: BANCA_INTERNA,
     },
@@ -71,7 +71,7 @@ const MESAJE_CORE_BANKING: Record<string, string> = {
   SUMA_INVALIDA: "Introdu o suma valida.",
   VALUTA_NESUPORTATA: "Momentan se pot trimite doar transferuri in RON.",
   IBAN_INVALID: "IBAN-ul beneficiarului este invalid.",
-  BENEFICIAR_INEXISTENT: "Nu exista niciun cont Libra cu acest IBAN.",
+  BENEFICIAR_INEXISTENT: "Nu exista niciun cont Galaxy Bank cu acest IBAN.",
   PROFIL_INEXISTENT: "Contul tau nu a fost gasit.",
   CONT_SURSA_INEXISTENT: "Contul din care vrei sa platesti nu exista.",
   CONT_SURSA_STRAIN: "Nu poti plati dintr-un cont care nu este al tau.",

@@ -5,7 +5,7 @@ import { obtineCredite, obtineProdusCredit } from "@/lib/data/credite";
 import { cn, formateazaSuma } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Credite · Libra",
+  title: "Credite · Galaxy Bank",
 };
 
 const ETICHETE: Record<string, { text: string; clasa: string }> = {

@@ -271,7 +271,7 @@ export function RegisterForm() {
 
       <Checkbox checked={acord} onCheckedChange={(v) => { setAcord(v); if (v) setEroareAcord(null); }} eroare={eroareAcord}>
         Prin crearea contului accept <TermeniDrawer /> si politica de
-        confidentialitate Libra.
+        confidentialitate Galaxy Bank.
       </Checkbox>
 
       <Button type="submit" loading={seTrimite} className="w-full">

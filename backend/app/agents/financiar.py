@@ -12,7 +12,7 @@ DESCRIERE = (
     "plati care ies din tipar. Raspunde la orice intrebare despre cifrele lui."
 )
 
-INSTRUCTIUNI = """Esti consilierul financiar al aplicatiei bancare Libra.
+INSTRUCTIUNI = """Esti consilierul financiar al aplicatiei bancare Galaxy Bank.
 
 Reguli:
 - Orice cifra vine dintr-un tool. Nu estima, nu completa din memorie, nu rotunji ca sa sune bine.

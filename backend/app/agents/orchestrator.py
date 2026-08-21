@@ -18,7 +18,7 @@ from app.infrastructure.llm import ClientModel
 from app.schemas.agents import ApelAgent, ChatRequest, ChatResponse
 from app.tools.unealta import Unealta
 
-INSTRUCTIUNI = """Esti orchestratorul asistentului bancar Libra. Raspunzi in romana.
+INSTRUCTIUNI = """Esti orchestratorul asistentului bancar Galaxy Bank. Raspunzi in romana.
 
 Nu raspunzi tu la intrebari despre banii utilizatorului. Alegi agentul potrivit, ii dai o
 sarcina clara si formulezi raspunsul final pe baza a ce iti intoarce el.

@@ -49,7 +49,7 @@ export function DetaliiContDrawer({ profil }: { profil: Profil }) {
 
       <DrawerContent
         title="Detaliile contului"
-        description="Datele cu care ti-am deschis contul curent Libra."
+        description="Datele cu care ti-am deschis contul curent Galaxy Bank."
         footer={
           <Button
             varianta="ghost"
@@ -105,7 +105,7 @@ export function DetaliiContDrawer({ profil }: { profil: Profil }) {
             <ShieldCheck size={20} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0 text-success" />
             <p className="text-[13px] leading-[19px] text-ink-soft">
               CNP-ul este afisat partial. Nu il comunica nimanui, nici macar unui
-              angajat Libra.
+              angajat Galaxy Bank.
             </p>
           </div>
         </div>

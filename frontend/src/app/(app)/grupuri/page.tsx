@@ -5,7 +5,7 @@ import { ListaGrupuri } from "@/components/grupuri/lista-grupuri";
 import { obtineGrupurileMele } from "@/lib/data/grupuri";
 
 export const metadata: Metadata = {
-  title: "Grupuri · Libra",
+  title: "Grupuri · Galaxy Bank",
 };
 
 /**

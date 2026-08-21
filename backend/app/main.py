@@ -17,7 +17,7 @@ logger = logging.getLogger("libra.assistant")
 
 settings = get_settings()
 
-app = FastAPI(title="Libra Galaxy — Asistent AI")
+app = FastAPI(title="Galaxy Bank — Asistent AI")
 
 app.add_middleware(
     CORSMiddleware,

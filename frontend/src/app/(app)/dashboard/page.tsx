@@ -16,7 +16,7 @@ import { obtineTranzactiiUtilizator } from "@/lib/data/tranzactii";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
-  title: "Contul meu · Libra",
+  title: "Contul meu · Galaxy Bank",
 };
 
 // Istoricul a iesit de aici in favoarea schimbului valutar: e la un tap distanta
@@ -64,7 +64,7 @@ export default async function DashboardPage() {
         <div className="min-w-0 flex-1">
           <p className="text-[13px] text-ink-faint">Salut,</p>
           <h1 className="truncate text-xl font-bold tracking-[-0.02em] text-ink">
-            {prenume || "client Libra"}
+            {prenume || "client Galaxy Bank"}
           </h1>
 
           <p className="mt-3 text-[13px] text-ink-faint">
@@ -82,7 +82,7 @@ export default async function DashboardPage() {
 
         <AvatarUtilizator
           avatarUrl={profil?.avatar_url ?? null}
-          nume={profil?.nume ?? "client Libra"}
+          nume={profil?.nume ?? "client Galaxy Bank"}
         />
       </header>
 

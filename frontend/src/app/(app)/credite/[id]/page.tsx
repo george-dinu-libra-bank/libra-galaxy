@@ -6,7 +6,7 @@ import { DetaliuCreditVizual } from "@/components/credite/detaliu-credit";
 import { obtineCalculRambursare, obtineDetaliuCredit } from "@/lib/data/credite";
 
 export const metadata: Metadata = {
-  title: "Credit · Libra",
+  title: "Credit · Galaxy Bank",
 };
 
 export default async function CreditPage({ params }: { params: Promise<{ id: string }> }) {

@@ -35,7 +35,7 @@ export function ListaCarduri({ carduri }: { carduri: CardAfisat[] }) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Carduri</h1>
-          <p className="mt-1 text-[15px] text-ink-soft">Cardurile asociate contului tău Libra.</p>
+          <p className="mt-1 text-[15px] text-ink-soft">Cardurile asociate contului tău Galaxy Bank.</p>
         </div>
         {carduri.length > 0 ? <AdaugaCardDrawer compact /> : null}
       </div>

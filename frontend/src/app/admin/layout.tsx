@@ -6,7 +6,7 @@ import { NavAdmin } from "@/components/admin/nav-admin";
 import { cereAdmin } from "@/lib/admin";
 
 export const metadata: Metadata = {
-  title: "Administrare · Libra",
+  title: "Administrare · Galaxy Bank",
 };
 
 /**
@@ -34,7 +34,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
               <span className="block text-[15px] font-semibold leading-5 text-ink">
                 Administrare
               </span>
-              <span className="block text-[12.5px] leading-4 text-ink-faint">Libra</span>
+              <span className="block text-[12.5px] leading-4 text-ink-faint">Galaxy Bank</span>
             </span>
           </Link>
 
