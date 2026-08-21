@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, X } from "lucide-react";
+import { Camera, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
@@ -8,20 +8,23 @@ import { useCameraCapture } from "@/lib/camera";
 import { pregatesteAvatar } from "@/lib/imagine";
 
 /**
- * Login biometric: doar camera (fara upload din galerie, ca la selfie-ul de
- * la inregistrare) — o poza statica ar submina scopul. Captura e trimisa
- * direct la confirmare, spre deosebire de SelfieCapture din inregistrare
- * (acolo userul o pastreaza pe cont, aici doar dovedeste identitatea o data).
+ * Doar camera pentru login biometric (fara upload din galerie, ca la selfie-ul
+ * de la inregistrare) — o poza statica ar submina scopul.
+ *
+ * Traieste pe acelasi ecran cu emailul (vezi LoginForm): nu trimite nimic
+ * singura, doar anunta parintele de fiecare data cand poza se schimba
+ * (facuta sau reluata) — parintele decide cand si cu ce trimite mai departe.
  */
 export function FaceLoginCapture({
-  onCaptura,
-  onRenunta,
-  seTrimite,
+  poza,
+  onSchimbat,
+  disabled,
 }: {
-  onCaptura: (fisier: File) => void;
-  onRenunta: () => void;
-  seTrimite: boolean;
+  poza: File | null;
+  onSchimbat: (fisier: File | null) => void;
+  disabled?: boolean;
 }) {
+  const [previzualizare, setPrevizualizare] = useState<string | null>(null);
   const [eroare, setEroare] = useState<string | null>(null);
   const camera = useCameraCapture({ facingMode: "user", oglindeste: true });
 
@@ -36,34 +39,42 @@ export function FaceLoginCapture({
 
     try {
       const fisier = await pregatesteAvatar(brut);
-      onCaptura(fisier);
+      setPrevizualizare(URL.createObjectURL(fisier));
+      onSchimbat(fisier);
     } catch {
       setEroare("Nu am putut procesa poza. Încearcă din nou.");
     }
   }
 
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-ink">Confirmă cu fața</h2>
-          <p className="mt-1 text-[13px] leading-[19px] text-ink-soft">
-            Privește direct spre cameră, într-un loc bine luminat.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onRenunta}
-          aria-label="Renunță"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-faint hover:bg-primary-50 hover:text-primary-700"
-        >
-          <X size={18} strokeWidth={1.75} aria-hidden />
-        </button>
-      </div>
+  function reia() {
+    if (previzualizare) URL.revokeObjectURL(previzualizare);
+    setPrevizualizare(null);
+    setEroare(null);
+    onSchimbat(null);
+  }
 
+  return (
+    <div className="flex flex-col gap-3">
       {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}
 
-      {camera.pornita ? (
+      {poza && previzualizare ? (
+        <>
+          <div className="mx-auto h-44 w-44 animate-pop overflow-hidden rounded-full border border-line shadow-md">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={previzualizare} alt="Poza ta" className="h-full w-full object-cover" />
+          </div>
+          <Button
+            type="button"
+            varianta="secondary"
+            className="w-full"
+            onClick={reia}
+            disabled={disabled}
+            iconaStanga={<RotateCcw size={18} strokeWidth={1.75} aria-hidden />}
+          >
+            Reia poza
+          </Button>
+        </>
+      ) : camera.pornita ? (
         <>
           <div className="mx-auto h-44 w-44 overflow-hidden rounded-full bg-ink shadow-md">
             <video
@@ -77,20 +88,23 @@ export function FaceLoginCapture({
           {camera.eroare ? <Banda ton="eroare">{camera.eroare}</Banda> : null}
 
           <Button
+            type="button"
             className="w-full"
             onClick={fotografiaza}
-            loading={seTrimite}
+            disabled={disabled}
             iconaStanga={<Camera size={18} strokeWidth={1.75} aria-hidden />}
           >
-            {seTrimite ? "Se verifica…" : "Fotografiază"}
+            Fotografiază
           </Button>
         </>
       ) : (
         <div className="flex flex-col items-center gap-4">
           <div className="h-44 w-44 rounded-full border border-dashed border-line" />
           <Button
+            type="button"
             className="w-full"
             onClick={camera.porneste}
+            disabled={disabled}
             iconaStanga={<Camera size={18} strokeWidth={1.75} aria-hidden />}
           >
             Pornește camera
