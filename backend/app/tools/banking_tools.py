@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
+from app.core.redaction import mask_iban
 from app.core.security import PERMISSION_ACCOUNTS_READ, Principal
 from app.repositories.banking_read_repository import BankingReadRepository
 from app.tools.base import RiskLevel, SideEffect, ToolDefinition
@@ -21,7 +22,7 @@ def build_banking_tools(repository: BankingReadRepository) -> list[ToolDefinitio
         accounts = repository.list_accounts(principal.user_id)
         return {
             "accounts": [
-                {"id": account.id, "name": account.name, "iban": account.iban, "balance": account.balance}
+                {"id": account.id, "name": account.name, "iban": mask_iban(account.iban), "balance": account.balance}
                 for account in accounts
             ]
         }
