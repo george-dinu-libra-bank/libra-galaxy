@@ -82,6 +82,8 @@ grant select on public.user_roles to authenticated;
 -- citi din user_roles ar declansa din nou RLS pe aceeasi tabela. Functia ruleaza
 -- cu drepturile proprietarului, vede randul fara politici, si bucla se rupe.
 -- -----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
 -- 4. Ce vede un administrator
 --
 -- Politicile proprii ale utilizatorului raman neatinse; se adauga cate una
