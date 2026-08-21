@@ -24,8 +24,8 @@ from app.providers.base import ChatMessage, ChatProvider
 from app.tools.base import SelectedTool, ToolResult
 
 _NO_MATCH_TEXT_RO = (
-    "Nu am gasit nimic documentat despre asta in baza de cunostinte Galaxy Bank. "
-    "Nu pot raspunde cu certitudine — te rog reformuleaza sau contacteaza suportul."
+    "Îmi pare rău, nu pot răspunde la această întrebare. Te rog reformuleaz-o sau "
+    "contactează echipa de suport pentru ajutor."
 )
 
 _SCORE_HIGH_THRESHOLD = 0.65

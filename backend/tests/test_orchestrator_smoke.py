@@ -237,3 +237,17 @@ async def test_injection_attempt_never_reaches_the_agent() -> None:
     assert chemat is False
     assert result.agent_id == "input_guardrail"
     assert result.text == REFUSAL_TEXT
+
+
+@pytest.mark.anyio
+async def test_empty_completion_gets_a_fallback_message_not_a_blank_bubble() -> None:
+    """gpt-5-mini isi poate consuma tot bugetul de tokeni pe rationament
+    invizibil, lasand raspunsul vizibil gol (GUARDRAILS.md #37) — utilizatorul
+    nu trebuie sa vada niciodata o bula fara text."""
+    agent = AgentFals(text="   ")  # gol, doar spatii — exact ce ar produce o completare goala
+    orchestrator = _construieste_orchestrator(agents={"document_intelligence": agent})
+
+    result = await orchestrator.handle_message(UTILIZATOR, None, "asdkjhasd random text fara sens")
+
+    assert result.text.strip()
+    assert result.text != "   "

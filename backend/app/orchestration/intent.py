@@ -52,7 +52,10 @@ _INTENT_PHRASES: list[tuple[str, tuple[str, ...]]] = [
     ),
     (
         "account_overview",
-        ("cat am in cont", "sold", "solduri", "conturile mele", "my balance", "my accounts", "account balance"),
+        (
+            "cat am in cont", "sold", "solduri", "conturile mele", "iban",
+            "my balance", "my accounts", "account balance", "account number",
+        ),
     ),
     (
         "financial_advice",

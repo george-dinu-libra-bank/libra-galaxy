@@ -33,13 +33,9 @@ class DecizieInvalida(ValidationError):
         super().__init__(f"Decizia '{decizie}' nu e permisa; se accepta verified sau rejected.")
 
 
-class ContNegasit(ErrorAplicatie):
+class ContNegasit(ResourceNotFoundError):
     def __init__(self) -> None:
-        super().__init__(
-            cod="cont_negasit",
-            mesaj="Contul nu exista sau verificarea lui a fost deja inceputa.",
-            status_http=404,
-        )
+        super().__init__("Contul nu exista sau verificarea lui a fost deja inceputa.")
 
 
 def _numar(valoare) -> float | None:

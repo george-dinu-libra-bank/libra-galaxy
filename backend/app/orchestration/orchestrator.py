@@ -42,6 +42,11 @@ logger = logging.getLogger("libra.assistant")
 
 _TITLE_MAX_CHARS = 60
 
+_EMPTY_ANSWER_FALLBACK_RO = (
+    "Nu am putut genera un răspuns de data asta. Te rog reformulează întrebarea "
+    "sau încearcă din nou în câteva momente."
+)
+
 
 @dataclass(frozen=True)
 class OrchestratorResult:
@@ -177,6 +182,16 @@ class Orchestrator:
                 logger.info(
                     "output_redacted", extra={"event_data": {"agent_id": agent_id, "conversation_id": conversation.id}}
                 )
+
+            # Plasa de siguranta (GUARDRAILS.md #37, fail-safe): gpt-5-mini isi
+            # poate consuma tot bugetul de tokeni pe rationament invizibil,
+            # lasand raspunsul vizibil gol — utilizatorul nu trebuie sa vada
+            # niciodata o bula fara text.
+            if not redacted_text.strip():
+                logger.warning(
+                    "empty_answer", extra={"event_data": {"agent_id": agent_id, "conversation_id": conversation.id}}
+                )
+                redacted_text = _EMPTY_ANSWER_FALLBACK_RO
         except Exception as exc:
             error_code = type(exc).__name__
             raise

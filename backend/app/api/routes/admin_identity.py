@@ -115,10 +115,7 @@ def forteaza(
 ) -> ForteazaVerificareResponse:
     """Marcheaza manual contul ca verificat, fara OCR/selfie — pentru conturi
     ramase blocate inainte sa apuce sa trimita dovezi."""
-    try:
-        rezultat = serviciu.forteaza_verificare(cerere.user_id)
-    except ErrorAplicatie as exc:
-        raise _http(exc) from exc
+    rezultat = serviciu.forteaza_verificare(cerere.user_id)
 
     _urma(administrator, "forteaza_verificare", cerere.user_id, detalii=cerere.note)
     return rezultat
