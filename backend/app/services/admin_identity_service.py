@@ -120,7 +120,8 @@ def decide(id_verificare: str, decizie: str, id_administrator: str, note: str | 
     if decizie not in DECIZII_PERMISE:
         raise DecizieInvalida(decizie)
 
-    if depozit.obtine_caz(id_verificare) is None:
+    caz = depozit.obtine_caz(id_verificare)
+    if caz is None:
         raise CazNegasit()
 
     rand = depozit.scrie_decizie(id_verificare, decizie, id_administrator, note)
@@ -130,6 +131,12 @@ def decide(id_verificare: str, decizie: str, id_administrator: str, note: str | 
             mesaj="Nu am putut salva decizia.",
             status_http=502,
         )
+
+    # Fereastra in care buletinul are un motiv sa existe (revizuire de admin)
+    # tocmai s-a inchis, indiferent de decizie. Selfie-ul ramane: cel aprobat
+    # e refolosit la login biometric, iar cel respins se pastreaza pentru
+    # dosarul cazului.
+    depozit.sterge_imagine(BUCKET_BULETIN, caz["buletin_image_path"])
 
     return DecizieResponse(
         id=str(rand["id"]),

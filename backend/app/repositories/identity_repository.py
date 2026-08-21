@@ -1,10 +1,25 @@
+import logging
+
 from app.infrastructure.supabase import get_admin_client
 from app.infrastructure.supabase_client import get_service_client
+
+logger = logging.getLogger(__name__)
 
 
 def descarca_imagine(bucket: str, cale: str) -> bytes:
     client = get_service_client()
     return client.storage.from_(bucket).download(cale)
+
+
+def sterge_imagine(bucket: str, cale: str) -> None:
+    """Sterge o poza din storage. Nu esueaza cererea care o cheama: o poza care
+    ramane in plus cateva zile e mai putin rau decat o verificare care pica
+    pentru ca stergerea ei a mers prost."""
+    client = get_service_client()
+    try:
+        client.storage.from_(bucket).remove([cale])
+    except Exception:
+        logger.exception("sterge_imagine: stergere esuata (bucket=%s, cale=%s)", bucket, cale)
 
 
 def gaseste_id_user_dupa_email(email: str) -> str | None:
