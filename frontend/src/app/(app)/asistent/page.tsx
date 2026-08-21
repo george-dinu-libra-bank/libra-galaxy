@@ -5,7 +5,7 @@ import { ListaConversatiiDrawer } from "@/components/asistent/lista-conversatii-
 import { obtineConversatii, obtineMesaje } from "@/lib/data/asistent";
 
 export const metadata: Metadata = {
-  title: "Asistent · Libra",
+  title: "Asistent · Galaxy Bank",
 };
 
 /**

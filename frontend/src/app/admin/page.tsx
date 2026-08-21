@@ -1,20 +1,25 @@
 import Link from "next/link";
-import { ChevronRight, ScanFace, ShieldCheck } from "lucide-react";
+import { ChevronRight, ScanFace, ShieldCheck, UserX } from "lucide-react";
 import { cereAdmin } from "@/lib/admin";
-import { obtineCazuriDeRevizuit } from "@/lib/data/admin-verificari";
-import type { CazVerificare } from "@/lib/tipuri-admin";
+import { obtineCazuriDeRevizuit, obtineConturiNeincepute } from "@/lib/data/admin-verificari";
+import type { CazVerificare, ContNeinceput } from "@/lib/tipuri-admin";
 import { BackendError } from "@/lib/backend";
 import { Banda } from "@/components/ui/banda";
 import { EticheteCaz } from "@/components/admin/etichete-caz";
+import { ForteazaVerificare } from "@/components/admin/forteaza-verificare";
 
 export default async function AdminPage() {
   const admin = await cereAdmin();
 
   let cazuri: CazVerificare[] = [];
+  let neincepute: ContNeinceput[] = [];
   let eroare: string | null = null;
 
   try {
-    cazuri = await obtineCazuriDeRevizuit(admin.token);
+    [cazuri, neincepute] = await Promise.all([
+      obtineCazuriDeRevizuit(admin.token),
+      obtineConturiNeincepute(admin.token),
+    ]);
   } catch (exc) {
     eroare =
       exc instanceof BackendError
@@ -23,7 +28,7 @@ export default async function AdminPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <div>
         <h1 className="text-[26px] font-bold leading-8 tracking-[-0.02em] text-ink">
           Verificări de identitate
@@ -55,6 +60,39 @@ export default async function AdminPage() {
           ))}
         </div>
       ) : null}
+
+      {!eroare && neincepute.length > 0 ? (
+        <div>
+          <h2 className="text-[17px] font-semibold text-ink">Fără verificare trimisă</h2>
+          <p className="mt-1 text-[13px] leading-[19px] text-ink-faint">
+            Conturi înregistrate care n-au ajuns să trimită buletin și selfie — nimic de comparat,
+            doar de deblocat manual dacă e cazul.
+          </p>
+
+          <div className="mt-3 flex flex-col gap-3">
+            {neincepute.map((cont) => (
+              <RandNeinceput key={cont.id} cont={cont} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RandNeinceput({ cont }: { cont: ContNeinceput }) {
+  return (
+    <div className="flex items-center gap-4 rounded-card border border-line bg-surface p-4 shadow-sm">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted">
+        <UserX size={20} strokeWidth={1.75} aria-hidden className="text-ink-faint" />
+      </span>
+
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-semibold text-ink">{cont.nume}</span>
+        <span className="block truncate text-[12.5px] text-ink-faint">{cont.email}</span>
+      </span>
+
+      <ForteazaVerificare userId={cont.id} nume={cont.nume} />
     </div>
   );
 }

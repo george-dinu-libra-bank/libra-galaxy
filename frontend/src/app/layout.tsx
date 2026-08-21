@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Libra · Mobile banking",
+  title: "Galaxy Bank · Mobile banking",
   description: "Cont curent cu IBAN romanesc, deschis online in cateva minute.",
 };
 

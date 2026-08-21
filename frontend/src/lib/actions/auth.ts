@@ -7,7 +7,11 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SITE_URL, supabaseConfigurat } from "@/lib/env";
 import { genereazaIban } from "@/lib/iban";
-import { verificaIdentitateInregistrare, verificaLoginFata } from "@/lib/actions/identitate";
+import {
+  inregistreazaSelfieReferinta,
+  verificaIdentitateInregistrare,
+  verificaLoginFata,
+} from "@/lib/actions/identitate";
 import {
   normalizeazaTelefon,
   validCnp,
@@ -168,7 +172,7 @@ export async function inregistreaza(date: {
   telefon: string;
   email: string;
   parola: string;
-  buletin: File;
+  buletin: File | null;
   selfie: File;
 }): Promise<RezultatAuth> {
   const nume = date.nume.trim().replace(/\s+/g, " ");
@@ -189,9 +193,6 @@ export async function inregistreaza(date: {
     return { eroare };
   }
 
-  if (!(date.buletin instanceof File) || date.buletin.size === 0) {
-    return { eroare: "Fa o poza buletinului." };
-  }
   if (!(date.selfie instanceof File) || date.selfie.size === 0) {
     return { eroare: "Fa un selfie ca sa iti confirmam identitatea." };
   }
@@ -224,8 +225,14 @@ export async function inregistreaza(date: {
   // Verificarea identitatii (OCR + DeepFace) nu trebuie sa blocheze crearea
   // contului — un scor mic sau un serviciu picat inseamna doar
   // verification_status = 'pending'/'pending_review', nu esec la inregistrare.
+  // Fara buletin (userul a ales sa-l trimita mai tarziu): doar selfie-ul se
+  // retine, ca reper pentru trimiteBuletinUlterior().
   if (data.user) {
-    await verificaIdentitateInregistrare(data.user.id, date.buletin, date.selfie, cnp);
+    if (date.buletin) {
+      await verificaIdentitateInregistrare(data.user.id, date.buletin, date.selfie, cnp);
+    } else {
+      await inregistreazaSelfieReferinta(data.user.id, date.selfie);
+    }
   }
 
   // Fara sesiune => in proiectul Supabase e activata confirmarea pe email.

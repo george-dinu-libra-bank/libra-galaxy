@@ -3,7 +3,7 @@ import { ListaBeneficiari } from "@/components/beneficiari/lista-beneficiari";
 import { obtineBeneficiari } from "@/lib/mock-data";
 
 export const metadata: Metadata = {
-  title: "Beneficiari · Libra",
+  title: "Beneficiari · Galaxy Bank",
 };
 
 export default async function BeneficiariPage() {

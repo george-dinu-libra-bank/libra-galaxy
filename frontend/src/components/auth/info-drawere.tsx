@@ -65,7 +65,7 @@ export function TermeniDrawer() {
 
       <DrawerContent
         title="Termeni si Conditii"
-        description="Rezumatul conditiilor de deschidere si utilizare a contului Libra."
+        description="Rezumatul conditiilor de deschidere si utilizare a contului Galaxy Bank."
         footer={
           <DrawerClose asChild>
             <Button className="w-full">Inchide</Button>

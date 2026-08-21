@@ -82,7 +82,7 @@ export function ListaTranzactii({ tranzactii }: { tranzactii: TranzactieAfisata[
       >
         <DrawerContent
           title={selectata ? (selectata.tip === "primita" ? "Bani primiți" : "Bani trimiși") : ""}
-          description={selectata?.descriere || "Transfer între conturi Libra."}
+          description={selectata?.descriere || "Transfer între conturi Galaxy Bank."}
         >
           {selectata ? <DetaliuTranzactie tranzactie={selectata} /> : null}
         </DrawerContent>
@@ -102,7 +102,7 @@ function RandTranzactie({
 }) {
   const primita = tranzactie.tip === "primita";
   const Icoana = primita ? ArrowDownLeft : ArrowUpRight;
-  const nume = tranzactie.contraparte?.nume ?? "Cont Libra";
+  const nume = tranzactie.contraparte?.nume ?? "Cont Galaxy Bank";
 
   return (
     <button
@@ -167,7 +167,7 @@ function RandTranzactie({
 
 function DetaliuTranzactie({ tranzactie }: { tranzactie: TranzactieAfisata }) {
   const primita = tranzactie.tip === "primita";
-  const nume = tranzactie.contraparte?.nume ?? "Cont Libra";
+  const nume = tranzactie.contraparte?.nume ?? "Cont Galaxy Bank";
 
   return (
     <div className="flex flex-col gap-4">

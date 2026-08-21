@@ -71,7 +71,7 @@ def build_system_prompt(spec: AgentSpec, context: AssembledContext) -> str:
     """Prompt de baza comun tuturor agentilor: scop, interdictii explicite, apoi contextul asamblat."""
     prohibited = "\n".join(f"- NU {item}." for item in spec.prohibited)
     return (
-        f"Esti agentul '{spec.agent_id}' din Libra Galaxy. Scop: {spec.purpose}\n"
+        f"Esti agentul '{spec.agent_id}' din Galaxy Bank. Scop: {spec.purpose}\n"
         f"Raspunzi in limba utilizatorului (ro/en), cu aceleasi cifre in ambele limbi.\n"
         f"Nu afirmi niciodata ca o actiune a reusit decat daca un tool a confirmat asta.\n"
         f"Nu mentiona in raspuns numele tool-urilor, ID-uri de documente sau cuvinte precum "

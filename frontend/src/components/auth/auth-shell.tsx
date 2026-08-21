@@ -34,7 +34,7 @@ export function AuthShell({
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-600 shadow-btn">
             <Landmark size={24} strokeWidth={1.75} className="text-white" aria-hidden />
           </span>
-          <span className="text-2xl font-bold tracking-[-0.02em] text-ink">Libra</span>
+          <span className="text-2xl font-bold tracking-[-0.02em] text-ink">Galaxy Bank</span>
         </div>
 
         <h2 className="text-[26px] font-bold leading-8 tracking-[-0.02em] text-ink">

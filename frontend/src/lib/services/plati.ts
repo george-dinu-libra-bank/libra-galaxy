@@ -36,10 +36,10 @@ export const SECUNDE_CONFIRMARE = 120;
 
 /** Codurile ridicate de functiile din 0014_payments.sql. */
 const MESAJE: Record<string, string> = {
-  NEAUTENTIFICAT: "Trebuie să fii autentificat în Libra.",
+  NEAUTENTIFICAT: "Trebuie să fii autentificat în Galaxy Bank.",
   SUMA_INVALIDA: "Suma comenzii este invalidă.",
   VALUTA_NESUPORTATA: "Valuta comenzii nu este acceptată.",
-  DATE_CARD_GRESITE: "Datele cardului nu corespund niciunui card Libra al tău.",
+  DATE_CARD_GRESITE: "Datele cardului nu corespund niciunui card Galaxy Bank al tău.",
   CARD_BLOCAT: "Cardul este blocat. Deblochează-l din secțiunea Carduri.",
   CARD_EXPIRAT: "Cardul a expirat.",
   FARA_CONT: "Nu ai niciun cont bancar din care să se poată plăti.",

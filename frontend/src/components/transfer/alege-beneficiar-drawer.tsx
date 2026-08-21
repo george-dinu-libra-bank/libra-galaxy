@@ -106,7 +106,7 @@ export function AlegeBeneficiarDrawer({
           title={modNou ? "Beneficiar nou" : "Alege beneficiarul"}
           description={
             modNou
-              ? "Introdu IBAN-ul contului Libra catre care trimiti banii."
+              ? "Introdu IBAN-ul contului Galaxy Bank catre care trimiti banii."
               : "Cauta printre transferurile recente sau adauga un cont nou."
           }
           footer={
@@ -126,7 +126,7 @@ export function AlegeBeneficiarDrawer({
                 placeholder="RO49 LIBR 1B31 0075 9384 0000"
                 autoComplete="off"
                 eroare={eroareIban}
-                ajutor="Numele beneficiarului se completeaza automat din contul Libra."
+                ajutor="Numele beneficiarului se completeaza automat din contul Galaxy Bank."
               />
             </div>
           ) : (

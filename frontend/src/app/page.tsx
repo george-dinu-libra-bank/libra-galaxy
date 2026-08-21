@@ -20,7 +20,7 @@ export default function Home() {
             Banca ta, in buzunar.
           </h1>
           <p className="mt-3 text-[15px] leading-[22px] text-ink-soft">
-            Deschide un cont curent Libra in cateva minute si trimite bani
+            Deschide un cont curent Galaxy Bank in cateva minute si trimite bani
             instant catre orice cont din tara.
           </p>
         </div>

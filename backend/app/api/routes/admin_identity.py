@@ -19,8 +19,11 @@ from app.repositories import identity_repository as depozit
 from app.schemas.identity import (
     CazVerificare,
     CazVerificareDetaliu,
+    ContNeinceput,
     DecizieRequest,
     DecizieResponse,
+    ForteazaVerificareRequest,
+    ForteazaVerificareResponse,
 )
 from app.services import admin_identity_service as serviciu
 
@@ -91,4 +94,31 @@ def review(
         "decide_verificare",
         detalii=f"caz={cerere.verification_id} decizie={cerere.decizie}",
     )
+    return rezultat
+
+
+@router.get("/neincepute", response_model=list[ContNeinceput])
+def neincepute(
+    limita: int = Query(default=100, ge=1, le=500),
+    administrator: UserContext = Depends(cere_administrator),
+) -> list[ContNeinceput]:
+    """Conturi fara nicio dovada trimisa — nimic de revizuit, doar de deblocat manual."""
+    conturi = serviciu.conturi_neincepute(limita)
+    _urma(administrator, "lista_neincepute", detalii=f"conturi={len(conturi)}")
+    return conturi
+
+
+@router.post("/forteaza-verificare", response_model=ForteazaVerificareResponse)
+def forteaza(
+    cerere: ForteazaVerificareRequest,
+    administrator: UserContext = Depends(cere_administrator),
+) -> ForteazaVerificareResponse:
+    """Marcheaza manual contul ca verificat, fara OCR/selfie — pentru conturi
+    ramase blocate inainte sa apuce sa trimita dovezi."""
+    try:
+        rezultat = serviciu.forteaza_verificare(cerere.user_id)
+    except ErrorAplicatie as exc:
+        raise _http(exc) from exc
+
+    _urma(administrator, "forteaza_verificare", cerere.user_id, detalii=cerere.note)
     return rezultat

@@ -77,6 +77,11 @@ export function RegisterForm() {
     setPas("selfie");
   }
 
+  function saraBuletinul() {
+    setPozaBuletin(null);
+    setPas("selfie");
+  }
+
   function laFinalizareSelfie(fisier: File) {
     setPozaSelfie(fisier);
     setPas("date");
@@ -99,8 +104,8 @@ export function RegisterForm() {
     const eroareTermeni = acord ? null : "Trebuie sa accepti termenii si conditiile.";
     setEroareAcord(eroareTermeni);
 
-    if (!pozaBuletin || !pozaSelfie) {
-      setEroareGlobala("Lipseste poza buletinului sau selfie-ul.");
+    if (!pozaSelfie) {
+      setEroareGlobala("Lipseste selfie-ul.");
       return;
     }
 
@@ -139,7 +144,7 @@ export function RegisterForm() {
   }
 
   if (pas === "buletin") {
-    return <BuletinCapture onFinalizat={laFinalizareBuletin} />;
+    return <BuletinCapture onFinalizat={laFinalizareBuletin} onSarit={saraBuletinul} />;
   }
 
   if (pas === "selfie") {
@@ -179,7 +184,11 @@ export function RegisterForm() {
             onBlur={() => laBlur("cnp")}
             eroare={erori.cnp}
             validat={Boolean(atinse.cnp && !erori.cnp && valori.cnp)}
-            ajutor="Citit automat din poza buletinului — verifica sa fie corect."
+            ajutor={
+              pozaBuletin
+                ? "Citit automat din poza buletinului — verifica sa fie corect."
+                : "Introdu-l manual — poți trimite și poza buletinului mai târziu."
+            }
           />
           <div className="mt-1.5">
             <DeCeCnpDrawer />
@@ -262,7 +271,7 @@ export function RegisterForm() {
 
       <Checkbox checked={acord} onCheckedChange={(v) => { setAcord(v); if (v) setEroareAcord(null); }} eroare={eroareAcord}>
         Prin crearea contului accept <TermeniDrawer /> si politica de
-        confidentialitate Libra.
+        confidentialitate Galaxy Bank.
       </Checkbox>
 
       <Button type="submit" loading={seTrimite} className="w-full">

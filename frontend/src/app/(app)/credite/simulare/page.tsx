@@ -6,7 +6,7 @@ import { Banda } from "@/components/ui/banda";
 import { obtineProdusCredit } from "@/lib/data/credite";
 
 export const metadata: Metadata = {
-  title: "Simulare credit · Libra",
+  title: "Simulare credit · Galaxy Bank",
 };
 
 export default async function SimularePage() {

@@ -3,7 +3,7 @@ import { ListaTranzactii } from "@/components/istoric/lista-tranzactii";
 import { obtineTranzactiiUtilizator } from "@/lib/data/tranzactii";
 
 export const metadata: Metadata = {
-  title: "Istoric · Libra",
+  title: "Istoric · Galaxy Bank",
 };
 
 export default async function IstoricPage() {

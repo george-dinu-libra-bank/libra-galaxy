@@ -39,6 +39,14 @@ export type CazVerificareDetaliu = CazVerificare & {
   secunde_valabilitate: number;
 };
 
+/** Cont ramas pe verification_status='pending' — nicio dovada trimisa inca. */
+export type ContNeinceput = {
+  id: string;
+  nume: string;
+  email: string;
+  creat_la: string;
+};
+
 // -----------------------------------------------------------------------------
 // Tranzactii semnalate
 // -----------------------------------------------------------------------------

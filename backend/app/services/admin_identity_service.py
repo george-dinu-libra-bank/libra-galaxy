@@ -11,7 +11,9 @@ from app.repositories import identity_repository as depozit
 from app.schemas.identity import (
     CazVerificare,
     CazVerificareDetaliu,
+    ContNeinceput,
     DecizieResponse,
+    ForteazaVerificareResponse,
 )
 
 BUCKET_BULETIN = "buletine"
@@ -29,6 +31,15 @@ class CazNegasit(ResourceNotFoundError):
 class DecizieInvalida(ValidationError):
     def __init__(self, decizie: str) -> None:
         super().__init__(f"Decizia '{decizie}' nu e permisa; se accepta verified sau rejected.")
+
+
+class ContNegasit(ErrorAplicatie):
+    def __init__(self) -> None:
+        super().__init__(
+            cod="cont_negasit",
+            mesaj="Contul nu exista sau verificarea lui a fost deja inceputa.",
+            status_http=404,
+        )
 
 
 def _numar(valoare) -> float | None:
@@ -101,15 +112,43 @@ def decide(id_verificare: str, decizie: str, id_administrator: str, note: str | 
     if decizie not in DECIZII_PERMISE:
         raise DecizieInvalida(decizie)
 
-    if depozit.obtine_caz(id_verificare) is None:
+    caz = depozit.obtine_caz(id_verificare)
+    if caz is None:
         raise CazNegasit()
 
     rand = depozit.scrie_decizie(id_verificare, decizie, id_administrator, note)
     if rand is None:
         raise PersistenceError("Nu am putut salva decizia.")
 
+    # Fereastra in care buletinul are un motiv sa existe (revizuire de admin)
+    # tocmai s-a inchis, indiferent de decizie. Selfie-ul ramane: cel aprobat
+    # e refolosit la login biometric, iar cel respins se pastreaza pentru
+    # dosarul cazului.
+    depozit.sterge_imagine(BUCKET_BULETIN, caz["buletin_image_path"])
+
     return DecizieResponse(
         id=str(rand["id"]),
         status=rand["status"],
         reviewed_at=str(rand["reviewed_at"]) if rand.get("reviewed_at") else None,
     )
+
+
+def conturi_neincepute(limita: int = 100) -> list[ContNeinceput]:
+    randuri = depozit.listeaza_neinceputi(limita)
+    return [
+        ContNeinceput(
+            id=str(r["id"]),
+            nume=r.get("nume", "necunoscut"),
+            email=r.get("email", ""),
+            creat_la=str(r["creat_la"]),
+        )
+        for r in randuri
+    ]
+
+
+def forteaza_verificare(id_user: str) -> ForteazaVerificareResponse:
+    rand = depozit.forteaza_verificat(id_user)
+    if rand is None:
+        raise ContNegasit()
+
+    return ForteazaVerificareResponse(id=str(rand["id"]), verification_status=rand["verification_status"])

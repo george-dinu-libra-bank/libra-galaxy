@@ -1,6 +1,6 @@
 import logging
 
-from app.core.errors import IdentityImageDownloadError, IdentityResultWriteError
+from app.core.errors import IdentityImageDownloadError, IdentityResultWriteError, ValidationError
 from app.infrastructure.face_match import verifica_fete
 from app.infrastructure.ocr import extrage_cnp
 from app.repositories import identity_repository
@@ -25,8 +25,23 @@ def _descarca(bucket: str, cale: str) -> bytes:
 
 
 def verifica_identitate(cerere: VerificaIdentitateRequest) -> VerificaIdentitateResponse:
+    selfie_path = cerere.selfie_path
+    if selfie_path:
+        # Selfie nou (inregistrare completa, sau reincercare) — devine reperul
+        # pentru urmatoarea oara cand cineva trimite doar buletinul.
+        identity_repository.seteaza_selfie_referinta(cerere.user_id, selfie_path)
+    else:
+        # Buletinul vine separat, mai tarziu: comparam contra selfie-ului
+        # retinut la inregistrare.
+        selfie_path = identity_repository.gaseste_selfie_referinta(cerere.user_id)
+        if not selfie_path:
+            raise ValidationError(
+                "Nu exista niciun selfie de referinta pentru acest cont; "
+                "reincearca inregistrarea sau trimite din nou un selfie."
+            )
+
     buletin_bytes = _descarca(BUCKET_BULETINE, cerere.buletin_path)
-    selfie_bytes = _descarca(BUCKET_SELFIE, cerere.selfie_path)
+    selfie_bytes = _descarca(BUCKET_SELFIE, selfie_path)
 
     rezultat = verifica_fete(buletin_bytes, selfie_bytes)
 
@@ -39,7 +54,7 @@ def verifica_identitate(cerere: VerificaIdentitateRequest) -> VerificaIdentitate
         identity_repository.inregistreaza_verificare(
             id_user=cerere.user_id,
             buletin_path=cerere.buletin_path,
-            selfie_path=cerere.selfie_path,
+            selfie_path=selfie_path,
             extracted_cnp=cerere.extracted_cnp,
             similarity_score=rezultat.score,
             threshold_folosit=rezultat.threshold,
@@ -53,6 +68,15 @@ def verifica_identitate(cerere: VerificaIdentitateRequest) -> VerificaIdentitate
 
     if not rezultat.fata_detectata:
         logger.info("verifica_identitate: fata nedetectata, marcat pending_review (id_user=%s)", cerere.user_id)
+
+    # Buletinul nu mai are ce cauta in storage odata ce verificarea a trecut
+    # automat: nimeni nu mai are nevoie sa se uite la el. Ramane doar cat
+    # contul e in pending_review, cat timp un administrator il poate cere
+    # (vezi admin_identity_service.decide, care il sterge la decizie).
+    # Selfie-ul ramane intotdeauna: e refolosit la fiecare login biometric
+    # (verifica_login_fata de mai jos).
+    if status == "verified":
+        identity_repository.sterge_imagine(BUCKET_BULETINE, cerere.buletin_path)
 
     return VerificaIdentitateResponse(
         verified=rezultat.verified,
