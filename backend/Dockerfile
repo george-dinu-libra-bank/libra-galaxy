@@ -2,7 +2,8 @@ FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
 
 # tesseract: OCR-ul care citeste CNP-ul de pe buletin (ron = limba romana).
 # libgl1 + libglib2.0-0: cerute de opencv, pe care il foloseste DeepFace.
@@ -15,12 +16,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Dependintele se instaleaza inaintea codului, ca sa ramana intr-un strat pe
+# care Docker il refoloseste. Codul se schimba de zeci de ori pe zi; lista de
+# dependinte, rar — iar in ea intra TensorFlow (prin DeepFace), sute de MB.
+# Cu ordinea inversa, fiecare modificare de o linie reinstala tot.
+#
+# Pachetul are nevoie de directorul app ca sa poata fi rezolvat, dar aici ne
+# intereseaza numai dependintele lui, asa ca punem un ciot si il stergem.
 COPY pyproject.toml ./
-COPY app ./app
-RUN pip install --upgrade pip && pip install .
+RUN mkdir -p app && touch app/__init__.py \
+    && pip install --upgrade pip \
+    && pip install . \
+    && rm -rf app
 
 # Greutatile ArcFace se descarca la build, nu la prima cerere: altfel primul
 # utilizator care se inregistreaza asteapta cateva zeci de secunde degeaba.
+# Sta si el inaintea codului, ca sa nu se redescarce la fiecare modificare.
 RUN python -c "from deepface import DeepFace; DeepFace.build_model('ArcFace')"
 
 RUN useradd --create-home --uid 10001 appuser
@@ -28,6 +39,11 @@ RUN useradd --create-home --uid 10001 appuser
 # fara drepturi, altfel DeepFace nu-l gaseste si il descarca din nou la runtime.
 RUN mv /root/.deepface /home/appuser/.deepface 2>/dev/null || true; \
     chown -R appuser:appuser /home/appuser
+
+# Codul, la final: o modificare aici reface doar acest strat.
+# PYTHONPATH=/app il face sa aiba prioritate fata de ciotul din site-packages.
+COPY app ./app
+
 USER appuser
 
 EXPOSE 8000
