@@ -60,6 +60,13 @@ class Settings(BaseSettings):
     # reasoning se scad din acelasi buget ca raspunsul vizibil (verificat live —
     # un "OK" a consumat intre 64 si 128 tokeni de reasoning).
     foundry_max_completion_tokens: int = Field(default=2000, alias="AZURE_FOUNDRY_MAX_COMPLETION_TOKENS")
+    # "low": agentii care folosesc acest provider (transaction_intelligence,
+    # document_intelligence, engagement) doar explica date deja calculate
+    # determinist (CLAUDE.md #25) — nu au nevoie de reasoning adanc. Verificat
+    # live: fara asta, modelul poate consuma peste jumatate din buget doar pe
+    # rationament invizibil, uneori tot bugetul, lasand raspunsul vizibil gol
+    # (vezi _EMPTY_ANSWER_FALLBACK_RO din orchestrator.py).
+    foundry_reasoning_effort: str = Field(default="low", alias="AZURE_FOUNDRY_REASONING_EFFORT")
     embedding_version: str = Field(default="v1", alias="LIBRA_EMBEDDING_VERSION")
 
     chat_price_per_million_input: float = Field(default=0.25, alias="LIBRA_AI_CHAT_PRICE_PER_MILLION_INPUT")

@@ -9,7 +9,11 @@ raspunde 404 pe acest tip de resursa). Se foloseste clientul OpenAI simplu, cu
 `gpt-5-mini` e un model de reasoning: nu accepta `temperature` diferit de
 valoarea implicita (400 `unsupported_value`), si tokenii de reasoning se scad
 din acelasi buget ca raspunsul vizibil — de aceea `max_completion_tokens`
-trebuie sa fie generos, nu doar cat raspunsul asteptat.
+trebuie sa fie generos, nu doar cat raspunsul asteptat. `reasoning_effort`
+("low", verificat live ca e acceptat de acest deployment) tine consumul de
+tokeni invizibili in frau, ca sa nu manance tot bugetul si sa lase raspunsul
+vizibil gol — agentii care folosesc acest provider doar explica date deja
+calculate determinist, nu au nevoie de reasoning adanc (CLAUDE.md #25).
 
 Daca Foundry nu e configurat sau esueaza, ridica AI_PROVIDER_UNAVAILABLE /
 AI_PROVIDER_ERROR — niciodata nu trece silentios pe alt model
@@ -45,6 +49,7 @@ class MicrosoftFoundryChatProvider:
 
         self.deployment = settings.foundry_chat_deployment
         self._max_completion_tokens = settings.foundry_max_completion_tokens
+        self._reasoning_effort = settings.foundry_reasoning_effort
         self._client = AsyncOpenAI(base_url=settings.foundry_endpoint, api_key=settings.foundry_api_key)
 
     async def complete(self, messages: list[ChatMessage]) -> ChatCompletion:
@@ -55,6 +60,7 @@ class MicrosoftFoundryChatProvider:
                     {"role": message.role, "content": _to_openai_content(message.content)} for message in messages
                 ],
                 max_completion_tokens=self._max_completion_tokens,
+                reasoning_effort=self._reasoning_effort,
             )
         except APIConnectionError as exc:
             raise AiProviderUnavailableError("Microsoft Foundry este inaccesibil.") from exc
