@@ -192,7 +192,7 @@ async def cere_administrator(
     inclusiv dupa ce i-a fost luat cuiva dreptul.
 
     Chiar daca cineva ar ocoli verificarea de aici, RLS ramane bariera reala:
-    politicile de la 0004 cer public.este_administrator() in baza de date.
+    politicile de la 0008 cer public.este_administrator() in baza de date.
     """
 
     def interogare() -> str | None:

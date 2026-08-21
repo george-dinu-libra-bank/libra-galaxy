@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition, type ReactNode } from "react";
-import { Bell, ChevronRight, LogOut, Moon, ShieldCheck, Users } from "lucide-react";
+import { Bell, ChevronRight, LogOut, Moon, ShieldCheck, UserCog, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EditeazaTelefonDrawer } from "@/components/setari/editeaza-telefon-drawer";
 import { deconecteaza } from "@/lib/actions/auth";
@@ -71,7 +71,15 @@ function Rand({
   );
 }
 
-export function SetariClient({ profil, tema }: { profil: Profil; tema: Tema }) {
+export function SetariClient({
+  profil,
+  tema,
+  esteAdmin = false,
+}: {
+  profil: Profil;
+  tema: Tema;
+  esteAdmin?: boolean;
+}) {
   const [telefon, setTelefon] = useState(profil.telefon);
   const [notificari, setNotificari] = useState(true);
   const [temaIntunecata, setTemaIntunecata] = useState(tema === "dark");
@@ -139,6 +147,27 @@ export function SetariClient({ profil, tema }: { profil: Profil; tema: Tema }) {
           </span>
         </div>
       </div>
+
+      {esteAdmin ? (
+        <>
+          <h2 className="mb-2 mt-6 text-[13px] font-medium text-ink-faint">Administrare</h2>
+          <Link
+            href="/admin"
+            className="flex items-center gap-3 rounded-card border border-primary-100 bg-primary-50 px-4 py-3.5 transition-colors hover:bg-primary-100"
+          >
+            <UserCog size={20} strokeWidth={1.75} aria-hidden className="text-primary-600" />
+            <span className="flex-1">
+              <span className="block text-[15px] font-medium text-primary-700">
+                Panoul de administrare
+              </span>
+              <span className="block text-[12.5px] text-primary-600">
+                Verificări de identitate și conturi semnalate
+              </span>
+            </span>
+            <ChevronRight size={18} strokeWidth={1.75} aria-hidden className="text-primary-600" />
+          </Link>
+        </>
+      ) : null}
 
       <Button
         varianta="ghost"
