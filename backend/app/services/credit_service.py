@@ -58,7 +58,7 @@ STATUSURI_FINALE = ("respinsa", "acceptata", "anulata", "expirata")
 # cald, care e singurul motiv realist de a te intoarce la document.
 ZILE_RETENTIE_DOCUMENTE = 30
 
-# Ce se accepta la incarcare. Aceeasi lista e pusa si pe bucket in 0013: aici
+# Ce se accepta la incarcare. Aceeasi lista e pusa si pe bucket in 0015: aici
 # opreste devreme, acolo e ultima bariera pentru cine ar ocoli aplicatia.
 TIPURI_DOCUMENT = {
     "application/pdf": "pdf",

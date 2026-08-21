@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Banknote, Calculator } from "lucide-react";
-import { obtineCredite, obtineProdusCredit } from "@/lib/data/credite";
+import { CereriInCurs } from "@/components/credite/cereri-in-curs";
+import { obtineConturiUtilizator } from "@/lib/data/conturi";
+import { obtineCereri, obtineCredite, obtineProdusCredit } from "@/lib/data/credite";
 import { cn, formateazaSuma } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -18,7 +20,22 @@ const ETICHETE: Record<string, { text: string; clasa: string }> = {
 export default async function CreditePage() {
   // Citirea creditelor incaseaza intai ratele scadente (backendul le proceseaza
   // lenes), deci soldurile de mai jos sunt la zi in momentul afisarii.
-  const [credite, produs] = await Promise.all([obtineCredite(), obtineProdusCredit()]);
+  //
+  // Cererile se citesc si ele: o oferta emisa dupa ce clientul a inchis
+  // wizard-ul — cazul obisnuit cand dosarul trece prin analiza manuala — n-avea
+  // pana acum unde sa apara, deci nu putea fi semnata niciodata.
+  const [credite, produs, cereri, conturi] = await Promise.all([
+    obtineCredite(),
+    obtineProdusCredit(),
+    obtineCereri(),
+    obtineConturiUtilizator(),
+  ]);
+
+  // Ecranul de intrare („n-ai niciun credit, simuleaza unul") n-are ce cauta
+  // sub o oferta pe care omul tocmai e invitat sa o semneze.
+  const inCurs = cereri.some((cerere) =>
+    ["oferta", "analiza_manuala", "in_analiza"].includes(cerere.status),
+  );
 
   const active = credite.filter((credit) => credit.status === "activ" || credit.status === "restant");
   const inchise = credite.filter((credit) => credit.status !== "activ" && credit.status !== "restant");
@@ -27,7 +44,9 @@ export default async function CreditePage() {
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
       <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Credite</h1>
 
-      {credite.length === 0 ? (
+      <CereriInCurs cereri={cereri} conturi={conturi} />
+
+      {credite.length === 0 && !inCurs ? (
         <section className="mt-6 rounded-card bg-surface p-6 text-center shadow-sm">
           <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-50 text-primary-600">
             <Banknote size={26} strokeWidth={1.5} aria-hidden />
@@ -48,7 +67,9 @@ export default async function CreditePage() {
             Simulează un credit
           </Link>
         </section>
-      ) : (
+      ) : null}
+
+      {credite.length > 0 ? (
         <>
           {active.length > 0 ? (
             <ul className="mt-6 space-y-3">
@@ -81,7 +102,17 @@ export default async function CreditePage() {
             Simulează un credit nou
           </Link>
         </>
-      )}
+      ) : null}
+
+      {credite.length === 0 && inCurs ? (
+        <Link
+          href="/credite/simulare"
+          className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-field border border-line bg-surface text-[15px] font-semibold text-ink shadow-sm transition-[transform,box-shadow] duration-[180ms] ease-soft hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+        >
+          <Calculator size={18} strokeWidth={1.75} aria-hidden />
+          Simulează un credit
+        </Link>
+      ) : null}
     </div>
   );
 }

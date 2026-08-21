@@ -1,7 +1,7 @@
 -- =============================================================================
 -- Libra — `finalizat_la` se completeaza singur
 --
--- 0013 a adaugat coloana, dar cine o scrie? Statusul unei cereri se schimba din
+-- 0015 a adaugat coloana, dar cine o scrie? Statusul unei cereri se schimba din
 -- trei locuri diferite: `_finalizeaza` si `decide_manual` din Python, si RPC-ul
 -- `credit_acorda` din 0010, care trece cererea in 'acceptata' direct din SQL.
 --

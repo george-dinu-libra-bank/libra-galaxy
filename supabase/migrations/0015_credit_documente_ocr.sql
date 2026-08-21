@@ -10,6 +10,15 @@
 -- nu schimba date existente, si se poate rula de doua ori fara alt efect.
 -- =============================================================================
 
+-- Numerotare: aplicata initial ca 0013, renumerotata la 0015 dupa ce s-a
+-- descoperit ca un coleg are deja un 0013_schimb_valutar.sql aplicat in baza
+-- reala (public.schimba_valuta_cont exista, conturi_bancare.valuta exista), doar
+-- ca fisierul lui nu e inca pe git. 0013 si 0014 raman libere pentru el.
+--
+-- Exact coliziunea despre care avertizeaza REGULI.md #3: doi oameni care pornesc
+-- de la acelasi ultim numar cunoscut. Istoricul din supabase_migrations pastreaza
+-- numele vechi — e o eticheta, nu o cheie, si nu se rescrie.
+
 -- -----------------------------------------------------------------------------
 -- 1. Ce stim despre document, dincolo de ce a citit masina
 --

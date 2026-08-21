@@ -144,7 +144,7 @@ class DepozitFals:
 
     @staticmethod
     def _marcheaza_finalul(cerere: dict) -> None:
-        """Ce face trigger-ul `credit_cereri_before_write` din 0014.
+        """Ce face trigger-ul `credit_cereri_before_write` din 0016.
 
         E imitat aici fiindca retentia documentelor atarna de el: fara
         `finalizat_la`, un dosar inchis n-ar intra niciodata in curatare, iar
