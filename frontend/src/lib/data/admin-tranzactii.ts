@@ -1,5 +1,11 @@
 import { backendFetch } from "@/lib/backend";
-import type { ContSemnalat, Raport } from "@/lib/tipuri-admin";
+import type {
+  ContSemnalat,
+  StareCarduri,
+  StareCont,
+  Raport,
+  StareDetectie,
+} from "@/lib/tipuri-admin";
 
 export async function obtineConturiSemnalate(
   token: string,
@@ -22,4 +28,22 @@ export async function obtineRaport(
       `?zile=${zile}&sinteza=${cuSinteza}`,
     token,
   );
+}
+
+export async function obtineStareDetectie(token: string): Promise<StareDetectie> {
+  return backendFetch<StareDetectie>("api/v1/admin/stare-detectie", token);
+}
+
+export async function obtineStareCont(
+  token: string,
+  idUtilizator: string,
+): Promise<StareCont> {
+  return backendFetch<StareCont>(
+    `api/v1/admin/cont/${encodeURIComponent(idUtilizator)}/istoric`,
+    token,
+  );
+}
+
+export async function obtineStareCarduriToti(token: string): Promise<StareCarduri[]> {
+  return backendFetch<StareCarduri[]>("api/v1/admin/stare-carduri", token);
 }

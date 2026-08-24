@@ -66,6 +66,9 @@ export type ContSemnalat = {
   email: string;
   numar_semnalari: number;
   scor_maxim: number;
+  /** Cat de urgent merita contul o privire: cea mai grava constatare, plus
+   *  cate sunt si cati bani inseamna. Dupa asta se ordoneaza lista. */
+  gravitate: number;
   suma_totala: number;
   tipuri: string[];
 };
@@ -115,8 +118,11 @@ export function etichetaTip(tip: string): string {
  * sa spuna acelasi lucru despre acelasi scor.
  */
 export function tonScor(scor: number): "grav" | "atentie" | "usor" {
-  if (scor >= 10) return "grav";
-  if (scor >= 5) return "atentie";
+  // Severitate 1-100, nu scorul brut de altadata. Pragurile sunt aceleasi cu
+  // cele din raportul PDF (rapoarte/pdf_raport.py: _culoare_scor), ca aceeasi
+  // constatare sa nu apara portocalie pe ecran si rosie in document.
+  if (scor >= 70) return "grav";
+  if (scor >= 45) return "atentie";
   return "usor";
 }
 
@@ -256,3 +262,57 @@ export function lei(valoare: string | number | null | undefined): string {
     maximumFractionDigits: 2,
   });
 }
+
+/**
+ * Starea stratului de model din detectia de anomalii.
+ *
+ * Lipsa modelului e tacuta prin proiectare — detectia continua pe reguli
+ * statistice — asa ca panoul trebuie sa o spuna explicit. Altfel un
+ * administrator ia decizii pe o lista incompleta fara sa aiba de unde sti.
+ */
+export type StareDetectie = {
+  activ: boolean;
+  antrenat_la: string | null;
+  marime_kb: number | null;
+  explicatie: string;
+};
+
+// ---- Analiza unui cont ----------------------------------------------------
+
+export type Decizie = "acceptat" | "frauda" | "deblocat";
+
+export type RezultatAnaliza = {
+  decizie: Decizie;
+  observatie: string | null;
+  carduri_atinse: number;
+  notificare_trimisa: boolean;
+  creat_la: string;
+};
+
+export type IstoricAnaliza = {
+  id: string;
+  decizie: Decizie;
+  observatie: string | null;
+  gravitate: number | null;
+  numar_semnalari: number | null;
+  carduri_blocate: number;
+  creat_la: string;
+};
+
+export const ETICHETE_DECIZIE: Record<Decizie, string> = {
+  acceptat: "Verificat, fără probleme",
+  frauda: "Confirmat ca fraudă",
+  deblocat: "Deblocat",
+};
+
+export type StareCont = {
+  carduri_total: number;
+  carduri_blocate: number;
+  analize: IstoricAnaliza[];
+};
+
+export type StareCarduri = {
+  id_utilizator: string;
+  total: number;
+  blocate: number;
+};

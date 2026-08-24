@@ -12,7 +12,7 @@ COLOANE = [
     "valuta",
     "tip",
     "tip_afisat",
-    "scor",
+    "severitate",
     "explicatie",
     "id_tranzactie",
 ]
@@ -33,7 +33,7 @@ def randeaza(raport: Raport) -> bytes:
                 "valuta": c.valuta,
                 "tip": c.tip,
                 "tip_afisat": ETICHETE_TIP.get(c.tip, c.tip),
-                "scor": f"{c.scor:.2f}",
+                "severitate": str(round(c.scor)),
                 "explicatie": c.explicatie,
                 "id_tranzactie": c.id_tranzactie,
             }

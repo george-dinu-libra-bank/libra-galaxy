@@ -94,8 +94,8 @@ export function RaportCont({
         <Cifra eticheta="Semnalări" valoare={String(raport.numar_semnalari)} />
         <Cifra eticheta="Sumă semnalată" valoare={formateazaSuma(raport.suma_semnalata)} />
         <Cifra
-          eticheta="Cel mai mare scor"
-          valoare={raport.scor_maxim.toFixed(2)}
+          eticheta="Severitate maximă"
+          valoare={String(Math.round(raport.scor_maxim))}
           ton={culoareScor(raport.scor_maxim)}
         />
         <Cifra eticheta="Tranzacții analizate" valoare={String(raport.total_tranzactii)} />
@@ -328,7 +328,7 @@ function RandConstatare({
             culoareScor(constatare.scor),
           )}
         >
-          {constatare.scor.toFixed(1)}
+          {Math.round(constatare.scor)}
         </span>
 
         <ChevronDown

@@ -203,6 +203,17 @@ def get_user_supabase(
     return create_user_client(settings, user.access_token)
 
 
+def get_admin_supabase() -> Client:
+    """Clientul privilegiat, ca dependinta — ca sa poata fi inlocuit in teste.
+
+    Trece peste RLS, deci orice ruta care il foloseste isi verifica singura
+    drepturile: baza de date nu o mai face in locul ei. Folosit de rutele care
+    scriu in tabele fara politica de insert (analize_cont, notificari), tocmai
+    ca scrierea sa nu poata veni din alta parte.
+    """
+    return get_service_client()
+
+
 async def cere_administrator(
     user: UserContext = Depends(get_current_user),
     client: Client = Depends(get_user_supabase),

@@ -1,7 +1,7 @@
 import { cereAdmin } from "@/lib/admin";
 import { BackendError } from "@/lib/backend";
-import { obtineConturiSemnalate } from "@/lib/data/admin-tranzactii";
-import type { ContSemnalat } from "@/lib/tipuri-admin";
+import { obtineConturiSemnalate, obtineStareDetectie } from "@/lib/data/admin-tranzactii";
+import type { ContSemnalat, StareDetectie } from "@/lib/tipuri-admin";
 import { Banda } from "@/components/ui/banda";
 import { ListaConturiSemnalate } from "@/components/admin/lista-conturi-semnalate";
 
@@ -24,9 +24,15 @@ export default async function PaginaTranzactii({
 
   let conturi: ContSemnalat[] = [];
   let eroare: string | null = null;
+  // Starea detectiei se cere separat si nu blocheaza lista: daca ruta lipseste
+  // sau cade, pagina trebuie sa se vada oricum.
+  let stare: StareDetectie | null = null;
 
   try {
-    conturi = await obtineConturiSemnalate(admin.token, zile);
+    [conturi, stare] = await Promise.all([
+      obtineConturiSemnalate(admin.token, zile),
+      obtineStareDetectie(admin.token).catch(() => null),
+    ]);
   } catch (exc) {
     eroare =
       exc instanceof BackendError
@@ -47,6 +53,13 @@ export default async function PaginaTranzactii({
       </div>
 
       {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}
+
+      {stare && !stare.activ ? (
+        <Banda ton="info">
+          <strong className="font-semibold">Detecția rulează parțial.</strong>{" "}
+          {stare.explicatie} Lista de mai jos poate fi incompletă.
+        </Banda>
+      ) : null}
 
       {!eroare ? (
         <ListaConturiSemnalate conturi={conturi} zile={zile} zilePermise={ZILE_PERMISE} />
