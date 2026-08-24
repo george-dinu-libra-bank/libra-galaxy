@@ -82,6 +82,56 @@ export async function extrageCnp(formData: FormData): Promise<RezultatExtragereC
   }
 }
 
+export type ProblemaPoza = { cod: string; mesaj: string; blocanta: boolean };
+export type CalitatePoza = { acceptabila: boolean; probleme: ProblemaPoza[] };
+
+/** Cand nu putem verifica, poza trece — vezi comentariul din verificaCalitatePoza. */
+const CALITATE_NEVERIFICATA: CalitatePoza = { acceptabila: true, probleme: [] };
+
+/**
+ * Intreaba backend-ul ce e in neregula cu poza inainte sa fie folosita: prea
+ * intunecata, prea luminoasa, fara nicio fata, neclara. Mesajele vin gata
+ * scrise in romana din backend/app/infrastructure/calitate_poza.py — aici nu
+ * se traduce nimic, ca sa nu ajunga aceleasi texte in doua locuri.
+ *
+ * Ca si extrageCnp, ruta nu cere autentificare: se apeleaza in timpul
+ * inregistrarii, inainte sa existe un cont.
+ *
+ * Esueaza "deschis": la orice problema de retea sau backend picat intoarce
+ * "acceptabila", nu o eroare. E un ajutor de calitate, nu o poarta de
+ * securitate — n-are voie sa blocheze crearea unui cont cand backendul
+ * sughite. Verificarea reala a identitatii se face oricum mai tarziu, in
+ * verificaIdentitateInregistrare.
+ */
+export async function verificaCalitatePoza(
+  poza: File,
+  tip: "selfie" | "buletin",
+): Promise<CalitatePoza> {
+  if (poza.size === 0 || poza.size > MAX_OCTETI_BULETIN) return CALITATE_NEVERIFICATA;
+
+  try {
+    const trimitere = new FormData();
+    trimitere.append("imagine", poza, poza.name || "poza.jpg");
+    trimitere.append("tip", tip);
+
+    const raspuns = await fetch(`${BACKEND_URL}/api/identity/check-photo`, {
+      method: "POST",
+      body: trimitere,
+    });
+
+    if (!raspuns.ok) {
+      const { cod, mesaj } = await citesteEroare(raspuns);
+      console.error("[identitate/verificaCalitatePoza]", { status: raspuns.status, tip, cod, mesaj });
+      return CALITATE_NEVERIFICATA;
+    }
+
+    return (await raspuns.json()) as CalitatePoza;
+  } catch (eroare) {
+    console.error("[identitate/verificaCalitatePoza] cod=fetch_esuat — backend-ul nu raspunde deloc?", eroare);
+    return CALITATE_NEVERIFICATA;
+  }
+}
+
 export type StatusVerificare = "verified" | "pending_review" | "eroare";
 
 /**
