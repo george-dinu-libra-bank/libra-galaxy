@@ -12,7 +12,7 @@ import Image from "next/image";
 export function FundalSpatial() {
   return (
     <div className="fundal-spatial" aria-hidden>
-      <Image src="/logo.png" alt="" width={400} height={400} className="fundal-spatial__sigla" />
+      <Image src="/logo.png" alt="" width={400} height={400} priority className="fundal-spatial__sigla" />
       <span className="fundal-spatial__racheta">🚀</span>
     </div>
   );

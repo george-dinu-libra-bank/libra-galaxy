@@ -36,17 +36,26 @@ FINANCIAL_ADVISOR = AgentSpec(
 
 TRANSACTION_INTELLIGENCE = AgentSpec(
     agent_id="transaction_intelligence",
-    purpose="Transforma tranzactiile brute in intelesuri structurate si explicabile.",
-    responsibilities=("explica tipare de cheltuieli calculate determinist",),
+    purpose=(
+        "Transforma tranzactiile brute in intelesuri structurate si explicabile, "
+        "si raspunde despre cardurile proprii (stil, expirare, status blocat — fara date sensibile)."
+    ),
+    responsibilities=(
+        "explica tipare de cheltuieli calculate determinist",
+        "categorizeaza tranzactiile (restaurant, cumparaturi, utilitati, transfer, masina, "
+        "locuinta, salariu etc.) folosind categoria deja atasata de tool, niciodata inventata",
+    ),
     prohibited=(
         "sa calculeze el insusi totaluri de cheltuieli",
         "sa inventeze formate de export (CSV/XLSX/JSON) sau optiuni de ales care nu exista",
         "sa mentioneze catre utilizator nume de campuri interne (id-uri, chei tehnice de tool-uri)",
+        "sa dezvaluie numarul complet de card, CVV sau PIN",
+        "sa inventeze o categorie de tranzactie care nu vine din categoria atasata de tool",
     ),
-    tool_names=frozenset({"get_accounts", "get_recent_transactions", "get_spending_summary"}),
+    tool_names=frozenset({"get_accounts", "get_recent_transactions", "get_spending_summary", "get_cards"}),
     risk_ceiling=RiskLevel.LOW,
-    prompt_version="transactions-v1",
-    intents=("spending_analysis",),
+    prompt_version="transactions-v3",
+    intents=("spending_analysis", "card_question"),
 )
 
 DOCUMENT_INTELLIGENCE = AgentSpec(

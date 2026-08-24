@@ -42,16 +42,19 @@ from app.providers.voice import MicrosoftVoiceProvider
 from app.rag.retrieval import RetrievalService
 from app.repositories.attachment_repository import AttachmentRepository
 from app.repositories.banking_read_repository import BankingReadRepository
+from app.repositories.card_repository import CardRepository
 from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.credit_repository import CreditRepository
 from app.repositories.embedding_cache_repository import EmbeddingCacheRepository
 from app.repositories.knowledge_repository import KnowledgeRepository
 from app.repositories.memory_repository import MemoryRepository
 from app.repositories.message_repository import MessageRepository
+from app.repositories.profile_repository import ProfileRepository
 from app.repositories.summary_repository import SummaryRepository
 from app.repositories.telemetry_repository import TelemetryRepository
 from app.services.transaction_export_service import TransactionExportService
 from app.tools.banking_tools import build_banking_tools
+from app.tools.card_tools import build_card_tools
 from app.tools.knowledge_tools import build_knowledge_tools
 from app.tools.registry import ToolRegistry
 from app.tools.scenario_tools import SCENARIO_TOOL
@@ -68,6 +71,8 @@ def get_orchestrator() -> Orchestrator:
     memories = MemoryRepository(client)
     telemetry = TelemetryRepository(client)
     banking = BankingReadRepository(client)
+    cards = CardRepository(client)
+    profiles = ProfileRepository(client)
     knowledge = KnowledgeRepository(client)
     embedding_cache = EmbeddingCacheRepository(client)
     attachments = AttachmentRepository(client)
@@ -79,7 +84,9 @@ def get_orchestrator() -> Orchestrator:
     embedding_provider = MicrosoftFoundryEmbeddingProvider(settings)
     retrieval_service = RetrievalService(embedding_provider, knowledge, embedding_cache, settings.embedding_key)
 
-    tools = ToolRegistry([*build_banking_tools(banking), SCENARIO_TOOL, *build_knowledge_tools(retrieval_service)])
+    tools = ToolRegistry([
+        *build_banking_tools(banking), *build_card_tools(cards), SCENARIO_TOOL, *build_knowledge_tools(retrieval_service),
+    ])
 
     agents = {
         "financial_advisor": FinancialAdvisorAgent(),
@@ -95,7 +102,7 @@ def get_orchestrator() -> Orchestrator:
         tool_registry=tools, agents=agents, router=AgentRouter(),
         chat_provider=chat_provider, environment=settings.environment,
         chat_price_in=settings.chat_price_per_million_input, chat_price_out=settings.chat_price_per_million_output,
-        export_service=export_service,
+        export_service=export_service, banking=banking, profiles=profiles,
     )
 
 

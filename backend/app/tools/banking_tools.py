@@ -9,20 +9,27 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from app.core.redaction import mask_iban
 from app.core.security import PERMISSION_ACCOUNTS_READ, Principal
 from app.repositories.banking_read_repository import BankingReadRepository
 from app.tools.base import RiskLevel, SideEffect, ToolDefinition
+from app.tools.categorii_tranzactii import categorizeaza
 
 _ADVISOR_TOOLS_AGENTS = frozenset({"financial_advisor", "transaction_intelligence", "engagement"})
 
 
 def build_banking_tools(repository: BankingReadRepository) -> list[ToolDefinition]:
     async def get_accounts(principal: Principal, _args: dict) -> dict:
+        # IBAN complet, nemascat: e contul propriu al utilizatorului autentificat,
+        # aratat deja complet in restul aplicatiei (ex. detalii-cont-drawer.tsx) —
+        # nu e un secret ca un CVV/PIN, e un numar de rutare facut sa fie dat mai
+        # departe. Deciza explicita, GUARDRAILS.md #12.
         accounts = repository.list_accounts(principal.user_id)
         return {
             "accounts": [
-                {"id": account.id, "name": account.name, "iban": mask_iban(account.iban), "balance": account.balance}
+                {
+                    "id": account.id, "name": account.name, "iban": account.iban,
+                    "balance": account.balance, "currency": account.currency,
+                }
                 for account in accounts
             ]
         }
@@ -40,6 +47,8 @@ def build_banking_tools(repository: BankingReadRepository) -> list[ToolDefinitio
                     "created_at": tx.created_at,
                     "direction": "in" if tx.incoming else "out",
                     "counterparty_name": tx.counterparty_name,
+                    # Determinist (tools/categorii_tranzactii.py), niciodata ghicit de model.
+                    "category": categorizeaza(tx.description, tx.counterparty_name),
                 }
                 for tx in transactions
             ]
@@ -51,18 +60,28 @@ def build_banking_tools(repository: BankingReadRepository) -> list[ToolDefinitio
         transactions = repository.list_recent_transactions(principal.user_id, limit=500)
 
         totals_by_currency: dict[str, dict[str, float]] = defaultdict(lambda: {"in": 0.0, "out": 0.0})
+        totals_by_category: dict[str, float] = defaultdict(float)
         for tx in transactions:
             created_at = datetime.fromisoformat(tx.created_at.replace("Z", "+00:00"))
             if created_at < since:
                 continue
             bucket = totals_by_currency[tx.currency]
             bucket["in" if tx.incoming else "out"] += tx.amount
+            if not tx.incoming:
+                categorie = categorizeaza(tx.description, tx.counterparty_name)
+                totals_by_category[categorie] += tx.amount
 
         return {
             "period_days": days,
             "by_currency": [
                 {"currency": currency, "total_in": round(values["in"], 2), "total_out": round(values["out"], 2)}
                 for currency, values in totals_by_currency.items()
+            ],
+            # Doar cheltuieli (iesiri) — amestecarea valutelor e o aproximare
+            # acceptabila aici, e un rezumat orientativ, nu o suma exacta.
+            "spending_by_category": [
+                {"category": categorie, "total_out": round(suma, 2)}
+                for categorie, suma in sorted(totals_by_category.items(), key=lambda item: -item[1])
             ],
         }
 
@@ -78,7 +97,11 @@ def build_banking_tools(repository: BankingReadRepository) -> list[ToolDefinitio
         ),
         ToolDefinition(
             name="get_recent_transactions",
-            description="Returneaza ultimele tranzactii ale utilizatorului curent.",
+            description=(
+                "Returneaza ultimele tranzactii ale utilizatorului curent, fiecare cu o categorie "
+                "determinista (restaurant, cumparaturi, utilitati, transfer, masina, locuinta, "
+                "salariu, sanatate, abonamente, altele)."
+            ),
             callback=get_recent_transactions,
             allowed_agents=frozenset({"transaction_intelligence", "financial_advisor"}),
             required_permissions=frozenset({PERMISSION_ACCOUNTS_READ}),
@@ -87,7 +110,10 @@ def build_banking_tools(repository: BankingReadRepository) -> list[ToolDefinitio
         ),
         ToolDefinition(
             name="get_spending_summary",
-            description="Aduna intrarile si iesirile din ultimele N zile, pe valuta.",
+            description=(
+                "Aduna intrarile si iesirile din ultimele N zile, pe valuta, si cheltuielile "
+                "pe categorie determinista (restaurant, cumparaturi, utilitati etc.)."
+            ),
             callback=get_spending_summary,
             allowed_agents=frozenset({"transaction_intelligence", "financial_advisor"}),
             required_permissions=frozenset({PERMISSION_ACCOUNTS_READ}),

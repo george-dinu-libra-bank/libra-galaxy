@@ -15,6 +15,9 @@ def construieste(service: AnalizaService, user_id: UUID) -> list[Unealta]:
     async def obtine_sold() -> dict:
         return (await service.sold_sumar(user_id)).model_dump()
 
+    async def obtine_conturi() -> list[dict]:
+        return await service.obtine_conturi(user_id)
+
     async def obtine_cashflow_lunar(luni: int = 3, valuta: str = "RON") -> dict:
         return (await service.cashflow_lunar(user_id, luni, valuta)).model_dump()
 
@@ -45,6 +48,15 @@ def construieste(service: AnalizaService, user_id: UUID) -> list[Unealta]:
             executa=obtine_sold,
         ),
         Unealta(
+            nume="obtine_conturi",
+            descriere=(
+                "Lista conturilor bancare ale utilizatorului: nume, IBAN complet si sold, pentru "
+                "fiecare valuta in care are cont. Pentru intrebari de tipul 'care e IBAN-ul meu' "
+                "sau 'ce conturi am' — daca are mai multe, le enumeri pe toate, cu IBAN complet."
+            ),
+            executa=obtine_conturi,
+        ),
+        Unealta(
             nume="obtine_cashflow_lunar",
             descriere=(
                 "Incasarile, cheltuielile si netul pe fiecare luna calendaristica. "
@@ -67,8 +79,9 @@ def construieste(service: AnalizaService, user_id: UUID) -> list[Unealta]:
         Unealta(
             nume="obtine_tranzactii_recente",
             descriere=(
-                "Tranzactii individuale, cu data, suma, descriere si directie. Doar cand "
-                "raspunsul chiar cere plati una cate una."
+                "Tranzactii individuale, cu data, suma, descriere, directie si o categorie "
+                "determinista (restaurant, cumparaturi, utilitati, transfer, masina, locuinta, "
+                "salariu etc.). Doar cand raspunsul chiar cere plati una cate una."
             ),
             executa=obtine_tranzactii_recente,
             proprietati={

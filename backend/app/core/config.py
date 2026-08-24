@@ -123,6 +123,10 @@ class Settings(BaseSettings):
         default="text-embedding-3-small", alias="AZURE_AI_EMBEDDING_DEPLOYMENT"
     )
     agent_max_tokens: int = Field(default=4000, alias="AGENT_MAX_TOKENS")
+    # Acelasi motiv ca foundry_reasoning_effort mai sus, dar pentru bucla proprie
+    # a financial_advisor (agents/financiar.py, prin azure-ai-inference — un SDK
+    # diferit, deci un camp de setari separat, verificat live ca e acceptat).
+    azure_ai_reasoning_effort: str = Field(default="low", alias="AZURE_AI_REASONING_EFFORT")
     # Un pas = un raspuns al modelului. Plasa de siguranta, nu tinta.
     agent_max_pasi: int = Field(default=10, alias="AGENT_MAX_PASI")
     # Cate tranzactii se citesc cel mult pentru o analiza (AnalizaService).

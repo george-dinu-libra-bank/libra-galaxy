@@ -12,6 +12,11 @@ class TransactionIntelligenceAgent:
     spec = TRANSACTION_INTELLIGENCE
 
     def select_tools(self, user_text: str, intent: str) -> list[SelectedTool]:
+        if intent == "card_question":
+            return [
+                SelectedTool("get_cards", {}, "detalii despre cardurile proprii"),
+                SelectedTool("get_accounts", {}, "cardurile nu au sold propriu, banii sunt in conturi"),
+            ]
         return [
             SelectedTool("get_recent_transactions", {"limit": 30}, "tranzactii recente pentru analiza"),
             SelectedTool("get_spending_summary", {"days": 30}, "rezumat de cheltuieli pentru context"),

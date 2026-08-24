@@ -13,6 +13,9 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
+from uuid import UUID
+
+from anyio import to_thread
 
 from app.agents.base import Agent, AttachmentContext
 from app.attachments.extraction import to_data_uri
@@ -28,9 +31,11 @@ from app.orchestration.risk import classify_risk
 from app.orchestration.routing import AgentRouter
 from app.providers.base import ChatProvider
 from app.repositories.attachment_repository import AttachmentRepository
+from app.repositories.banking_read_repository import BankingReadRepository
 from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.memory_repository import MemoryRepository
 from app.repositories.message_repository import MessageRepository
+from app.repositories.profile_repository import ProfileRepository
 from app.repositories.summary_repository import SummaryRepository
 from app.repositories.telemetry_repository import TelemetryRepository
 from app.services.transaction_export_service import TransactionExportService
@@ -51,12 +56,55 @@ _EMPTY_ANSWER_FALLBACK_RO = (
 _EXPORT_REPLY_RO = "Am generat extrasul cu tranzacțiile tale. Îl poți descărca mai jos."
 _EXPORT_REPLY_EN = "I generated your transactions statement. You can download it below."
 
+_TRANSFER_REPLY_RO = "Sigur — poți iniția un transfer chiar de aici."
+_TRANSFER_REPLY_EN = "Sure — you can start a transfer right from here."
+_TRANSFER_REPLY_NO_ACCOUNT_RO = "Nu am găsit niciun cont pe numele tău. Poți iniția un transfer din meniul Transferuri, după ce ai un cont."
+_TRANSFER_REPLY_NO_ACCOUNT_EN = "I couldn't find any account of yours. You can start a transfer from the Transfers menu once you have an account."
+
+_GROUP_REPLY_RO = "Sigur — poți crea un grup chiar de aici."
+_GROUP_REPLY_EN = "Sure — you can create a group right from here."
+
+_GREETING_REPLY_RO = (
+    "Salut, {nume}! Cu ce te pot ajuta azi? Pot să răspund la întrebări despre "
+    "conturi, carduri, tranzacții, credite, transferuri sau produsele Galaxy Bank."
+)
+_GREETING_REPLY_EN = (
+    "Hi, {nume}! How can I help you today? I can answer questions about your "
+    "accounts, cards, transactions, credit, transfers, or Galaxy Bank's products."
+)
+_GREETING_REPLY_NO_NAME_RO = (
+    "Salut! Cu ce te pot ajuta azi? Pot să răspund la întrebări despre conturi, "
+    "carduri, tranzacții, credite, transferuri sau produsele Galaxy Bank."
+)
+_GREETING_REPLY_NO_NAME_EN = (
+    "Hi! How can I help you today? I can answer questions about your accounts, "
+    "cards, transactions, credit, transfers, or Galaxy Bank's products."
+)
+
+_TRANSFER_URL = "/transfer"
+_CREDIT_URL = "/credite/cerere"
+_GROUP_URL = "/grupuri"
+
 
 @dataclass(frozen=True)
 class GeneratedFileResult:
     url: str
     filename: str
     kind: str = "pdf"
+
+
+@dataclass(frozen=True)
+class QuickActionResult:
+    kind: str
+    account_name: str | None
+    # IBAN complet, nemascat — cardul apare doar in chat-ul propriu al
+    # titularului, in acelasi spirit ca detalii-cont-drawer.tsx din frontend
+    # (unde utilizatorul isi vede/copiaza propriul IBAN complet). Diferit de
+    # get_accounts (tool de LLM, mascat la sursa): asta e randat determinist,
+    # niciodata trecut prin model.
+    iban: str | None
+    currency: str | None
+    url: str
 
 
 @dataclass(frozen=True)
@@ -68,6 +116,7 @@ class OrchestratorResult:
     confidence: str | None
     agent_id: str
     generated_file: GeneratedFileResult | None = None
+    quick_action: QuickActionResult | None = None
 
 
 def _derive_title(user_text: str) -> str:
@@ -117,6 +166,8 @@ class Orchestrator:
         chat_price_in: float,
         chat_price_out: float,
         export_service: TransactionExportService,
+        banking: BankingReadRepository,
+        profiles: ProfileRepository,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
@@ -133,6 +184,8 @@ class Orchestrator:
         self._chat_price_in = chat_price_in
         self._chat_price_out = chat_price_out
         self._export_service = export_service
+        self._banking = banking
+        self._profiles = profiles
 
     async def handle_message(
         self,
@@ -163,6 +216,12 @@ class Orchestrator:
         intent = classify_intent(user_text)
         if intent == "export_request":
             return await self._handle_export_request(principal, conversation.id, channel, started)
+        if intent == "transfer_intent":
+            return await self._handle_transfer_request(principal, conversation.id, channel, started)
+        if intent == "group_intent":
+            return await self._handle_group_request(principal, conversation.id, channel, started)
+        if intent == "greeting":
+            return await self._handle_greeting_request(principal, conversation.id, channel, started)
 
         await self._remember(principal.user_id, user_text)
         recent = await self._messages.recent_window(conversation.id, RECENT_WINDOW)
@@ -223,9 +282,22 @@ class Orchestrator:
                 answer_tokens_cached=answer.tokens_cached if answer else 0,
             )
 
+        # Cererea de credit ramane un raspuns normal, prin agent (RAG-ul chiar are
+        # continut util despre eligibilitate, spre deosebire de transfer) — doar
+        # link-ul de inceput de cerere e determinist, atasat mereu, nu propus de
+        # model (CLAUDE.md #9: modelul nu decide "hai sa iti deschid formularul").
+        quick_action: QuickActionResult | None = None
+        quick_action_data: dict | None = None
+        if intent == "credit_intent":
+            quick_action = QuickActionResult(kind="credit", account_name=None, iban=None, currency=None, url=_CREDIT_URL)
+            quick_action_data = {
+                "kind": quick_action.kind, "account_name": quick_action.account_name,
+                "iban": quick_action.iban, "currency": quick_action.currency, "url": quick_action.url,
+            }
+
         assistant_message = await self._messages.append(
             conversation.id, principal.user_id, "assistant", redacted_text, answer.citations,
-            confidence=answer.confidence, channel=channel,
+            confidence=answer.confidence, channel=channel, quick_action=quick_action_data,
         )
         await self._conversations.set_title_if_default(conversation.id, _derive_title(user_text))
         await self._conversations.touch(conversation.id)
@@ -238,6 +310,7 @@ class Orchestrator:
         return OrchestratorResult(
             conversation_id=conversation.id, message_id=assistant_message.id, text=redacted_text,
             citations=answer.citations, confidence=answer.confidence, agent_id=agent_id,
+            quick_action=quick_action,
         )
 
     async def _handle_input_guardrail_hit(
@@ -298,6 +371,119 @@ class Orchestrator:
             conversation_id=conversation_id, message_id=assistant_message.id, text=reply_text,
             citations=[], confidence=None, agent_id="transaction_export",
             generated_file=GeneratedFileResult(url=export.url, filename=export.filename, kind="pdf"),
+        )
+
+    async def _handle_transfer_request(
+        self, principal: Principal, conversation_id: str, channel: str, started: float
+    ) -> OrchestratorResult:
+        """Scurtcircuit determinist, la fel ca _handle_export_request: modelul nu
+        decide si nu narreaza niciodata o actiune de transfer (CLAUDE.md #9) —
+        raspunsul e text fix + un link de navigare spre pagina reala de
+        transfer, niciodata o executie. quick_action se persista direct pe
+        mesaj (spre deosebire de generated_file, nu are nevoie de re-generare:
+        nu e sensibil si nu expira ca un URL semnat)."""
+        accounts = await to_thread.run_sync(lambda: self._banking.list_accounts(principal.user_id))
+
+        quick_action_data: dict | None = None
+        quick_action: QuickActionResult | None = None
+        if accounts:
+            account = accounts[0]
+            reply_text = redact(_TRANSFER_REPLY_RO if principal.locale == "ro" else _TRANSFER_REPLY_EN)
+            quick_action = QuickActionResult(
+                kind="transfer", account_name=account.name, iban=account.iban,
+                currency=account.currency, url=_TRANSFER_URL,
+            )
+            quick_action_data = {
+                "kind": quick_action.kind, "account_name": quick_action.account_name,
+                "iban": quick_action.iban, "currency": quick_action.currency, "url": quick_action.url,
+            }
+        else:
+            reply_text = redact(
+                _TRANSFER_REPLY_NO_ACCOUNT_RO if principal.locale == "ro" else _TRANSFER_REPLY_NO_ACCOUNT_EN
+            )
+
+        assistant_message = await self._messages.append(
+            conversation_id, principal.user_id, "assistant", reply_text, channel=channel,
+            quick_action=quick_action_data,
+        )
+
+        run_id = await self._telemetry.record_run(
+            user_id=principal.user_id, conversation_id=conversation_id, agent_id="transfer_quick_action",
+            intent="transfer_intent", risk_level="low", prompt_version="n/a",
+            deployment=self._chat_provider.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
+            tool_count=1, retrieved_chunks=0, context_chars=0, success=True, error_code=None,
+        )
+        await self._telemetry.record_tool_invocation(
+            run_id=run_id, tool_name="list_accounts", success=True,
+            duration_ms=int((time.perf_counter() - started) * 1000), reason="transfer_intent",
+        )
+
+        return OrchestratorResult(
+            conversation_id=conversation_id, message_id=assistant_message.id, text=reply_text,
+            citations=[], confidence=None, agent_id="transfer_quick_action", quick_action=quick_action,
+        )
+
+    async def _handle_group_request(
+        self, principal: Principal, conversation_id: str, channel: str, started: float
+    ) -> OrchestratorResult:
+        """Scurtcircuit determinist, acelasi tipar ca _handle_transfer_request —
+        o cerere de a crea un grup e pur actiune, fara continut informativ:
+        text fix + link de navigare spre /grupuri, niciodata o executie."""
+        reply_text = redact(_GROUP_REPLY_RO if principal.locale == "ro" else _GROUP_REPLY_EN)
+        quick_action = QuickActionResult(kind="grup", account_name=None, iban=None, currency=None, url=_GROUP_URL)
+        quick_action_data = {
+            "kind": quick_action.kind, "account_name": quick_action.account_name,
+            "iban": quick_action.iban, "currency": quick_action.currency, "url": quick_action.url,
+        }
+
+        assistant_message = await self._messages.append(
+            conversation_id, principal.user_id, "assistant", reply_text, channel=channel,
+            quick_action=quick_action_data,
+        )
+
+        run_id = await self._telemetry.record_run(
+            user_id=principal.user_id, conversation_id=conversation_id, agent_id="group_quick_action",
+            intent="group_intent", risk_level="low", prompt_version="n/a",
+            deployment=self._chat_provider.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
+            tool_count=0, retrieved_chunks=0, context_chars=0, success=True, error_code=None,
+        )
+
+        return OrchestratorResult(
+            conversation_id=conversation_id, message_id=assistant_message.id, text=reply_text,
+            citations=[], confidence=None, agent_id="group_quick_action", quick_action=quick_action,
+        )
+
+    async def _handle_greeting_request(
+        self, principal: Principal, conversation_id: str, channel: str, started: float
+    ) -> OrchestratorResult:
+        """Scurtcircuit determinist — un salut simplu nu trebuie sa cada pe
+        refuzul generic de RAG ("nu pot raspunde"), gresit pentru asa ceva.
+        Text fix, personalizat cu numele din profil daca exista, niciodata
+        generat de model (evita orice risc de raspuns ciudat la un salut)."""
+        profile = await self._profiles.get_owned_profile(UUID(principal.user_id))
+        nume = (profile or {}).get("nume")
+
+        if principal.locale == "ro":
+            reply_text = _GREETING_REPLY_RO.format(nume=nume) if nume else _GREETING_REPLY_NO_NAME_RO
+        else:
+            reply_text = _GREETING_REPLY_EN.format(nume=nume) if nume else _GREETING_REPLY_NO_NAME_EN
+
+        reply_text = redact(reply_text)
+
+        assistant_message = await self._messages.append(
+            conversation_id, principal.user_id, "assistant", reply_text, channel=channel,
+        )
+
+        await self._telemetry.record_run(
+            user_id=principal.user_id, conversation_id=conversation_id, agent_id="greeting",
+            intent="greeting", risk_level="low", prompt_version="n/a",
+            deployment=self._chat_provider.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
+            tool_count=1, retrieved_chunks=0, context_chars=0, success=True, error_code=None,
+        )
+
+        return OrchestratorResult(
+            conversation_id=conversation_id, message_id=assistant_message.id, text=reply_text,
+            citations=[], confidence=None, agent_id="greeting",
         )
 
     async def _resolve_attachments(

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Varianta de dezvoltare: acelasi mediu ca Dockerfile, plus reincarcare la salvare.
 FROM python:3.12-slim
 
@@ -19,7 +20,12 @@ WORKDIR /app
 # doua liste care pot ajunge sa difere sunt mai rele decat una singura.
 COPY pyproject.toml ./
 COPY app ./app
-RUN pip install --upgrade pip && pip install -e ".[dev]"
+# Cache-ul de descarcare al pip persista intre build-uri (BuildKit), separat de
+# stratul imaginii — chiar daca stratul asta trebuie refacut (orice modificare
+# in app/), pachetele mari (tensorflow, prin deepface) nu se mai redescarca de
+# pe internet, doar se reinstaleaza din cache local.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip && pip install -e ".[dev]"
 
 RUN python -c "from deepface import DeepFace; DeepFace.build_model('ArcFace')"
 

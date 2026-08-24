@@ -71,6 +71,27 @@ async def test_fara_conturi_soldul_e_zero_nu_o_eroare() -> None:
 
 
 @pytest.mark.anyio
+async def test_obtine_conturi_intoarce_iban_ul_complet() -> None:
+    # Decizie explicita (GUARDRAILS.md #12): IBAN-ul propriu nu e un secret.
+    service = AnalizaService(
+        TranzactiiFalse([]),
+        CarduriFalse([]),
+        ConturiFalse([{"nume": "Cont Curent", "iban": "RO49AAAA1B31007593840000", "sold": "1500.25"}]),
+    )
+
+    conturi = await service.obtine_conturi(EU)
+
+    assert conturi == [{"nume": "Cont Curent", "iban": "RO49AAAA1B31007593840000", "sold": 1500.25}]
+
+
+@pytest.mark.anyio
+async def test_obtine_conturi_fara_conturi_intoarce_lista_goala() -> None:
+    service = AnalizaService(TranzactiiFalse([]), CarduriFalse([]), ConturiFalse([]))
+
+    assert await service.obtine_conturi(EU) == []
+
+
+@pytest.mark.anyio
 async def test_cashflow_separa_intrarile_de_iesiri_si_valutele() -> None:
     service = AnalizaService(
         TranzactiiFalse(
