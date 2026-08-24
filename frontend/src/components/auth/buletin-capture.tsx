@@ -5,18 +5,28 @@ import { useRef, useState, useTransition } from "react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
-import { extrageCnp } from "@/lib/actions/identitate";
+import { extrageCnp, type ProblemaPoza, verificaCalitatePoza } from "@/lib/actions/identitate";
+import { useIndiciuLumina } from "@/lib/calitate-poza";
 import { useCameraCapture } from "@/lib/camera";
 import { pregatesteDocument } from "@/lib/imagine";
 import { validCnp } from "@/lib/validare";
 
 type Pas = "alegere" | "camera" | "confirmare";
 
+/** Vezi selfie-capture.tsx: blocarea e moale, ca sa nu ramana nimeni infundat. */
+const INCERCARI_PANA_LA_SCAPARE = 2;
+
 /**
  * Primul pas al inregistrarii: poza buletinului, din care CNP-ul se citeste
  * automat prin OCR (backend/app/infrastructure/ocr.py). Cititul poate gresi
  * o cifra, asa ca userul confirma/corecteaza valoarea inainte sa continue —
  * ramane totusi validat cu aceeasi cifra de control ca la introducerea manuala.
+ *
+ * In paralel cu OCR-ul, poza trece pe la /api/identity/check-photo, care spune
+ * de ce nu s-a putut citi ("e neclara", "se reflecta lumina in buletin") in
+ * loc de vagul "Nu am putut citi CNP-ul". Verificarea prinde si cazul in care
+ * OCR-ul nimereste totusi cifrele dintr-o poza proasta — care apoi pica la
+ * comparatia fetelor, mult mai tarziu si fara nicio explicatie.
  */
 export function BuletinCapture({
   onFinalizat,
@@ -32,13 +42,26 @@ export function BuletinCapture({
   const [cnp, setCnp] = useState("");
   const [eroareCnp, setEroareCnp] = useState<string | null>(null);
   const [eroare, setEroare] = useState<string | null>(null);
+  const [probleme, setProbleme] = useState<ProblemaPoza[]>([]);
+  const [incercariEsuate, setIncercariEsuate] = useState(0);
   const [seCiteste, startTransition] = useTransition();
 
   const inputRef = useRef<HTMLInputElement>(null);
+  // OCR-ul si verificarea de calitate sunt asincrone, iar "Reia poza" ramane
+  // apasabil cat tin. Fara contorul asta, raspunsurile pentru poza abandonata
+  // ar ateriza peste cea noua — inclusiv un CNP citit de pe alt buletin.
+  const generatieRef = useRef(0);
   const camera = useCameraCapture({ facingMode: "environment" });
+  const indiciuLumina = useIndiciuLumina(camera.videoRef, camera.pornita);
+
+  const blocat = probleme.some((problema) => problema.blocanta);
+  const deAfisat = blocat ? probleme.filter((problema) => problema.blocanta) : probleme;
+  const poateSari = blocat && incercariEsuate >= INCERCARI_PANA_LA_SCAPARE;
 
   async function proceseaza(brut: Blob) {
     setEroare(null);
+    setProbleme([]);
+    const generatie = ++generatieRef.current;
 
     let fisier: File;
     try {
@@ -57,10 +80,22 @@ export function BuletinCapture({
       const trimitere = new FormData();
       trimitere.append("buletin", fisier);
 
-      const rezultat = await extrageCnp(trimitere);
+      // In paralel, nu in serie: verificarea de calitate n-are voie sa adauge
+      // timp de asteptare peste OCR, care oricum e partea lenta.
+      const [rezultat, calitate] = await Promise.all([
+        extrageCnp(trimitere),
+        verificaCalitatePoza(fisier, "buletin"),
+      ]);
 
+      if (generatieRef.current !== generatie) return; // poza a fost reluata intre timp
+
+      setProbleme(calitate.probleme);
+      if (!calitate.acceptabila) setIncercariEsuate((numar) => numar + 1);
+
+      // Cand stim exact de ce e proasta poza, nu mai spunem si vagul "nu am
+      // putut citi CNP-ul" — e acelasi lucru, spus mai prost.
       if (rezultat.eroare) {
-        setEroare(rezultat.eroare);
+        if (calitate.acceptabila) setEroare(rezultat.eroare);
         return;
       }
       if (rezultat.cnp) setCnp(rezultat.cnp);
@@ -83,16 +118,21 @@ export function BuletinCapture({
   }
 
   function reia() {
+    generatieRef.current += 1;
     if (previzualizare) URL.revokeObjectURL(previzualizare);
     setPoza(null);
     setPrevizualizare(null);
     setCnp("");
     setEroareCnp(null);
     setEroare(null);
+    setProbleme([]);
+    // incercariEsuate ramane: e contorul care deblocheaza "Continua oricum".
     setPas("alegere");
   }
 
   function continua() {
+    if (blocat && !poateSari) return;
+
     const eroareValidare = validCnp(cnp);
     setEroareCnp(eroareValidare);
     if (eroareValidare || !poza) return;
@@ -112,6 +152,20 @@ export function BuletinCapture({
 
       {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}
 
+      {deAfisat.length > 0 ? (
+        <Banda ton={blocat ? "eroare" : "info"}>
+          {deAfisat.length === 1 ? (
+            deAfisat[0].mesaj
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {deAfisat.map((problema) => (
+                <li key={problema.cod}>{problema.mesaj}</li>
+              ))}
+            </ul>
+          )}
+        </Banda>
+      ) : null}
+
       {pas === "camera" ? (
         <>
           <div className="aspect-[8/5] w-full overflow-hidden rounded-card bg-ink shadow-md">
@@ -124,6 +178,8 @@ export function BuletinCapture({
           </div>
 
           {camera.eroare ? <Banda ton="eroare">{camera.eroare}</Banda> : null}
+          {/* Lumina e singurul lucru pe care il poate corecta uitandu-se la ecran. */}
+          {!camera.eroare && indiciuLumina ? <Banda ton="info">{indiciuLumina}</Banda> : null}
 
           <div className="flex gap-2">
             <Button varianta="secondary" className="flex-1" onClick={() => { camera.opreste(); setPas("alegere"); }}>
@@ -172,8 +228,13 @@ export function BuletinCapture({
             >
               Reia poza
             </Button>
-            <Button className="flex-1" onClick={continua} loading={seCiteste} disabled={!cnp}>
-              Continua
+            <Button
+              className="flex-1"
+              onClick={continua}
+              loading={seCiteste}
+              disabled={!cnp || (blocat && !poateSari)}
+            >
+              {poateSari ? "Continuă oricum" : "Continua"}
             </Button>
           </div>
         </>

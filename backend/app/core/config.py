@@ -110,6 +110,25 @@ class Settings(BaseSettings):
     # buletin. Fara dependente noi — greutatile se descarca automat de DeepFace.
     identity_detector_backend: str = Field(default="yunet", alias="IDENTITY_DETECTOR_BACKEND")
 
+    # Praguri pentru feedback-ul de calitate a pozei (infrastructure/calitate_poza.py),
+    # cel care ii spune omului "poza e prea intunecata" in loc sa-l lase sa
+    # astepte un 'pending_review' fara explicatie. Sunt calibrabile din env
+    # pentru ca depind de camere reale: valorile de aici sunt un punct de
+    # plecare rezonabil, nu o masuratoare. Metricile fiecarei poze se logheaza,
+    # ca sa se poata ajusta pe date, nu pe intuitie.
+    calitate_luma_min: float = Field(default=55.0, alias="CALITATE_LUMA_MIN")
+    calitate_luma_max: float = Field(default=205.0, alias="CALITATE_LUMA_MAX")
+    # Varianta Laplacianului. Pragul e mai mare la buletin decat la selfie:
+    # OCR-ul are nevoie de text citibil, ArcFace se descurca si cu o fata usor
+    # moale.
+    calitate_blur_min_selfie: float = Field(default=60.0, alias="CALITATE_BLUR_MIN_SELFIE")
+    calitate_blur_min_document: float = Field(default=100.0, alias="CALITATE_BLUR_MIN_DOCUMENT")
+    # Cat din cadru trebuie sa ocupe fata ca sa nu fii "prea departe".
+    calitate_arie_fata_min: float = Field(default=0.08, alias="CALITATE_ARIE_FATA_MIN")
+    calitate_incredere_detectie_min: float = Field(
+        default=0.6, alias="CALITATE_INCREDERE_DETECTIE_MIN"
+    )
+
     # Financial advisor-ul lui Cristi (agents/financiar.py) — bucla proprie de
     # tool-calling peste azure-ai-inference, cu propriile praguri de siguranta.
     llm_provider: str = Field(default="azure", alias="LLM_PROVIDER")

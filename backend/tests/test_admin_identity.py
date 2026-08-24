@@ -51,9 +51,13 @@ def _profil(**suprascrieri) -> dict:
 
 
 class _ClientRol:
-    """Raspunde doar la interogarea de rol din cere_administrator."""
+    """Raspunde doar la interogarea de rol din cere_administrator.
 
-    def __init__(self, rol: str | None = "administrator") -> None:
+    Rolul se citeste din user_roles.role, cu valoarea 'admin' (vezi ROL_ADMIN
+    si migratia 0018). `rol=None` = niciun rand, cazul unui client obisnuit.
+    """
+
+    def __init__(self, rol: str | None = "admin") -> None:
         self._rol = rol
 
     def table(self, _nume: str):
@@ -70,7 +74,7 @@ class _ClientRol:
 
     def execute(self):
         class R:
-            data = {"rol": self._rol} if self._rol else None
+            data = {"role": self._rol} if self._rol else None
 
         return R()
 
@@ -78,7 +82,7 @@ class _ClientRol:
 @pytest.fixture
 def ca_admin():
     app.dependency_overrides[get_current_user] = lambda: ADMIN
-    app.dependency_overrides[get_user_supabase] = lambda: _ClientRol("administrator")
+    app.dependency_overrides[get_user_supabase] = lambda: _ClientRol("admin")
     yield
     app.dependency_overrides.clear()
 

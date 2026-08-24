@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition, type ReactNode } from "react";
 import { Bell, ChevronRight, LogOut, Moon, ShieldCheck, UserCog, Users } from "lucide-react";
+import { AvatarProfil } from "@/components/ui/avatar-profil";
 import { Button } from "@/components/ui/button";
 import { EditeazaTelefonDrawer } from "@/components/setari/editeaza-telefon-drawer";
 import { deconecteaza } from "@/lib/actions/auth";
@@ -14,6 +15,8 @@ type Profil = {
   cnp: string;
   telefon: string;
   email: string;
+  /** URL public din Supabase Storage (lib/actions/profil.ts), null fara poza. */
+  avatar_url: string | null;
 };
 
 function initiale(nume: string) {
@@ -96,9 +99,17 @@ export function SetariClient({
       <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Setări</h1>
 
       <div className="mt-6 flex items-center gap-4 rounded-card bg-surface p-4 shadow-sm">
-        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[18px] font-semibold text-primary-700">
-          {initiale(profil.nume)}
-        </span>
+        {/* Cu poza incarcata din dashboard se arata poza; fara ea raman
+            initialele, care spun mai mult decat iconita generica din AvatarProfil. */}
+        {profil.avatar_url ? (
+          <span className="h-14 w-14 shrink-0 overflow-hidden rounded-full">
+            <AvatarProfil url={profil.avatar_url} nume={profil.nume} />
+          </span>
+        ) : (
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[18px] font-semibold text-primary-700">
+            {initiale(profil.nume)}
+          </span>
+        )}
         <div className="min-w-0">
           <p className="truncate text-[17px] font-semibold text-ink">{profil.nume}</p>
           <p className="truncate text-[13px] text-ink-faint">{profil.email}</p>

@@ -38,6 +38,30 @@ class LoginFataResponse(BaseModel):
     matched: bool
 
 
+class ProblemaPoza(BaseModel):
+    cod: str = Field(..., description="Identificator stabil, ex. 'prea_intunecata'.")
+    mesaj: str = Field(..., description="Text romanesc, gata de afisat asa cum e.")
+    blocanta: bool = Field(
+        ...,
+        description="False = doar avertisment; poza poate fi folosita oricum.",
+    )
+
+
+class CalitatePozaResponse(BaseModel):
+    """
+    Ce e in neregula cu poza, nu cat de bine sta la fiecare metrica.
+
+    Numerele masurate (luminozitate, varianta Laplacianului, cate fete) raman
+    doar in loguri: ruta e neautentificata, iar din valorile brute s-ar putea
+    afla exact ce trece de filtru. Vezi si LoginFataResponse mai sus.
+    """
+
+    acceptabila: bool = Field(..., description="Nicio problema blocanta.")
+    probleme: list[ProblemaPoza] = Field(
+        default_factory=list, description="Ordonate dupa importanta; prima e cea de aratat."
+    )
+
+
 # -----------------------------------------------------------------------------
 # Panoul de administrator
 # -----------------------------------------------------------------------------

@@ -8,15 +8,25 @@ export type UtilizatorAdmin = {
 };
 
 /**
+ * Valoarea din `public.user_roles.role` care da drepturi de administrator.
+ * Aceeasi in trei locuri care trebuie sa spuna acelasi lucru: aici, in
+ * backend/app/api/dependencies.py (ROL_ADMIN) si in public.este_administrator()
+ * din baza de date. Cand au fost diferite, oamenii intrau in interfata de admin
+ * si primeau 403 la fiecare apel.
+ */
+const ROL_ADMIN = "admin";
+
+/**
  * Utilizatorul curent, daca e administrator. Altfel null.
  *
- * Se ruleaza numai pe server. Rolul se citeste din `profiles.rol` la fiecare
- * cerere, nu din token: un rol pus in JWT ar ramane valabil pana expira
+ * Se ruleaza numai pe server. Rolul se citeste din `public.user_roles` la
+ * fiecare cerere, nu din token: un rol pus in JWT ar ramane valabil pana expira
  * tokenul, inclusiv dupa ce i-a fost luat cuiva dreptul.
  *
- * Interogarea merge cu sesiunea utilizatorului, deci politicile din 0008 sunt
- * cele care decid ce vede — iar aceeasi verificare exista si in backend, pe
- * fiecare ruta. Garda de aici tine ecranul ascuns; bariera reala e acolo.
+ * Interogarea merge cu sesiunea utilizatorului, deci trece prin politica
+ * "Enable users to view their own data only" de pe user_roles — fiecare isi
+ * vede doar propriul rand. Aceeasi verificare exista si in backend, pe fiecare
+ * ruta. Garda de aici tine ecranul ascuns; bariera reala e acolo.
  */
 export async function checkAdmin(): Promise<UtilizatorAdmin | null> {
   const supabase = await createClient();
@@ -32,17 +42,22 @@ export async function checkAdmin(): Promise<UtilizatorAdmin | null> {
 
   if (!user || !session?.access_token) return null;
 
+  // maybeSingle, nu single: cine nu e administrator n-are niciun rand in
+  // user_roles, iar `single()` trateaza asta ca eroare. checkAdmin se apeleaza
+  // si din /setari, pentru fiecare utilizator, deci varianta cu single umplea
+  // logurile cu "erori" pentru comportamentul normal.
   const { data, error } = await supabase
     .from("user_roles")
     .select("role")
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
 
+  if (error) {
+    console.error(`Nu am putut citi rolul pentru id=${user.id}:`, error.message);
+    return null;
+  }
 
-  if (error || !data || data.role !== "admin") {
-    console.error(`Acces interzis la admin de catre id: ${user.id}`)
-    return null
-  };
+  if (data?.role !== ROL_ADMIN) return null;
 
   return { id: user.id, email: user.email ?? "", token: session.access_token };
 }
