@@ -1,11 +1,16 @@
+from typing import Literal
+
+import anyio
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 
 from app.core.errors import PermissionDeniedError, ValidationError
 from app.core.security import Principal, get_principal_or_internal
 from app.infrastructure.rate_limit import limiteaza
 from app.schemas.identity import (
+    CalitatePozaResponse,
     ExtrageCnpResponse,
     LoginFataResponse,
+    ProblemaPoza,
     VerificaIdentitateRequest,
     VerificaIdentitateResponse,
 )
@@ -36,6 +41,40 @@ async def extract_cnp(buletin: UploadFile) -> ExtrageCnpResponse:
     cnp, incredere = identity_service.extrage_cnp_din_buletin(date)
 
     return ExtrageCnpResponse(cnp=cnp, confidence=incredere, raw_text_found=cnp is not None)
+
+
+@router.post("/check-photo", response_model=CalitatePozaResponse)
+async def check_photo(
+    request: Request,
+    imagine: UploadFile = File(...),
+    tip: Literal["selfie", "buletin"] = Form("selfie"),
+) -> CalitatePozaResponse:
+    """
+    Spune ce e in neregula cu poza inainte sa fie trimisa mai departe: prea
+    intunecata, prea luminoasa, fara nicio fata, neclara.
+
+    Fara autentificare, ca /extract-cnp — se apeleaza in timpul inregistrarii,
+    inainte de signUp(), cand nu exista inca o sesiune. Poza nu se persista.
+
+    Rate limit generos pe IP: userul chiar reia poza de cateva ori la rand,
+    dar ruta nu trebuie sa devina un API gratuit de detectie faciala.
+    """
+    ip = request.client.host if request.client else "necunoscut"
+    limiteaza(f"check-photo:ip:{ip}", max_incercari=60, fereastra_secunde=300)
+
+    date = await _citeste_imagine(imagine)
+
+    # Analiza e CPU-bound (yunet + numpy) si ar bloca event loop-ul cateva
+    # sute de milisecunde pentru toate celelalte cereri.
+    raport = await anyio.to_thread.run_sync(identity_service.evalueaza_calitate_poza, date, tip)
+
+    return CalitatePozaResponse(
+        acceptabila=raport.acceptabila,
+        probleme=[
+            ProblemaPoza(cod=problema.cod, mesaj=problema.mesaj, blocanta=problema.blocanta)
+            for problema in raport.probleme
+        ],
+    )
 
 
 @router.post("/verify", response_model=VerificaIdentitateResponse)

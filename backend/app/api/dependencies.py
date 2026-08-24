@@ -59,6 +59,13 @@ from app.tools.knowledge_tools import build_knowledge_tools
 from app.tools.registry import ToolRegistry
 from app.tools.scenario_tools import SCENARIO_TOOL
 
+# Valoarea din public.user_roles.role care da drepturi de administrator.
+# Aceeasi in trei locuri care trebuie sa spuna acelasi lucru: aici, in
+# frontend/src/lib/admin.ts si in public.este_administrator() din baza de date.
+# Cand au fost diferite, oamenii intrau in interfata de admin si primeau 403 la
+# fiecare apel.
+ROL_ADMIN = "admin"
+
 
 @lru_cache
 def get_orchestrator() -> Orchestrator:
@@ -209,25 +216,33 @@ async def cere_administrator(
 ) -> UserContext:
     """Lasa sa treaca numai administratorii.
 
-    Verificarea intreaba baza de date, nu tokenul: rolul sta in profiles si e
-    inghetat de trigger, deci nu poate fi ridicat din aplicatie. Un rol pus in
-    JWT ar fi mai ieftin de citit, dar ar ramane valabil pana expira tokenul,
-    inclusiv dupa ce i-a fost luat cuiva dreptul.
+    Rolul se citeste din `public.user_roles(user_id, role)`, singura sursa de
+    adevar pentru drepturi (vezi ROL_ADMIN). Verificarea intreaba baza de date,
+    nu tokenul: un rol pus in JWT ar fi mai ieftin de citit, dar ar ramane
+    valabil pana expira tokenul, inclusiv dupa ce i-a fost luat cuiva dreptul.
 
     Chiar daca cineva ar ocoli verificarea de aici, RLS ramane bariera reala:
-    politicile de la 0008 cer public.este_administrator() in baza de date.
+    politicile din 0009 cer public.este_administrator(), care citeste aceeasi
+    tabela si aceeasi valoare.
+
+    Interogarea merge cu tokenul utilizatorului, deci trece prin politica
+    "Enable users to view their own data only" de pe user_roles: fiecare isi
+    vede doar propriul rand, iar cine n-are niciunul primeste zero randuri —
+    de aceea `.maybe_single()`, nu `.single()`.
     """
 
     def interogare() -> str | None:
         raspuns = (
-            client.table("profiles")
-            .select("rol")
-            .eq("id", str(user.user_id))
+            client.table("user_roles")
+            .select("role")
+            .eq("user_id", str(user.user_id))
             .maybe_single()
             .execute()
         )
+        # .maybe_single() intoarce None (nu un raspuns cu data=None) cand nu
+        # gaseste randul — vezi REGULI.md.
         date = raspuns.data if raspuns else None
-        return date.get("rol") if date else None
+        return date.get("role") if date else None
 
     try:
         rol = await to_thread.run_sync(interogare)
@@ -237,7 +252,7 @@ async def cere_administrator(
             detail="Nu am putut verifica drepturile contului.",
         ) from exc
 
-    if rol != "administrator":
+    if rol != ROL_ADMIN:
         # Acelasi raspuns si cand contul nu exista, si cand exista dar e client:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
