@@ -116,11 +116,17 @@ def verifica_login_fata(email: str, imagine_live_bytes: bytes) -> bool:
     Login biometric: compara 1:1 cadrul live cu ultimul selfie 'verified' al
     contului cu emailul dat — nu cauta in toata baza (1:N ar fi lent si mult
     mai expus la fals-pozitive). Orice pas care nu gaseste ceva (cont
-    inexistent, fara selfie verificat) se termina tacut cu False, ca sa nu
-    se poata deduce din raspuns daca un email exista sau e verificat.
+    inexistent, fara selfie verificat, biometrie oprita din setari) se termina
+    tacut cu False, ca sa nu se poata deduce din raspuns daca un email exista,
+    e verificat, sau si-a oprit biometria.
+
+    Aici e singurul loc unde oprirea biometriei chiar conteaza: ruta
+    /api/identity/login-match e neautentificata si se poate apela direct, nu
+    doar prin serverul Next.js, deci o verificare in frontend n-ar fi o
+    bariera, ci o sugestie.
     """
-    id_user = identity_repository.gaseste_id_user_dupa_email(email)
-    if not id_user:
+    id_user, biometrie_activata = identity_repository.gaseste_user_dupa_email(email)
+    if not id_user or not biometrie_activata:
         return False
 
     cale_selfie = identity_repository.gaseste_selfie_verificat(id_user)
