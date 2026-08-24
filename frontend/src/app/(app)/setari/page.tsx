@@ -21,7 +21,7 @@ export default async function SetariPage() {
 
   const { data: profil } = await supabase
     .from("profiles")
-    .select("nume, cnp, telefon, email")
+    .select("nume, cnp, telefon, email, avatar_url")
     .eq("id", user.id)
     .single();
 
