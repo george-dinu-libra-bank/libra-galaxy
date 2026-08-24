@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { useState, useTransition, type ReactNode } from "react";
-import { Bell, ChevronRight, LogOut, Moon, ShieldCheck, UserCog, Users } from "lucide-react";
+import { Bell, ChevronRight, LogOut, Moon, UserCog, Users } from "lucide-react";
 import { AvatarProfil } from "@/components/ui/avatar-profil";
 import { Button } from "@/components/ui/button";
+import { Comutator } from "@/components/ui/comutator";
 import { EditeazaTelefonDrawer } from "@/components/setari/editeaza-telefon-drawer";
+import { SecuritateDrawer } from "@/components/setari/securitate-drawer";
 import { deconecteaza } from "@/lib/actions/auth";
+import type { DispozitivAfisat } from "@/lib/data/dispozitive";
 import { aplicaTema, type Tema } from "@/lib/tema";
 import { cn, mascheazaCnp } from "@/lib/utils";
 
@@ -17,6 +20,7 @@ type Profil = {
   email: string;
   /** URL public din Supabase Storage (lib/actions/profil.ts), null fara poza. */
   avatar_url: string | null;
+  verification_status: string;
 };
 
 function initiale(nume: string) {
@@ -26,30 +30,6 @@ function initiale(nume: string) {
     .slice(0, 2)
     .map((parte) => parte[0]?.toUpperCase())
     .join("");
-}
-
-function Comutator({ activ, onChange, eticheta }: { activ: boolean; onChange: () => void; eticheta: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={activ}
-      aria-label={eticheta}
-      onClick={onChange}
-      className={cn(
-        "relative h-7 w-12 shrink-0 rounded-full transition-colors duration-150 ease-soft",
-        "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25",
-        activ ? "bg-primary-600" : "bg-line",
-      )}
-    >
-      <span
-        className={cn(
-          "absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-150 ease-soft",
-          activ ? "translate-x-5" : "translate-x-0",
-        )}
-      />
-    </button>
-  );
 }
 
 function Rand({
@@ -78,10 +58,14 @@ export function SetariClient({
   profil,
   tema,
   esteAdmin = false,
+  biometrieActivata,
+  dispozitive,
 }: {
   profil: Profil;
   tema: Tema;
   esteAdmin?: boolean;
+  biometrieActivata: boolean;
+  dispozitive: DispozitivAfisat[];
 }) {
   const [telefon, setTelefon] = useState(profil.telefon);
   const [notificari, setNotificari] = useState(true);
@@ -150,13 +134,11 @@ export function SetariClient({
           <Comutator activ={temaIntunecata} onChange={comutaTema} eticheta="Temă întunecată" />
         </div>
 
-        <div className="flex items-center gap-3 rounded-card bg-surface px-4 py-3.5 shadow-sm">
-          <ShieldCheck size={20} strokeWidth={1.75} aria-hidden className="text-ink-faint" />
-          <span className="flex-1 text-[15px] text-ink">Securitate</span>
-          <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-ink-faint">
-            În curând
-          </span>
-        </div>
+        <SecuritateDrawer
+          biometrieActivata={biometrieActivata}
+          areSelfieVerificat={profil.verification_status === "verified"}
+          dispozitive={dispozitive}
+        />
       </div>
 
       {esteAdmin ? (

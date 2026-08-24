@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { inregistreazaDispozitiv } from "@/lib/data/dispozitive";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -17,6 +18,9 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
+      // Si asta e un login: aici ajunge cine si-a resetat parola sau si-a
+      // confirmat contul din email.
+      await inregistreazaDispozitiv();
       return NextResponse.redirect(`${origin}${destinatie}`);
     }
   }

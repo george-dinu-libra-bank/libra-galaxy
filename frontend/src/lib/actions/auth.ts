@@ -12,6 +12,7 @@ import {
   verificaIdentitateInregistrare,
   verificaLoginFata,
 } from "@/lib/actions/identitate";
+import { inregistreazaDispozitiv, stergeDispozitivulCurent } from "@/lib/data/dispozitive";
 import {
   normalizeazaTelefon,
   validCnp,
@@ -43,6 +44,10 @@ function traduEroare(mesaj: string): string {
     return "Exista deja un cont inregistrat cu acest CNP.";
   if (m.includes("database error"))
     return "Nu am putut crea profilul. Verifica datele introduse si incearca din nou.";
+  if (m.includes("should be different from the old password"))
+    return "Parola noua trebuie sa fie diferita de cea actuala.";
+  if (m.includes("password should be at least") || m.includes("weak password"))
+    return "Parola noua e prea slaba. Alege una mai lunga si mai variata.";
 
   return "A aparut o eroare. Incearca din nou.";
 }
@@ -90,6 +95,9 @@ export async function autentifica(date: {
     });
     return { eroare: traduEroare(error.message) };
   }
+
+  // Inainte de redirect: redirect() arunca, deci nimic de dupa el nu ruleaza.
+  await inregistreazaDispozitiv();
 
   revalidatePath("/", "layout");
   redirect(date.redirectTo || "/dashboard");
@@ -157,6 +165,8 @@ export async function autentificaFata(date: {
     console.error("[auth/autentificaFata] verifyOtp", { email, eroareOtp });
     return { eroare: "Nu am putut finaliza autentificarea. Incearca din nou." };
   }
+
+  await inregistreazaDispozitiv();
 
   revalidatePath("/", "layout");
   redirect(date.redirectTo || "/dashboard");
@@ -242,6 +252,8 @@ export async function inregistreaza(date: {
     };
   }
 
+  await inregistreazaDispozitiv();
+
   revalidatePath("/", "layout");
   redirect("/dashboard");
 }
@@ -281,13 +293,97 @@ export async function trimiteResetareParola(email: string): Promise<RezultatAuth
 }
 
 /* -------------------------------------------------------------------------- */
+/* Schimbarea parolei                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Schimba parola contului, cerand-o intai pe cea actuala.
+ *
+ * Supabase NU cere parola veche la `updateUser({password})` — daca ai o
+ * sesiune valida, o poti schimba direct. Pentru o aplicatie bancara asta e
+ * prea putin: un laptop lasat deschis ar deveni preluare completa de cont, cu
+ * doua click-uri. De aceea reconfirmam identitatea cu `signInWithPassword`
+ * inainte, exact ca la reautentificarea dinaintea unei operatiuni sensibile.
+ *
+ * Efect secundar de stiut: reautentificarea creeaza o sesiune noua pe acest
+ * dispozitiv, deci `session_id`-ul se schimba. Randul din dispozitive_conectate
+ * e reimprospatat la urmatoarea deschidere a setarilor (upsert pe amprenta),
+ * deci nu ramane un rand orfan.
+ */
+export async function schimbaParola(date: {
+  parolaActuala: string;
+  parolaNoua: string;
+}): Promise<RezultatAuth> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user?.email) {
+    return { eroare: "Trebuie sa fii autentificat." };
+  }
+
+  if (!date.parolaActuala) {
+    return { eroare: "Introdu parola actuala." };
+  }
+
+  const eroareParola = validParola(date.parolaNoua);
+  if (eroareParola) {
+    return { eroare: eroareParola };
+  }
+
+  const { error: eroareReautentificare } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: date.parolaActuala,
+  });
+
+  if (eroareReautentificare) {
+    console.error("[auth/schimbaParola] reautentificare", {
+      status: eroareReautentificare.status,
+      code: eroareReautentificare.code,
+    });
+    // Mesaj propriu, nu traduEroare: aici "invalid login credentials" inseamna
+    // strict ca parola ACTUALA e gresita, nu ca emailul n-ar exista.
+    return { eroare: "Parola actuala nu e corecta." };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: date.parolaNoua });
+
+  if (error) {
+    console.error("[auth/schimbaParola] updateUser", {
+      status: error.status,
+      code: error.code,
+      message: error.message,
+    });
+    return { eroare: traduEroare(error.message) };
+  }
+
+  revalidatePath("/", "layout");
+  return { mesaj: "Parola a fost schimbata." };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Deconectare                                                                 */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Inchide sesiunea de pe acest dispozitiv, si numai pe ea.
+ *
+ * `signOut()` fara argument foloseste implicit scope 'global', adica inchidea
+ * si sesiunile de pe celelalte dispozitive — te delogai de pe telefon si
+ * picai si pe laptop. Cu ecranul de securitate din setari, delogarea de peste
+ * tot devine o actiune explicita ("Deconecteaza celelalte dispozitive"), nu un
+ * efect secundar al unui logout obisnuit.
+ */
 export async function deconecteaza() {
   if (supabaseConfigurat) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.signOut();
+
+    // Inainte de signOut: dupa, nu mai stim pe ce sesiune eram.
+    await stergeDispozitivulCurent();
+
+    const { error } = await supabase.auth.signOut({ scope: "local" });
 
     if (error) {
       console.error("[auth/deconecteaza] signOut", {
