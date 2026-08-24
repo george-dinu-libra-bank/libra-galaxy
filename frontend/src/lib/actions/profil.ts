@@ -133,3 +133,48 @@ export async function stergeAvatar(): Promise<RezultatAvatar> {
 
   return { url: null };
 }
+
+export type RezultatBiometrie = { activata?: boolean; eroare?: string };
+
+/**
+ * Porneste sau opreste login-ul cu fata pentru contul curent.
+ *
+ * Scrierea de aici e doar comoditate: bariera reala e in backend, unde
+ * verifica_login_fata refuza inainte sa compare fetele (vezi
+ * backend/app/services/identity_service.py). Ruta /api/identity/login-match e
+ * neautentificata si se poate apela direct, deci o verificare facuta doar in
+ * Next.js n-ar opri pe nimeni.
+ *
+ * Coloana nu e protejata de triggerul profiles_protejeaza_campuri, deliberat:
+ * politica "profil propriu: update" (0001) ii da oricum voie utilizatorului
+ * s-o schimbe, si asta e in regula pentru o preferinta proprie. Ar trebui
+ * protejata doar daca ar deveni un blocaj impus de administrator.
+ */
+export async function seteazaBiometrie(activata: boolean): Promise<RezultatBiometrie> {
+  const supabase = await createClient();
+  const supabaseAdmin = await createAdminClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { eroare: "Trebuie sa fii autentificat." };
+
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .update({ biometrie_activata: activata })
+    .eq("id", user.id);
+
+  if (error) {
+    console.error("ERROR seteazaBiometrie (profil):", error);
+    // 42703 = coloana nu exista: migratia 0019 inca n-a fost aplicata.
+    if (error.code === "42703" || error.code === "PGRST204") {
+      return { eroare: "Setarea nu e inca disponibila. Reia peste putin timp." };
+    }
+    return { eroare: "Nu am putut salva setarea. Încearcă din nou." };
+  }
+
+  revalidatePath("/setari");
+
+  return { activata };
+}
