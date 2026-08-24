@@ -131,3 +131,151 @@ class AdminRepository:
             ).execute()
 
         await to_thread.run_sync(interogare)
+
+
+# -----------------------------------------------------------------------------
+# Analizele administratorului si urmarile lor
+#
+# Merge cu clientul privilegiat: politicile de pe analize_cont nu dau drept de
+# insert nimanui, tocmai ca o analiza sa nu poata veni decat de aici, dupa ce
+# rolul a fost verificat in aplicatie.
+# -----------------------------------------------------------------------------
+
+
+class AnalizaRepository:
+    def __init__(self, client: Client) -> None:
+        self._client = client
+
+    async def scrie_analiza(self, campuri: dict) -> dict | None:
+        def interogare() -> list[dict]:
+            raspuns = self._client.table("analize_cont").insert(campuri).execute()
+            return raspuns.data or []
+
+        randuri = await to_thread.run_sync(interogare)
+        return randuri[0] if randuri else None
+
+    async def istoric(self, user_id: UUID, limita: int = 50) -> list[dict]:
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("analize_cont")
+                .select(
+                    "id,id_utilizator,id_administrator,decizie,observatie,gravitate,"
+                    "numar_semnalari,zile_analizate,carduri_blocate,creat_la"
+                )
+                .eq("id_utilizator", str(user_id))
+                .order("creat_la", desc=True)
+                .limit(limita)
+                .execute()
+            )
+            return raspuns.data or []
+
+        return await to_thread.run_sync(interogare)
+
+    async def ultima_analiza(self, ids: list[UUID]) -> dict[str, dict]:
+        """Ultima decizie pentru fiecare cont, ca lista sa arate ce s-a facut deja."""
+        if not ids:
+            return {}
+
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("analize_cont")
+                .select("id_utilizator,decizie,observatie,creat_la")
+                .in_("id_utilizator", [str(i) for i in ids])
+                .order("creat_la", desc=True)
+                .execute()
+            )
+            return raspuns.data or []
+
+        randuri = await to_thread.run_sync(interogare)
+        ultima: dict[str, dict] = {}
+        for rand in randuri:  # deja ordonate descrescator
+            ultima.setdefault(str(rand["id_utilizator"]), rand)
+        return ultima
+
+    # -- cardurile ----------------------------------------------------------
+
+    async def carduri(self, user_id: UUID) -> list[dict]:
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("carduri")
+                .select("id,is_blocked")
+                .eq("id_user", str(user_id))
+                .execute()
+            )
+            return raspuns.data or []
+
+        return await to_thread.run_sync(interogare)
+
+    async def schimba_blocarea(self, user_id: UUID, blocat: bool) -> int:
+        """Blocheaza sau deblocheaza toate cardurile unui om. Intoarce cate a atins.
+
+        Scriere de date pe o coloana care exista deja (`carduri.is_blocked`),
+        verificata de RPC-ul de plata. Nu schimba nicio structura.
+        """
+        de_schimbat = [
+            c["id"] for c in await self.carduri(user_id) if bool(c["is_blocked"]) != blocat
+        ]
+        if not de_schimbat:
+            return 0
+
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("carduri")
+                .update({"is_blocked": blocat})
+                .in_("id", de_schimbat)
+                .execute()
+            )
+            return raspuns.data or []
+
+        randuri = await to_thread.run_sync(interogare)
+        return len(randuri) if randuri else len(de_schimbat)
+
+    # -- notificarile -------------------------------------------------------
+
+    async def scrie_notificare(
+        self, user_id: UUID, titlu: str, mesaj: str, tip: str
+    ) -> dict | None:
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("notificari")
+                .insert(
+                    {
+                        "id_utilizator": str(user_id),
+                        "titlu": titlu,
+                        "mesaj": mesaj,
+                        "tip": tip,
+                    }
+                )
+                .execute()
+            )
+            return raspuns.data or []
+
+        randuri = await to_thread.run_sync(interogare)
+        return randuri[0] if randuri else None
+
+    async def stare_carduri_toti(self, limita: int = 2000) -> dict[str, dict]:
+        """Cate carduri are fiecare om si cate ii sunt blocate.
+
+        O singura interogare pentru toata lista: varianta cu un apel per cont ar
+        fi insemnat cateva sute de drumuri la baza pentru un singur ecran.
+        """
+
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("carduri")
+                .select("id_user,is_blocked")
+                .limit(limita)
+                .execute()
+            )
+            return raspuns.data or []
+
+        randuri = await to_thread.run_sync(interogare)
+
+        pe_om: dict[str, dict] = {}
+        for rand in randuri:
+            cheie = str(rand["id_user"])
+            stare = pe_om.setdefault(cheie, {"total": 0, "blocate": 0})
+            stare["total"] += 1
+            if rand["is_blocked"]:
+                stare["blocate"] += 1
+        return pe_om

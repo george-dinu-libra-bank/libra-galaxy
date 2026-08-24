@@ -13,7 +13,7 @@ se arata utilizatorului decide `AlerteService`.
 
 import logging
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -74,6 +74,62 @@ def incarca_model() -> Any | None:
         return None
 
 
+
+# -----------------------------------------------------------------------------
+# Severitatea, pe o scara de la 1 la 100
+#
+# Scorurile brute ale verificarilor nu sunt comparabile intre ele: o dublare
+# confirmata primea 10, iar o suma atipica putea trece de 70, fiindca z-scorul
+# modificat nu are limita superioara. Rezultatul: o certitudine aritmetica
+# aparea SUB o banuiala statistica, exact invers fata de intentia scrisa mai sus
+# ("o certitudine aritmetica trebuie sa bata o banuiala").
+#
+# Fiecare tip primeste o banda dupa cat de sigura e constatarea, iar scorul brut
+# decide unde anume in banda. Asa ordinea intre tipuri e garantata de banda, si
+# ordinea in interiorul unui tip ramane data de date.
+#
+# Severitatea NU e o probabilitate de frauda: sistemul nu a vazut niciodata o
+# frauda confirmata din care sa invete. E o ordine de prioritate.
+# -----------------------------------------------------------------------------
+
+# tip -> (jos, sus, referinta)
+# `referinta` e valoarea bruta la care constatarea ajunge cam la doua treimi din
+# banda; peste ea creste tot mai incet, deci un z-score urias nu striveste
+# restul listei.
+BENZI_SEVERITATE: dict[str, tuple[int, int, float]] = {
+    # Doua plati identice la acelasi comerciant in cateva minute. Nu e o
+    # chestiune de grad: ori s-a intamplat, ori nu.
+    "plata_dublata": (95, 95, 1.0),
+    # Ritmul e masurabil si greu de confundat, dar nu e o certitudine.
+    "rafala_de_plati": (72, 88, 8.0),
+    # Prima plata la un comerciant, mult peste obisnuit.
+    "comerciant_nou": (45, 90, 12.0),
+    # Cat de departe e suma de mediana, in abateri absolute mediane.
+    "suma_neobisnuita": (45, 90, 20.0),
+    # Banuiala modelului: cea mai slaba dovada, deci cea mai joasa banda.
+    "tipar_neobisnuit": (20, 60, 6.0),
+}
+
+SEVERITATE_IMPLICITA = (30, 70, 10.0)
+
+
+def severitate(tip: str, brut: float) -> int:
+    """Scorul brut al unei verificari, adus pe scara 1-100.
+
+    Saturatie exponentiala in interiorul benzii: creste repede la inceput, unde
+    diferentele chiar conteaza, si tot mai incet spre capat, ca o valoare
+    extrema sa nu faca restul constatarilor sa para neinsemnate.
+    """
+    import math
+
+    jos, sus, referinta = BENZI_SEVERITATE.get(tip, SEVERITATE_IMPLICITA)
+    if jos == sus:
+        return jos
+
+    proportie = 1.0 - math.exp(-max(brut, 0.0) / referinta)
+    return max(1, min(100, round(jos + (sus - jos) * proportie)))
+
+
 @dataclass(frozen=True, slots=True)
 class Neregularitate:
     id_tranzactie: str
@@ -83,7 +139,8 @@ class Neregularitate:
     comerciant: str
     tip: str
     explicatie: str
-    scor: float
+    # Severitate 1-100, nu scorul brut al verificarii: vezi BENZI_SEVERITATE.
+    scor: int
 
 
 @dataclass
@@ -238,6 +295,11 @@ class DetectorNeregularitati:
 
     @staticmethod
     def _constatare(plata: Plata, tip: str, explicatie: str, scor: float) -> Neregularitate:
+        """`scor` intra brut si iese ca severitate 1-100 (vezi BENZI_SEVERITATE).
+
+        Filtrarea pe PRAG_SCOR ramane pe valoarea bruta, in verificari: ce se
+        raporteaza nu se schimba, doar cum se exprima gravitatea.
+        """
         return Neregularitate(
             id_tranzactie=plata.id,
             data=plata.moment.date().isoformat(),
@@ -246,5 +308,48 @@ class DetectorNeregularitati:
             comerciant=plata.comerciant,
             tip=tip,
             explicatie=explicatie,
-            scor=round(scor, 2),
+            scor=severitate(tip, scor),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class StareModel:
+    """Daca al doilea strat de detectie chiar ruleaza, si de cand.
+
+    Exista fiindca lipsa artefactului e tacuta prin proiectare: detectia merge
+    mai departe pe reguli statistice, iar cine se uita la ecran vede o lista
+    plauzibila fara niciun semn ca jumatate din sistem lipseste. Un
+    administrator care ia decizii pe baza listei are dreptul sa stie pe ce se
+    uita.
+    """
+
+    activ: bool
+    antrenat_la: str | None
+    marime_kb: int | None
+
+    @property
+    def explicatie(self) -> str:
+        if self.activ:
+            return "Detectia ruleaza pe reguli statistice si pe model."
+        return (
+            "Modelul lipseste: detectia ruleaza doar pe reguli statistice. "
+            "Tiparele invatate nu sunt verificate."
+        )
+
+
+def stare_model() -> StareModel:
+    """Starea artefactului, citita de pe disc la fiecare apel.
+
+    Deliberat fara cache, spre deosebire de incarca_model(): e o interogare
+    rara, iar un raspuns care spune "modelul e activ" dupa ce fisierul a fost
+    sters ar fi mai rau decat cei cativa milisecunzi economisiti.
+    """
+    if not CALE_MODEL.exists():
+        return StareModel(activ=False, antrenat_la=None, marime_kb=None)
+
+    info = CALE_MODEL.stat()
+    return StareModel(
+        activ=incarca_model() is not None,
+        antrenat_la=datetime.fromtimestamp(info.st_mtime, tz=timezone.utc).isoformat(),
+        marime_kb=round(info.st_size / 1024),
+    )

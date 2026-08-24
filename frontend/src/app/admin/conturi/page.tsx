@@ -1,10 +1,12 @@
 import { Users } from "lucide-react";
 import { cereAdmin } from "@/lib/admin";
 import { obtineToateConturile } from "@/lib/data/admin-verificari";
-import type { ProfilAdmin } from "@/lib/tipuri-admin";
+import { obtineStareCarduriToti } from "@/lib/data/admin-tranzactii";
+import type { ProfilAdmin, StareCarduri } from "@/lib/tipuri-admin";
 import { BackendError } from "@/lib/backend";
 import { Banda } from "@/components/ui/banda";
 import { RestabilesteBiometrie } from "@/components/admin/restabileste-biometrie";
+import { BlocareCont } from "@/components/admin/blocare-cont";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -22,8 +24,15 @@ export default async function ConturiPage() {
   let conturi: ProfilAdmin[] = [];
   let eroare: string | null = null;
 
+  // Starea cardurilor vine separat si nu blocheaza lista: daca ruta cade,
+  // conturile se vad oricum, doar fara butoanele de blocare.
+  let carduri: StareCarduri[] = [];
+
   try {
-    conturi = await obtineToateConturile(admin.token);
+    [conturi, carduri] = await Promise.all([
+      obtineToateConturile(admin.token),
+      obtineStareCarduriToti(admin.token).catch(() => []),
+    ]);
   } catch (exc) {
     eroare =
       exc instanceof BackendError
@@ -38,7 +47,8 @@ export default async function ConturiPage() {
           Toate conturile
         </h1>
         <p className="mt-1.5 text-[15px] leading-[22px] text-ink-soft">
-          Dacă pozele din storage au dispărut, restabilește manual referința biometrică a unui cont.
+          Blochează sau deblochează cardurile unui client, ori restabilește manual referința
+          biometrică dacă pozele din storage au dispărut.
         </p>
       </div>
 
@@ -56,7 +66,11 @@ export default async function ConturiPage() {
       {conturi.length > 0 ? (
         <div className="flex flex-col gap-3">
           {conturi.map((cont) => (
-            <RandCont key={cont.id} cont={cont} />
+            <RandCont
+              key={cont.id}
+              cont={cont}
+              carduri={carduri.find((c) => c.id_utilizator === cont.id) ?? null}
+            />
           ))}
         </div>
       ) : null}
@@ -64,7 +78,13 @@ export default async function ConturiPage() {
   );
 }
 
-function RandCont({ cont }: { cont: ProfilAdmin }) {
+function RandCont({
+  cont,
+  carduri,
+}: {
+  cont: ProfilAdmin;
+  carduri: StareCarduri | null;
+}) {
   const eticheta = ETICHETE_STATUS[cont.verification_status] ?? ETICHETE_STATUS.pending;
 
   return (
@@ -80,9 +100,25 @@ function RandCont({ cont }: { cont: ProfilAdmin }) {
         >
           {eticheta.text}
         </span>
+
+        {carduri && carduri.blocate > 0 ? (
+          <span className="mt-1.5 ml-1.5 inline-block rounded-full bg-danger/10 px-2 py-0.5 text-[11px] font-medium text-danger">
+            Carduri blocate
+          </span>
+        ) : null}
       </span>
 
-      <RestabilesteBiometrie userId={cont.id} nume={cont.nume} />
+      <span className="flex shrink-0 items-center gap-2">
+        {carduri ? (
+          <BlocareCont
+            idUtilizator={cont.id}
+            nume={cont.nume}
+            total={carduri.total}
+            blocate={carduri.blocate}
+          />
+        ) : null}
+        <RestabilesteBiometrie userId={cont.id} nume={cont.nume} />
+      </span>
     </div>
   );
 }

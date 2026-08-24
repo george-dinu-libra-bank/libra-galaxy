@@ -27,6 +27,11 @@ from app.ml.caracteristici import Plata, normalizeaza, vector
 from app.ml.neregularitati import CALE_MODEL
 
 MIN_EXEMPLE = 50
+# Istoricul antrenarilor, langa artefact. Un model care se schimba fara sa lase
+# urma nu poate fi comparat cu el insusi: cand detectia incepe sa se poarte
+# altfel, singura intrebare utila e "ce s-a schimbat fata de data trecuta", si
+# fara asta nu are cine raspunde.
+CALE_ISTORIC = CALE_MODEL.parent / "antrenari.jsonl"
 
 # Cat din date consideram atipic. Nu e o estimare a ratei de frauda: e chiar
 # procentul pe care IsolationForest il va semnala, oricat de curate ar fi datele.
@@ -97,6 +102,44 @@ def _exemple(randuri: list[dict]) -> list[list[float]]:
     return exemple
 
 
+
+def _scrie_istoric(intrare: dict) -> None:
+    """Adauga o linie in istoric. Nu rescrie niciodata liniile vechi.
+
+    JSONL, nu JSON: fiecare antrenare e o linie noua, deci un fisier corupt la
+    mijloc nu pierde restul, iar comparatia intre rulari se face citind doua
+    linii, nu reconstruind un obiect intreg.
+    """
+    import json
+
+    try:
+        with CALE_ISTORIC.open("a", encoding="utf-8") as f:
+            print(json.dumps(intrare, ensure_ascii=False), file=f)
+    except OSError:
+        # Istoricul e util, dar nu merita sa piarda o antrenare reusita.
+        print("nu am putut scrie istoricul antrenarii")
+
+
+def _masuri(exemple: list[list[float]], model) -> dict:
+    """Cat de atipic considera modelul propriile date de antrenare.
+
+    Nu e o masura de acuratete — n-avem etichete de frauda, deci nu exista
+    "corect" de comparat. E o amprenta: daca la urmatoarea antrenare procentul
+    semnalat sau media scorurilor sar brusc, s-a schimbat ceva in date, si
+    cineva trebuie sa se uite inainte sa aiba incredere in lista.
+    """
+    scoruri = model.decision_function(exemple)
+    semnalate = sum(1 for s in scoruri if s < 0)
+
+    return {
+        "exemple": len(exemple),
+        "semnalate": semnalate,
+        "procent_semnalat": round(100.0 * semnalate / len(exemple), 2),
+        "scor_mediu": round(float(sum(scoruri) / len(scoruri)), 4),
+        "scor_minim": round(float(min(scoruri)), 4),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -128,6 +171,25 @@ def main() -> int:
 
     joblib.dump(model, CALE_MODEL)
     print(f"model salvat in {CALE_MODEL}")
+
+    from datetime import datetime, timezone
+
+    masuri = _masuri(exemple, model)
+    _scrie_istoric(
+        {
+            "antrenat_la": datetime.now(timezone.utc).isoformat(),
+            "sursa": str(argumente.csv) if argumente.csv else "supabase",
+            "tranzactii": len(randuri),
+            "contaminare": CONTAMINARE,
+            **masuri,
+        }
+    )
+
+    print(
+        f"  {masuri['exemple']} exemple, {masuri['semnalate']} semnalate "
+        f"({masuri['procent_semnalat']}%), scor mediu {masuri['scor_mediu']}"
+    )
+    print(f"  istoric: {CALE_ISTORIC}")
     return 0
 
 

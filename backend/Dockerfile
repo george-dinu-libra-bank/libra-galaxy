@@ -7,11 +7,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # tesseract (cu pachetul de limba romana): OCR-ul buletinului.
 # libgl1 + libglib2.0-0: opencv, folosit de DeepFace la detectia fetei.
+# fonts-dejavu-core: singurul font din imagine cu diacritice romanesti complete
+# (s si t cu virgula). Fara el, rapoartele PDF ies cu patrate in locul lor.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       tesseract-ocr \
       tesseract-ocr-ron \
       libgl1 \
       libglib2.0-0 \
+      fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
