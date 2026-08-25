@@ -168,7 +168,18 @@ export async function obtineDateSensibileCard(id: string): Promise<RezultatDateS
   };
 }
 
-/** Blocheaza/deblocheaza un card propriu. */
+/**
+ * Blocheaza sau deblocheaza un card propriu.
+ *
+ * Scrie doar `is_blocked`, steagul clientului. `blocat_administrativ` — masura
+ * bancii — nu e atins niciodata de aici, iar un card oprit de banca nu poate fi
+ * repornit din aplicatie: altfel orice masura ar tine pana la prima apasare a
+ * celui vizat de ea.
+ *
+ * Verificarea de mai jos e o comoditate, ca omul sa primeasca un mesaj clar.
+ * Bariera adevarata e in `creeaza_plata` si `aproba_plata` (0032), care refuza
+ * orice plata pe un card blocat de banca, indiferent ce scrie in `is_blocked`.
+ */
 export async function comutaBlocareCard(id: string, blocat: boolean): Promise<RezultatCard> {
   const supabase = await createClient();
   const supabaseAdmin = await createAdminClient();
@@ -178,6 +189,22 @@ export async function comutaBlocareCard(id: string, blocat: boolean): Promise<Re
   } = await supabase.auth.getUser();
 
   if (!user) return { eroare: "Trebuie sa fii autentificat." };
+
+  const { data: card } = await supabaseAdmin
+    .from("carduri")
+    .select("blocat_administrativ")
+    .eq("id", id)
+    .eq("id_user", user.id)
+    .maybeSingle();
+
+  if (!card) return { eroare: "Cardul nu a fost gasit." };
+
+  if (card.blocat_administrativ && !blocat) {
+    return {
+      eroare:
+        "Cardul a fost blocat de bancă și nu poate fi deblocat din aplicație. Contactează suportul.",
+    };
+  }
 
   const { error } = await supabaseAdmin
     .from("carduri")

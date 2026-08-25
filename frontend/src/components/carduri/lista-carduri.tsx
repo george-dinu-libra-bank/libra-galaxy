@@ -66,17 +66,17 @@ export function ListaCarduri({
               className="animate-fade-up rounded-card p-5 text-left text-white shadow-lg transition-transform duration-150 ease-soft active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
               style={{
                 background: GRADIENTE_STIL_CARD[card.stil],
-                opacity: card.blocat ? 0.7 : 1,
+                opacity: card.blocat || card.blocatDeBanca ? 0.7 : 1,
               }}
             >
               <div className="flex items-start justify-between">
                 <span className="text-[13px] text-white/80">
                   {card.tip === "virtual" ? "Card virtual" : `Card ${ETICHETE_STIL_CARD[card.stil]}`}
                 </span>
-                {card.blocat ? (
+                {card.blocatDeBanca || card.blocat ? (
                   <span className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-medium text-white">
                     <Lock size={12} strokeWidth={1.75} aria-hidden />
-                    Blocat
+                    {card.blocatDeBanca ? "Blocat de bancă" : "Blocat"}
                   </span>
                 ) : null}
               </div>
@@ -124,6 +124,7 @@ export function ListaCarduri({
                     <Lock size={18} strokeWidth={1.75} aria-hidden />
                   )
                 }
+                disabled={selectat.blocatDeBanca}
                 onClick={() => comutaBlocare(selectat)}
               >
                 {selectat.blocat ? "Deblochează cardul" : "Blochează cardul"}
@@ -180,7 +181,25 @@ function DetaliuCard({ card }: { card: CardAfisat }) {
         }
         mono
       />
-      <Rand eticheta="Stare" valoare={card.blocat ? "Blocat" : "Activ"} />
+      <Rand
+        eticheta="Stare"
+        valoare={
+          card.blocatDeBanca
+            ? "Blocat de bancă"
+            : card.blocat
+              ? "Blocat de tine"
+              : "Activ"
+        }
+      />
+
+      {card.blocatDeBanca ? (
+        <div className="mt-4">
+          <Banda ton="eroare">
+            Cardul a fost blocat de bancă. Nu poate fi deblocat din aplicație — contactează
+            suportul pentru a afla motivul.
+          </Banda>
+        </div>
+      ) : null}
 
       <Button
         varianta="secondary"

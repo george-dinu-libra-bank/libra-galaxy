@@ -11,6 +11,13 @@ export type CardAfisat = {
   numarMascat: string;
   dataExpirare: string;
   blocat: boolean;
+  /**
+   * Oprit de banca. Clientul nu poate ridica masura din aplicatie.
+   * Adevarat si cand banca a blocat contul cardului, nu cardul in sine: efectul
+   * pentru om e acelasi, si n-ar avea sens sa vada un card "activ" pe un cont
+   * din care nu mai poate pleca niciun ban.
+   */
+  blocatDeBanca: boolean;
 
   /** Contul din care plateste cardul. Banii stau acolo, nu pe card. */
   idCont: string | null;
@@ -43,7 +50,9 @@ export async function obtineCarduriUtilizator(): Promise<CardAfisat[]> {
   const [{ data, error }, conturi] = await Promise.all([
     supabase
       .from("carduri")
-      .select("id, numar_card, data_expirare, card_style, is_blocked, creat_la, id_cont, tip, limita_zilnica")
+      // Sirul ramane pe o linie: supabase-js isi deduce tipul din literal, iar o
+      // concatenare il face `GenericStringError`.
+      .select("id, numar_card, data_expirare, card_style, is_blocked, blocat_administrativ, creat_la, id_cont, tip, limita_zilnica")
       .eq("id_user", user.id)
       .order("creat_la", { ascending: true }),
     obtineConturiUtilizator(),
@@ -64,6 +73,8 @@ export async function obtineCarduriUtilizator(): Promise<CardAfisat[]> {
       numarMascat: `•••• •••• •••• ${(card.numar_card as string).slice(-4)}`,
       dataExpirare: card.data_expirare as string,
       blocat: card.is_blocked as boolean,
+      blocatDeBanca:
+        ((card.blocat_administrativ as boolean) ?? false) || (cont?.blocatDeBanca ?? false),
 
       idCont: (card.id_cont as string) ?? null,
       numeCont: cont?.nume ?? null,

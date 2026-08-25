@@ -10,6 +10,8 @@ export type ContBancar = {
   sold: number;
   /** Valuta in care e tinut soldul (0013_schimb_valutar.sql). */
   valuta: Valuta;
+  /** Oprit de banca: din el nu mai pot pleca bani. */
+  blocatDeBanca: boolean;
   creatLa: string;
 };
 
@@ -30,7 +32,7 @@ export async function obtineConturiUtilizator(): Promise<ContBancar[]> {
 
   const { data, error } = await supabase
     .from("conturi_bancare")
-    .select("id, nume, iban, sold, valuta, creat_la")
+    .select("id, nume, iban, sold, valuta, blocat_administrativ, creat_la")
     .eq("id_user", user.id)
     .order("creat_la", { ascending: true });
 
@@ -43,6 +45,7 @@ export async function obtineConturiUtilizator(): Promise<ContBancar[]> {
     ibanMascat: `•••• ${(cont.iban as string).slice(-4)}`,
     sold: Number(cont.sold),
     valuta: (cont.valuta as Valuta) ?? "RON",
+    blocatDeBanca: (cont.blocat_administrativ as boolean) ?? false,
     creatLa: cont.creat_la as string,
   }));
 }
