@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { ChevronRight, Landmark } from "lucide-react";
+import { ChevronRight, Landmark, Sparkles } from "lucide-react";
 import {
   ETICHETE_STATUS,
   lei,
   tonStatus,
   type CerereCredit,
+  type SemnaleRezumat,
   type StatusCerere,
 } from "@/lib/tipuri-admin";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ import { cn } from "@/lib/utils";
  */
 const FILTRE: { valoare: StatusCerere | null; eticheta: string }[] = [
   { valoare: "analiza_manuala", eticheta: "De decis" },
+  { valoare: "asteapta_documente", eticheta: "Așteaptă acte" },
   { valoare: "oferta", eticheta: "Ofertă emisă" },
   { valoare: "acceptata", eticheta: "Acceptate" },
   { valoare: "respinsa", eticheta: "Respinse" },
@@ -144,6 +146,7 @@ function RandCerere({ cerere }: { cerere: CerereCredit }) {
               Grad de îndatorare {(Number(cerere.dti) * 100).toFixed(1)}%
             </span>
           ) : null}
+          <BadgeSemnale semnale={cerere.semnale} />
         </span>
       </span>
 
@@ -160,5 +163,29 @@ function RandCerere({ cerere }: { cerere: CerereCredit }) {
 
       <ChevronRight size={18} strokeWidth={1.75} aria-hidden className="shrink-0 text-ink-faint" />
     </Link>
+  );
+}
+
+/**
+ * Cate semnale a gasit pipeline-ul AI consultativ in ultima lui rulare, ca
+ * analistul sa stie ce sa priorizeze din coada — fara sa deschida fiecare
+ * dosar in parte. Absent cand pipeline-ul n-a rulat inca.
+ */
+function BadgeSemnale({ semnale }: { semnale: SemnaleRezumat | null }) {
+  if (!semnale) return null;
+
+  const total = semnale.grave + semnale.atentie;
+  if (total === 0) return null;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11.5px] font-medium",
+        semnale.grave > 0 ? "bg-danger/8 text-danger" : "bg-warning/10 text-warning",
+      )}
+    >
+      <Sparkles size={11} strokeWidth={2} aria-hidden />
+      {total} {total === 1 ? "semnal" : "semnale"}
+    </span>
   );
 }

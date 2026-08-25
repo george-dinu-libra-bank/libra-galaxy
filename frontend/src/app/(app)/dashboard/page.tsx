@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeftRight, Banknote, Bell, ChevronRight, CreditCard, Users } from "lucide-react";
+import { ArrowLeftRight, Banknote, ChevronRight, CreditCard, Users } from "lucide-react";
 import { AvatarUtilizator } from "@/components/dashboard/avatar-utilizator";
 import { DetaliiContDrawer } from "@/components/dashboard/detalii-cont-drawer";
 import { ListaConturi } from "@/components/dashboard/lista-conturi";
@@ -10,8 +10,12 @@ import { SoldAnimat } from "@/components/dashboard/sold-animat";
 import { UltimeleTranzactii } from "@/components/dashboard/ultimele-tranzactii";
 import { VerificaIdentitateBanner } from "@/components/dashboard/verifica-identitate-banner";
 import { Banda } from "@/components/ui/banda";
+import { Bulina } from "@/components/ui/bulina";
+import { ClopotelNotificari } from "@/components/ui/clopotel-notificari";
 import { Logo } from "@/components/ui/logo";
 import { obtineConturiUtilizator, totalSold } from "@/lib/data/conturi";
+import { obtineCereri } from "@/lib/data/credite";
+import type { StareCerere } from "@/lib/data/credite";
 import { obtineCursuri } from "@/lib/data/curs-valutar";
 import { obtineTranzactiiUtilizator } from "@/lib/data/tranzactii";
 import { createClient } from "@/lib/supabase/server";
@@ -35,6 +39,21 @@ const DALA =
 /** Cate miscari incap in rezumatul de pe dashboard; restul stau in /istoric. */
 const TRANZACTII_REZUMAT = 5;
 
+// Starile in care /credite chiar randeaza un buton de discutie. Bulina se
+// stinge cand firul se deschide, deci a numara mesaje pe un dosar fara buton
+// insemna o bulina aprinsa pentru totdeauna: analistul notifica, apoi respingea,
+// iar tapul ducea pe /credite unde nu era nimic de deschis. Dosarele incheiate
+// sunt in lista fiindca acum au si ele fir („Cereri anterioare").
+const CERERI_CU_FIR_DESCHIS: StareCerere[] = [
+  "oferta",
+  "analiza_manuala",
+  "asteapta_documente",
+  "in_analiza",
+  "respinsa",
+  "expirata",
+  "anulata",
+];
+
 export default async function DashboardPage() {
   const supabase = await createClient();
 
@@ -54,6 +73,20 @@ export default async function DashboardPage() {
   const conturi = await obtineConturiUtilizator();
   const tranzactii = await obtineTranzactiiUtilizator(TRANZACTII_REZUMAT);
   const cursuri = await obtineCursuri();
+
+  // Bulina de pe cardul de credite: cate mesaje de la banca n-a deschis inca.
+  // Contorul vine gata numarat de backend, pe fiecare cerere (o singura
+  // interogare pentru toata lista), deci aici e o adunare, nu inca o citire.
+  //
+  // Se numara doar dosarele care au unde fi citite: firul se marcheaza citit
+  // cand se deschide `DiscutieDrawer`, iar acela se randeaza doar pentru cereri
+  // in lucru. Pe toate cererile, o notificare trimisa inainte de o respingere
+  // lasa bulina aprinsa pentru totdeauna, iar tapul duce pe /credite unde nu e
+  // nimic de deschis.
+  const { cereri } = await obtineCereri();
+  const necitite = cereri
+    .filter((cerere) => CERERI_CU_FIR_DESCHIS.includes(cerere.status))
+    .reduce((suma, cerere) => suma + cerere.mesajeNecitite, 0);
 
   // Totalul se aduna aici, pe server — cifra ajunge gata calculata in HTML.
   // Conturile pot fi in valute diferite, deci se aduc intai la RON.
@@ -80,9 +113,7 @@ export default async function DashboardPage() {
         <Logo size={44} className="justify-self-center" />
 
         <div className="flex items-start justify-end gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface text-ink-soft shadow-sm">
-            <Bell size={20} strokeWidth={1.75} aria-hidden />
-          </span>
+          <ClopotelNotificari />
 
           <AvatarUtilizator
             avatarUrl={profil?.avatar_url ?? null}
@@ -132,9 +163,14 @@ export default async function DashboardPage() {
           <Banknote size={20} strokeWidth={1.75} aria-hidden />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-medium text-ink">Credite</span>
+          <span className="flex items-center gap-2">
+            <span className="text-[15px] font-medium text-ink">Credite</span>
+            <Bulina numar={necitite} />
+          </span>
           <span className="block text-[13px] text-ink-faint">
-            Simuleaza o rata sau vezi creditele tale
+            {necitite > 0
+              ? `Ai ${necitite === 1 ? "un mesaj nou" : `${necitite} mesaje noi`} de la banca`
+              : "Simuleaza o rata sau vezi creditele tale"}
           </span>
         </span>
         <ChevronRight size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-ink-faint" />

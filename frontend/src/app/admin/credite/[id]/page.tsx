@@ -3,7 +3,12 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
 import { DeciziaCererii } from "@/components/admin/decizia-cererii";
-import { DocumentAdeverinta } from "@/components/admin/document-adeverinta";
+import {
+  DocumentAdeverinta,
+  type CitireModel,
+} from "@/components/admin/document-adeverinta";
+import { FirDosar } from "@/components/admin/fir-dosar";
+import { PipelineAi } from "@/components/admin/pipeline-ai";
 import { cereAdmin } from "@/lib/admin";
 import { BackendError } from "@/lib/backend";
 import { obtineDosarCredit } from "@/lib/data/admin-credite";
@@ -37,8 +42,20 @@ export default async function DosarCreditPage({
     throw exc;
   });
 
-  const { cerere, verificari, documente } = dosar;
-  const deDecis = cerere.status === "analiza_manuala";
+  const { cerere, verificari, documente, mesaje, ai } = dosar;
+  // 'analiza_manuala' = asteapta banca, 'asteapta_documente' = asteapta clientul.
+  // Analistul poate lucra din amandoua: daca actele cerute nu mai vin, dosarul
+  // trebuie sa se poata inchide.
+  const inLucru =
+    cerere.status === "analiza_manuala" || cerere.status === "asteapta_documente";
+
+  // Extractia etapei `documente`, cand a reusit. Vine in acelasi raspuns ca
+  // dosarul (DosarResponse.ai), deci nu e nevoie de o citire in plus.
+  const etapaDocumente = ai?.etape.find((etapa) => etapa.etapa === "documente");
+  const citireModel =
+    etapaDocumente && etapaDocumente.status === "reusit"
+      ? (etapaDocumente.rezultat as CitireModel)
+      : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -63,13 +80,22 @@ export default async function DosarCreditPage({
         </section>
       ) : null}
 
+      <FirDosar idCerere={cerere.id} mesaje={mesaje} inLucru={inLucru} />
+
       <Punctaj motive={cerere.motive} scor={cerere.scor} />
 
       <Verificari verificari={verificari} />
 
+      <PipelineAi idCerere={cerere.id} ai={ai} />
+
       {documente.length > 0 ? (
         documente.map((document) => (
-          <DocumentAdeverinta key={document.id} document={document} idCerere={cerere.id} />
+          <DocumentAdeverinta
+            key={document.id}
+            document={document}
+            idCerere={cerere.id}
+            citireModel={citireModel}
+          />
         ))
       ) : (
         <section className="rounded-card border border-dashed border-line bg-surface p-5 text-center">
@@ -80,7 +106,7 @@ export default async function DosarCreditPage({
         </section>
       )}
 
-      {deDecis ? (
+      {inLucru ? (
         <DeciziaCererii
           idCerere={cerere.id}
           nume={cerere.nume}
@@ -89,8 +115,8 @@ export default async function DosarCreditPage({
         />
       ) : (
         <Banda ton="info">
-          Dosarul e în starea „{ETICHETE_STATUS[cerere.status]}”. Doar cererile care așteaptă
-          decizie pot fi aprobate sau respinse de aici.
+          Dosarul e în starea „{ETICHETE_STATUS[cerere.status]}”. Doar cererile aflate în lucru
+          pot fi decise de aici.
         </Banda>
       )}
     </div>

@@ -61,12 +61,22 @@ class _Urma(_Interogare):
 
 
 class _ClientFals:
-    def __init__(self, rol: str = "administrator", tranzactii: list[dict] | None = None) -> None:
+    def __init__(self, rol: str = "admin", tranzactii: list[dict] | None = None) -> None:
         self._rol = rol
         self._tranzactii = tranzactii or []
         self.inserari: list[dict] = []
 
     def table(self, nume: str):
+        # Rolul se citeste din user_roles, nu din profiles (docs/AGENTS.md).
+        # `eq()` e un no-op in lantul fals de mai sus, deci filtrarea dupa rol
+        # se face aici: un rand doar cand contul chiar e administrator.
+        if nume == "user_roles":
+            randuri = (
+                [{"user_id": str(ADMIN.user_id), "role": self._rol}]
+                if self._rol == "admin"
+                else []
+            )
+            return _Interogare(randuri)
         if nume == "profiles":
             return _Interogare(
                 [

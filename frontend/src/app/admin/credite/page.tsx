@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Sparkles } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
 import { ListaCereriCredit } from "@/components/admin/lista-cereri-credit";
 import { cereAdmin } from "@/lib/admin";
@@ -12,6 +12,7 @@ const STATUSURI_PERMISE: StatusCerere[] = [
   "in_analiza",
   "oferta",
   "analiza_manuala",
+  "asteapta_documente",
   "respinsa",
   "acceptata",
   "anulata",
@@ -65,13 +66,22 @@ export default async function CrediteAdminPage({
             celorlalte.
           </p>
         </div>
-        <Link
-          href="/admin/credite/acordate"
-          className="inline-flex items-center gap-1.5 rounded-field px-3 py-2 text-[13px] font-semibold text-primary-600 transition-colors hover:bg-primary-50"
-        >
-          Credite acordate
-          <ChevronRight size={16} strokeWidth={2} aria-hidden />
-        </Link>
+        <div className="flex items-center gap-1">
+          <Link
+            href="/admin/credite/ai"
+            className="inline-flex items-center gap-1.5 rounded-field px-3 py-2 text-[13px] font-semibold text-primary-600 transition-colors hover:bg-primary-50"
+          >
+            <Sparkles size={15} strokeWidth={1.75} aria-hidden />
+            Pipeline AI
+          </Link>
+          <Link
+            href="/admin/credite/acordate"
+            className="inline-flex items-center gap-1.5 rounded-field px-3 py-2 text-[13px] font-semibold text-primary-600 transition-colors hover:bg-primary-50"
+          >
+            Credite acordate
+            <ChevronRight size={16} strokeWidth={2} aria-hidden />
+          </Link>
+        </div>
       </div>
 
       {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}

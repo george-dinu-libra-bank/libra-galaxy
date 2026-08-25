@@ -10,13 +10,15 @@ export type UtilizatorAdmin = {
 /**
  * Utilizatorul curent, daca e administrator. Altfel null.
  *
- * Se ruleaza numai pe server. Rolul se citeste din `profiles.rol` la fiecare
- * cerere, nu din token: un rol pus in JWT ar ramane valabil pana expira
- * tokenul, inclusiv dupa ce i-a fost luat cuiva dreptul.
+ * Se ruleaza numai pe server. Rolul se citeste din `public.user_roles` la
+ * fiecare cerere, nu din token: un rol pus in JWT ar ramane valabil pana
+ * expira tokenul, inclusiv dupa ce i-a fost luat cuiva dreptul.
  *
- * Interogarea merge cu sesiunea utilizatorului, deci politicile din 0008 sunt
- * cele care decid ce vede — iar aceeasi verificare exista si in backend, pe
- * fiecare ruta. Garda de aici tine ecranul ascuns; bariera reala e acolo.
+ * Interogarea merge cu sesiunea utilizatorului, deci politica RLS de pe
+ * `user_roles` (0000: fiecare isi vede doar propriul rand) e cea care decide
+ * ce vede — iar aceeasi verificare exista si in backend
+ * (`cere_administrator`), pe fiecare ruta. Garda de aici tine ecranul ascuns;
+ * bariera reala e acolo.
  */
 export async function checkAdmin(): Promise<UtilizatorAdmin | null> {
   const supabase = await createClient();

@@ -2,12 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Clock, FileSearch, PenLine } from "lucide-react";
+import { CheckCircle2, Clock, FileSearch, FileUp, PenLine } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
+import { DiscutieDrawer } from "@/components/credite/discutie-drawer";
+import { IncarcaAdeverinta } from "@/components/credite/incarca-adeverinta";
 import { acceptaOferta } from "@/lib/actions/credite";
 import type { ContBancar } from "@/lib/data/conturi";
-import type { CerereCredit } from "@/lib/data/credite";
+import type { CerereCredit, MesajCerere } from "@/lib/data/credite";
 import { formateazaSuma } from "@/lib/utils";
 
 /**
@@ -25,30 +27,135 @@ import { formateazaSuma } from "@/lib/utils";
 export function CereriInCurs({
   cereri,
   conturi,
+  mesaje = {},
+  discutieDeschisa = null,
 }: {
   cereri: CerereCredit[];
   conturi: ContBancar[];
+  /** Firul fiecarei cereri in curs, dupa id. Adus doar pentru ele — de obicei
+   * zero sau una, deci fara N+1. */
+  mesaje?: Record<string, MesajCerere[]>;
+  /** Id-ul cererii al carei fir trebuie deschis din start (vine din notificare). */
+  discutieDeschisa?: string | null;
 }) {
   const oferte = cereri.filter((cerere) => cerere.status === "oferta");
   const inAnaliza = cereri.filter(
-    (cerere) => cerere.status === "analiza_manuala" || cerere.status === "in_analiza",
+    (cerere) =>
+      cerere.status === "analiza_manuala" ||
+      cerere.status === "in_analiza" ||
+      cerere.status === "asteapta_documente",
   );
 
-  if (oferte.length === 0 && inAnaliza.length === 0) return null;
+  // Starile inchise nu se randau nicaieri: o cerere respinsa, expirata sau
+  // retrasa disparea pur si simplu, iar clientul vedea ecranul de intrare
+  // („n-ai niciun credit"), ca si cum n-ar fi depus nimic. Aici e si singurul
+  // loc din care mai poate citi motivul si firul dosarului.
+  const incheiate = cereri.filter((cerere) =>
+    ["respinsa", "expirata", "anulata"].includes(cerere.status),
+  );
+
+  if (oferte.length === 0 && inAnaliza.length === 0 && incheiate.length === 0) return null;
 
   return (
     <div className="mt-6 space-y-3">
       {oferte.map((cerere) => (
-        <Oferta key={cerere.id} cerere={cerere} conturi={conturi} />
+        <Oferta
+          key={cerere.id}
+          cerere={cerere}
+          conturi={conturi}
+          mesaje={mesaje[cerere.id] ?? []}
+          discutieDeschisa={discutieDeschisa === cerere.id}
+        />
       ))}
       {inAnaliza.map((cerere) => (
-        <InAnaliza key={cerere.id} cerere={cerere} />
+        <InAnaliza
+          key={cerere.id}
+          cerere={cerere}
+          mesaje={mesaje[cerere.id] ?? []}
+          discutieDeschisa={discutieDeschisa === cerere.id}
+        />
       ))}
+
+      {incheiate.length > 0 ? (
+        <section className="pt-3">
+          <h2 className="text-[13px] font-semibold text-ink-faint">Cereri anterioare</h2>
+          <div className="mt-2 space-y-2">
+            {incheiate.map((cerere) => (
+              <Incheiata
+                key={cerere.id}
+                cerere={cerere}
+                mesaje={mesaje[cerere.id] ?? []}
+                discutieDeschisa={discutieDeschisa === cerere.id}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
 
-function Oferta({ cerere, conturi }: { cerere: CerereCredit; conturi: ContBancar[] }) {
+const TEXT_INCHEIERE: Record<string, { eticheta: string; clasa: string }> = {
+  respinsa: { eticheta: "Respinsă", clasa: "bg-danger/10 text-danger" },
+  expirata: { eticheta: "Ofertă expirată", clasa: "bg-muted text-ink-soft" },
+  anulata: { eticheta: "Retrasă de tine", clasa: "bg-muted text-ink-soft" },
+};
+
+/** Un dosar inchis. Se citeste, nu se mai continua — dar motivul si firul raman. */
+function Incheiata({
+  cerere,
+  mesaje,
+  discutieDeschisa,
+}: {
+  cerere: CerereCredit;
+  mesaje: MesajCerere[];
+  discutieDeschisa: boolean;
+}) {
+  const eticheta = TEXT_INCHEIERE[cerere.status] ?? TEXT_INCHEIERE.anulata;
+
+  return (
+    <section className="rounded-card border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${eticheta.clasa}`}>
+          {eticheta.eticheta}
+        </span>
+        <span className="tabular text-[13px] text-ink-soft">
+          {formateazaSuma(cerere.sumaCeruta)} · {cerere.luni} luni
+        </span>
+      </div>
+
+      {cerere.explicatie ? (
+        <p className="mt-2 whitespace-pre-line text-[13px] leading-[19px] text-ink-soft">
+          {cerere.explicatie}
+        </p>
+      ) : null}
+
+      {/* Firul ramane accesibil si dupa inchidere: acolo sta motivul scris de
+          analist, iar bulina de necitit n-are cum sa se stinga daca omul n-are
+          unde deschide firul. */}
+      <div className="mt-3">
+        <DiscutieDrawer
+          idCerere={cerere.id}
+          mesaje={mesaje}
+          necitite={cerere.mesajeNecitite}
+          deschisInitial={discutieDeschisa}
+        />
+      </div>
+    </section>
+  );
+}
+
+function Oferta({
+  cerere,
+  conturi,
+  mesaje,
+  discutieDeschisa,
+}: {
+  cerere: CerereCredit;
+  conturi: ContBancar[];
+  mesaje: MesajCerere[];
+  discutieDeschisa: boolean;
+}) {
   const router = useRouter();
   const [idCont, setIdCont] = useState(conturi[0]?.id ?? "");
   const [eroare, setEroare] = useState<string | null>(null);
@@ -161,17 +268,54 @@ function Oferta({ cerere, conturi }: { cerere: CerereCredit; conturi: ContBancar
           </Button>
         </>
       ) : null}
+
+      {/* Firul si aici, nu doar in analiza: odata emisa oferta, clientul nu mai
+          avea unde citi ce i-a scris banca, iar „Deschide discutia" din
+          notificare nu deschidea nimic. */}
+      <div className="mt-4">
+        <DiscutieDrawer
+          idCerere={cerere.id}
+          mesaje={mesaje}
+          necitite={cerere.mesajeNecitite}
+          deschisInitial={discutieDeschisa}
+        />
+      </div>
     </section>
   );
 }
 
-function InAnaliza({ cerere }: { cerere: CerereCredit }) {
+/**
+ * Un dosar care nu s-a terminat încă.
+ *
+ * Trei stări, cu trei mesaje diferite, fiindcă cer trei lucruri diferite de la
+ * client: „se verifică" (nu face nimic), „un coleg se uită" (așteaptă), și
+ * „așteaptă acte" (trebuie să acționeze). Un text unic pentru toate l-ar lăsa
+ * pe ultimul să creadă că nu are nimic de făcut.
+ *
+ * Încărcarea se oferă în ambele stări de analiză, nu doar când actele sunt
+ * cerute explicit: motorul poate cere singur o adeverință atunci când nu vede
+ * niciun venit confirmat, iar până acum clientul n-avea unde s-o pună — 
+ * `IncarcaAdeverinta` exista doar în wizard, deci se pierdea la ieșirea din el.
+ */
+function InAnaliza({
+  cerere,
+  mesaje,
+  discutieDeschisa,
+}: {
+  cerere: CerereCredit;
+  mesaje: MesajCerere[];
+  discutieDeschisa: boolean;
+}) {
+  const asteaptaActe = cerere.status === "asteapta_documente";
   const manuala = cerere.status === "analiza_manuala";
+  const poateIncarca = asteaptaActe || manuala;
 
   return (
     <section className="rounded-card bg-surface p-5 shadow-sm">
       <div className="flex items-start gap-3">
-        {manuala ? (
+        {asteaptaActe ? (
+          <FileUp size={20} strokeWidth={1.75} aria-hidden className="mt-0.5 text-warning" />
+        ) : manuala ? (
           <FileSearch size={20} strokeWidth={1.75} aria-hidden className="mt-0.5 text-warning" />
         ) : (
           <Clock size={20} strokeWidth={1.75} aria-hidden className="mt-0.5 text-ink-faint" />
@@ -181,12 +325,30 @@ function InAnaliza({ cerere }: { cerere: CerereCredit }) {
             Cerere de {formateazaSuma(cerere.sumaCeruta)} · {cerere.luni} luni
           </p>
           <p className="mt-1 text-[13px] leading-[19px] text-ink-soft">
-            {manuala
-              ? "Un coleg se uită peste dosar. Primești răspunsul în cel mult două zile lucrătoare."
-              : "Se verifică."}
+            {asteaptaActe
+              ? "Mai avem nevoie de un document ca să mergem mai departe."
+              : manuala
+                ? "Un coleg se uită peste dosar. Primești răspunsul în cel mult două zile lucrătoare."
+                : "Se verifică."}
           </p>
+
         </div>
       </div>
+
+      <div className="mt-4">
+        <DiscutieDrawer
+          idCerere={cerere.id}
+          mesaje={mesaje}
+          necitite={cerere.mesajeNecitite}
+          deschisInitial={discutieDeschisa}
+        />
+      </div>
+
+      {poateIncarca ? (
+        <div className="mt-4 border-t border-line pt-4">
+          <IncarcaAdeverinta idCerere={cerere.id} incastrat />
+        </div>
+      ) : null}
     </section>
   );
 }

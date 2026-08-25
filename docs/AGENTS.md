@@ -170,6 +170,44 @@ ce NU poate afla, si tinde sa ceara clarificari in loc sa foloseasca valorile im
 tool-urilor. Daca schimbi modelul, reciteste instructiunile din `orchestrator.py` si
 `financiar.py` — sunt scrise impotriva acestor doua obiceiuri.
 
+## Pipeline AI de credite (`app/credit/ai/`)
+
+Separat de layer-ul de agenti de mai sus — nu ruleaza in `orchestrator.py` si nu vorbeste cu
+utilizatorul. E un pipeline in patru etape care ruleaza **pe langa** motorul determinist de
+scoring din `app/credit/` (reguli.py, scorecard.py), niciodata in locul lui.
+
+**Principiul care nu se incalca: strict consultativ.** Nicio etapa nu scrie in
+`credit_cereri.status/scor/dti/venit_folosit` si nu insereaza in `credit_verificari_venit` —
+scorul ramane reproductibil, ca inainte. Rezultatele merg in trei tabele proprii
+(`credit_ai_rulari`, `credit_ai_etape`, `credit_ai_semnale`, migratia 0018), citite doar de
+zona de administrare.
+
+| Etapa | Model? | Ce face |
+|---|---|---|
+| `documente` | da | citeste adeverinta cu un model, in paralel cu regex-ul din `adeverinta.py`; cand difera, diferenta e ea insasi un semnal |
+| `coerenta` | **nu** | pur, determinist, testat ca `reguli.py` — coroboreaza declarat/tranzactii/document/istoricul de documente; document reutilizat intre cereri, venit umflat, angajator nepotrivit, incasari "pregatitoare" chiar inainte de cerere |
+| `brief` | da | sinteza pentru analistul din zona gri (status `analiza_manuala`): riscuri, atenuari, intrebari de pus, o recomandare cu incredere — niciodata o decizie |
+| `explicatie` | da | rescrie `explicatie_determinista` mai cald pentru client, fara sa adauge fapte; singura care ruleaza **sincron**, in `credit_service.evalueaza()` (hook `explica=`), nu prin `CreditAiPipeline` |
+
+Etapele 1-3 sunt orchestrate de `CreditAiPipeline.ruleaza()` (`app/credit/ai/pipeline.py`),
+declansat ca task de fundal (`BackgroundTasks`) dupa `evalueaza`/`incarca_document`/
+`confirma_document`, plus catch-up lazy la deschiderea dosarului — niciodata pe drumul critic
+al unui raspuns. O rulare reusita se refoloseste cat timp datele de intrare nu s-au schimbat
+(`intrare_hash`, sha256); butonul "Ruleaza din nou" din dashboard sare peste refolosire.
+
+O etapa care esueaza (Foundry cazut, JSON invalid) se marcheaza `esuat` si pipeline-ul
+continua cu urmatoarea — niciodata nu darama fluxul de credit. `coerenta` n-are nevoie de
+model, deci tot produce semnale chiar si atunci.
+
+Verificat live (2026-08-24): deployment-ul `gpt-5-mini` din Foundry accepta
+`response_format={"type": "json_schema", "strict": true}` (`StructuredChatProvider.complete_json`,
+`providers/foundry.py`) — folosit doar de etapele `documente` si `brief`; `explicatie` ramane pe
+`ChatProvider.complete()` obisnuit, fiindca produce text, nu campuri.
+
+Vizibil in dashboard: panoul din `/admin/credite/{id}` (semnale, ce a citit modelul, brief),
+badge-uri in lista de cereri, si `/admin/credite/ai` (rulari/esecuri pe etapa, cost estimat,
+rata de acord AI vs. decizia finala a omului — view-ul SQL `credit_ai_acord`).
+
 ## Ce urmeaza
 
 - **Agent Actiuni** cere intai `TransferService`, cu validare de sold si limite, idempotenta,

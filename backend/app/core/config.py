@@ -128,6 +128,14 @@ class Settings(BaseSettings):
     # Cate tranzactii se citesc cel mult pentru o analiza (AnalizaService).
     analiza_limita_randuri: int = Field(default=1000, alias="ANALIZA_LIMITA_RANDURI")
 
+    # Pipeline-ul AI de credite (app/credit/ai/) — strict consultativ, vezi
+    # docs/AGENTS.md. Kill switch: daca e dezactivat, rutele de creditare merg
+    # exact ca inainte, fara nicio rulare de fundal si fara explicatie prin model.
+    credit_ai_enabled: bool = Field(default=True, alias="LIBRA_CREDIT_AI_ENABLED")
+    # Plafon pe cate semnale se scriu per rulare — o coeruptie neasteptata a
+    # tranzactiilor n-are voie sa genereze mii de randuri in credit_ai_semnale.
+    credit_ai_max_semnale: int = Field(default=20, alias="LIBRA_CREDIT_AI_MAX_SEMNALE")
+
     @property
     def agenti_activi(self) -> bool:
         if not self.azure_ai_endpoint:

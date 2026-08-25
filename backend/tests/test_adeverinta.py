@@ -47,6 +47,50 @@ def test_gaseste_angajatorul_si_vechimea() -> None:
     assert date.vechime_luni == 36
 
 
+# Adeverinta pe formular tipizat, cu tabele — cazul care a scos la iveala bug-ul.
+# OCR-ul lipeste celulele unui rand de tabel, iar antetul contine cuvantul
+# "Angajator" intr-un numar de inregistrare, inaintea denumirii reale.
+ADEVERINTA_CU_TABEL = """
+MODEL ADEVERINTA DE VENIT
+Nr. Inregistrare Angajator: 1042 / 15.01.2026    Cod Validare OCR: OCR-TEST-2026-LIB-8891
+Data eliberarii: 15 Ianuarie 2026    Tip Document: Formular Standard Venit
+1. Date de identificare Angajator
+Camp Date OCR    Valoare Text
+Denumire Societate    SC TECH SOLUTIONS DEVELOPMENT SRL
+Cod Unic de Inregistrare (CUI)    RO 39482105
+Nr. Reg. Comertului    J40/12345/2018
+
+Salariul net lunar: 15.000,00 lei
+"""
+
+
+def test_numarul_de_inregistrare_nu_e_luat_drept_angajator() -> None:
+    """Randul "Nr. Inregistrare Angajator: 1042 / ..." contine si el eticheta,
+    si vine inaintea denumirii reale. Prima potrivire lua numarul."""
+    date = citeste_adeverinta(ADEVERINTA_CU_TABEL)
+
+    assert date.angajator == "SC TECH SOLUTIONS DEVELOPMENT SRL"
+    assert date.venit_net == Decimal("15000.00")
+
+
+def test_numele_se_taie_la_urmatoarea_eticheta_din_tabel() -> None:
+    """Celulele lipite pe acelasi rand nu trebuie sa intre in nume."""
+    date = citeste_adeverinta("Denumire Societate  ACME SOFTWARE SRL  Cod Unic RO 123456")
+
+    assert date.angajator == "ACME SOFTWARE SRL"
+
+
+def test_fara_denumire_nu_se_inventeaza_un_angajator() -> None:
+    """Doar numarul de inregistrare pe document: un camp gol e mai onest decat
+    unul plin cu o data si un cod."""
+    date = citeste_adeverinta(
+        "Nr. Inregistrare Angajator: 1042 / 15.01.2026\nSalariul net lunar: 4.850,00 lei"
+    )
+
+    assert date.angajator is None
+    assert date.venit_net == Decimal("4850.00")
+
+
 def test_fara_eticheta_nu_ghiceste() -> None:
     """Un document din care nu se citeste eticheta nu produce o cifra.
 

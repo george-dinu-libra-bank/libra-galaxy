@@ -65,6 +65,8 @@ class DepozitFals:
         self.verificari_scrise: list[dict] = []
         self.evenimente: list[dict] = []
         self.documente_scrise: dict[str, dict] = {}
+        self.mesaje_scrise: list[dict] = []
+        self.notificari_scrise: list[dict] = []
         # Storage-ul, ca dictionar: cale -> continut. Curatarea trebuie sa poata
         # fi verificata, iar asta inseamna sa se vada ca fisierul chiar a disparut.
         self.fisiere: dict[str, bytes] = {}
@@ -173,6 +175,41 @@ class DepozitFals:
             for v in self.verificari_scrise
             if v["id_cerere"] == str(id_cerere)
         ]
+
+    async def marcheaza_mesaje_citite(self, id_cerere) -> None:
+        from datetime import datetime as _dt
+
+        for mesaj in self.mesaje_scrise:
+            if mesaj["id_cerere"] == str(id_cerere) and mesaj["autor"] != "client":
+                mesaj.setdefault("citit_de_client_la", None)
+                if mesaj["citit_de_client_la"] is None:
+                    mesaj["citit_de_client_la"] = _dt.now(timezone.utc).isoformat()
+
+    async def numara_necitite(self, id_cereri) -> dict[str, int]:
+        contor: dict[str, int] = {}
+        cerute = {str(i) for i in id_cereri}
+        for mesaj in self.mesaje_scrise:
+            if mesaj["id_cerere"] not in cerute or mesaj["autor"] == "client":
+                continue
+            if mesaj.get("citit_de_client_la") is None:
+                contor[mesaj["id_cerere"]] = contor.get(mesaj["id_cerere"], 0) + 1
+        return contor
+
+    async def notifica(self, id_utilizator, titlu: str, mesaj: str, tip: str) -> None:
+        self.notificari_scrise.append(
+            {"id_utilizator": str(id_utilizator), "titlu": titlu, "mesaj": mesaj, "tip": tip}
+        )
+
+    async def mesaje(self, id_cerere) -> list[dict]:
+        return [m for m in self.mesaje_scrise if m["id_cerere"] == str(id_cerere)]
+
+    async def adauga_mesaj(self, campuri: dict[str, Any]) -> dict:
+        rand = {
+            "id": str(uuid.uuid4()), "creat_la": datetime.now(timezone.utc).isoformat(),
+            "id_autor": None, "id_document": None, "citit_de_client_la": None, **campuri,
+        }
+        self.mesaje_scrise.append(rand)
+        return rand
 
     async def salveaza_document(self, campuri: dict[str, Any]) -> dict:
         rand = {

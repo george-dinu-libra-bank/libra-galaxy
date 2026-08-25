@@ -28,6 +28,8 @@ from app.agents.engagement import EngagementAgent
 from app.agents.financial_advisor import FinancialAdvisorAgent
 from app.agents.transaction_intelligence import TransactionIntelligenceAgent
 from app.attachments.service import AttachmentService
+from app.credit.ai.etape.explicatie import fabrica_explica
+from app.credit.ai.pipeline import CreditAiPipeline
 from app.services.credit_service import CreditService
 from app.core.config import Settings, get_settings
 from app.infrastructure.attachment_storage import AttachmentStorage
@@ -43,6 +45,7 @@ from app.rag.retrieval import RetrievalService
 from app.repositories.attachment_repository import AttachmentRepository
 from app.repositories.banking_read_repository import BankingReadRepository
 from app.repositories.conversation_repository import ConversationRepository
+from app.repositories.credit_ai_repository import CreditAiRepository
 from app.repositories.credit_repository import CreditRepository
 from app.repositories.embedding_cache_repository import EmbeddingCacheRepository
 from app.repositories.knowledge_repository import KnowledgeRepository
@@ -58,6 +61,20 @@ from app.tools.scenario_tools import SCENARIO_TOOL
 
 
 @lru_cache
+def get_retrieval_service() -> RetrievalService:
+    """RAG peste galaxy-bank-knowledge, partajat intre orchestratorul asistentului
+    si etapa 'brief' a pipeline-ului AI de credite (app/credit/ai/etape/brief.py)
+    — o singura implementare (REGULI.md #2), nu doua cautari separate peste
+    aceleasi chunk-uri indexate."""
+    settings = get_settings()
+    client = get_service_client()
+    embedding_provider = MicrosoftFoundryEmbeddingProvider(settings)
+    knowledge = KnowledgeRepository(client)
+    embedding_cache = EmbeddingCacheRepository(client)
+    return RetrievalService(embedding_provider, knowledge, embedding_cache, settings.embedding_key)
+
+
+@lru_cache
 def get_orchestrator() -> Orchestrator:
     settings = get_settings()
     client = get_service_client()
@@ -68,16 +85,13 @@ def get_orchestrator() -> Orchestrator:
     memories = MemoryRepository(client)
     telemetry = TelemetryRepository(client)
     banking = BankingReadRepository(client)
-    knowledge = KnowledgeRepository(client)
-    embedding_cache = EmbeddingCacheRepository(client)
     attachments = AttachmentRepository(client)
     attachment_storage = AttachmentStorage(client, settings.attachments_bucket)
     export_storage = ExportStorage(client, settings.export_bucket)
     export_service = TransactionExportService(banking, export_storage, settings.export_signed_url_seconds)
 
     chat_provider = MicrosoftFoundryChatProvider(settings)
-    embedding_provider = MicrosoftFoundryEmbeddingProvider(settings)
-    retrieval_service = RetrievalService(embedding_provider, knowledge, embedding_cache, settings.embedding_key)
+    retrieval_service = get_retrieval_service()
 
     tools = ToolRegistry([*build_banking_tools(banking), SCENARIO_TOOL, *build_knowledge_tools(retrieval_service)])
 
@@ -107,10 +121,60 @@ def get_credit_service() -> CreditService:
     'authenticated', iar RPC-urile de operatiuni sunt revocate pentru orice alt rol.
     Detectorul de neregularitati e cel cu model de pe disc — acelasi artefact pe
     care il foloseste analiza de alerte, refolosit ca factor de scoring.
+
+    `explica=` e etapa 4 a pipeline-ului AI (app/credit/ai/etape/explicatie.py):
+    rescrie textul determinist mai cald, cand Foundry e configurat si
+    `LIBRA_CREDIT_AI_ENABLED` nu e dezactivat explicit. Fara asta, serviciul ramane
+    pe deplin functional — `explica=None` e valoarea implicita din constructor.
     """
+    settings = get_settings()
+    explica = None
+    if settings.credit_ai_enabled and settings.foundry_configured:
+        explica = fabrica_explica(
+            MicrosoftFoundryChatProvider(settings),
+            telemetry=TelemetryRepository(get_service_client()),
+            environment=settings.environment,
+            price_per_million_in=settings.chat_price_per_million_input,
+            price_per_million_out=settings.chat_price_per_million_output,
+        )
     return CreditService(
         CreditRepository(get_service_client()),
         DetectorNeregularitati.cu_model_de_pe_disc(),
+        explica=explica,
+    )
+
+
+@lru_cache
+def get_credit_ai_repository() -> CreditAiRepository:
+    return CreditAiRepository(get_service_client())
+
+
+@lru_cache
+def get_credit_ai_pipeline() -> CreditAiPipeline:
+    """Etapele 1-3 (documente, coerenta, brief) — vezi app/credit/ai/pipeline.py.
+
+    `structured_provider`/`retrieval_service` raman None cand Foundry nu e
+    configurat sau pipeline-ul e dezactivat: 'coerenta' tot ruleaza (nu are
+    nevoie de model), 'documente'/'brief' se marcheaza 'sarit', niciodata nu
+    darama fluxul de credit (ARCHITECTURE.md #10).
+    """
+    settings = get_settings()
+    structured_provider = (
+        MicrosoftFoundryChatProvider(settings)
+        if settings.credit_ai_enabled and settings.foundry_configured
+        else None
+    )
+    retrieval_service = get_retrieval_service() if structured_provider is not None else None
+
+    return CreditAiPipeline(
+        credit_service=get_credit_service(),
+        repository=get_credit_ai_repository(),
+        structured_provider=structured_provider,
+        retrieval_service=retrieval_service,
+        environment=settings.environment,
+        price_per_million_in=settings.chat_price_per_million_input,
+        price_per_million_out=settings.chat_price_per_million_output,
+        max_semnale=settings.credit_ai_max_semnale,
     )
 
 
@@ -147,6 +211,13 @@ def get_voice_provider() -> MicrosoftVoiceProvider:
     """Nu e cache-uit: constructorul verifica speech_configured la fiecare apel, ca o
     lipsa de configurare sa produca AI_PROVIDER_UNAVAILABLE curat, nu o eroare la pornire."""
     return MicrosoftVoiceProvider(get_settings())
+
+
+# Valoarea din `public.user_roles.role`, asa cum e ea in baza reala — 'admin',
+# nu 'administrator'. Constanta, nu literal repetat, ca sa nu mai divergheze
+# intre backend, frontend si politicile din baza (vezi `este_administrator()`,
+# care inca verifica 'administrator' si de aceea nu poate fi folosita ca atare).
+ROL_ADMINISTRATOR = "admin"
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,35 +273,45 @@ async def cere_administrator(
 ) -> UserContext:
     """Lasa sa treaca numai administratorii.
 
-    Verificarea intreaba baza de date, nu tokenul: rolul sta in profiles si e
-    inghetat de trigger, deci nu poate fi ridicat din aplicatie. Un rol pus in
-    JWT ar fi mai ieftin de citit, dar ar ramane valabil pana expira tokenul,
-    inclusiv dupa ce i-a fost luat cuiva dreptul.
+    Verificarea intreaba baza de date, nu tokenul: un rol pus in JWT ar fi mai
+    ieftin de citit, dar ar ramane valabil pana expira tokenul, inclusiv dupa ce
+    i-a fost luat cuiva dreptul.
 
-    Chiar daca cineva ar ocoli verificarea de aici, RLS ramane bariera reala:
-    politicile de la 0008 cer public.este_administrator() in baza de date.
+    Rolul se citeste din `public.user_roles`, sursa de adevar documentata in
+    docs/AGENTS.md si singura pe care o intretine echipa. Varianta anterioara
+    citea `profiles.rol`, care exista in schema dar ramasese in urma: aceiasi
+    oameni aveau 'admin' in user_roles si 'client' in profiles, deci frontendul
+    ii lasa in ecranul de administrare, iar backendul le raspundea 403. In plus,
+    `profiles.rol` e inghetat de trigger-ul `profiles_protejeaza_campuri`, deci
+    nici nu putea fi adus la zi fara sa se atinga trigger-ul (REGULI.md #2: o
+    singura implementare per responsabilitate).
+
+    `limit(1)`, nu `maybe_single()`: tabela n-are index unic pe (user_id, role),
+    deci acelasi om poate aparea de doua ori. `maybe_single()` ar arunca exact
+    atunci si l-ar da afara pe un administrator adevarat — aceeasi capcana pe
+    care o evita si checkAdmin din frontend.
     """
 
-    def interogare() -> str | None:
+    def interogare() -> bool:
         raspuns = (
-            client.table("profiles")
-            .select("rol")
-            .eq("id", str(user.user_id))
-            .maybe_single()
+            client.table("user_roles")
+            .select("role")
+            .eq("user_id", str(user.user_id))
+            .eq("role", ROL_ADMINISTRATOR)
+            .limit(1)
             .execute()
         )
-        date = raspuns.data if raspuns else None
-        return date.get("rol") if date else None
+        return bool(raspuns.data) if raspuns else False
 
     try:
-        rol = await to_thread.run_sync(interogare)
+        este_admin = await to_thread.run_sync(interogare)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Nu am putut verifica drepturile contului.",
         ) from exc
 
-    if rol != "administrator":
+    if not este_admin:
         # Acelasi raspuns si cand contul nu exista, si cand exista dar e client:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
