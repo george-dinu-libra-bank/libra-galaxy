@@ -30,7 +30,7 @@ from app.schemas.admin import (
     AnalizaResponse,
     ContSemnalatResponse,
     IstoricAnalizaResponse,
-    StareCarduriResponse,
+    StareConturiResponse,
     StareContResponse,
     RaportResponse,
     StareModelResponse,
@@ -219,10 +219,10 @@ async def istoric_analize(
     administrator: UserContext = Depends(cere_administrator),
     client: Client = Depends(get_admin_supabase),
 ) -> StareContResponse:
-    """Ce s-a hotarat pana acum pe acest cont, si cum stau cardurile azi."""
+    """Ce s-a hotarat pana acum pe acest cont, si cum stau conturile azi."""
     depozit = AnalizaRepository(client)
     randuri = await _analiza(client).istoric(id_utilizator)
-    carduri = await depozit.carduri(id_utilizator)
+    conturi = await depozit.conturi(id_utilizator)
 
     analize = [
         IstoricAnalizaResponse(
@@ -231,15 +231,15 @@ async def istoric_analize(
             observatie=r.get("observatie"),
             gravitate=r.get("gravitate"),
             numar_semnalari=r.get("numar_semnalari"),
-            carduri_blocate=r.get("carduri_blocate") or 0,
+            conturi_blocate=r.get("conturi_blocate") or 0,
             creat_la=str(r["creat_la"]),
         )
         for r in randuri
     ]
 
     return StareContResponse(
-        carduri_total=len(carduri),
-        carduri_blocate=sum(1 for c in carduri if c["is_blocked"]),
+        conturi_total=len(conturi),
+        conturi_blocate=sum(1 for c in conturi if c["blocat_administrativ"]),
         analize=analize,
     )
 
@@ -275,31 +275,31 @@ async def scrie_analiza(
         administrator,
         "lista_alerte",
         id_utilizator=id_utilizator,
-        detalii=f"analiza decizie={cerere.decizie} carduri={rezultat.carduri_atinse}",
+        detalii=f"analiza decizie={cerere.decizie} conturi={rezultat.conturi_atinse}",
     )
 
     return AnalizaResponse(
         decizie=rezultat.decizie,
         observatie=rezultat.observatie,
-        carduri_atinse=rezultat.carduri_atinse,
+        conturi_atinse=rezultat.conturi_atinse,
         notificare_trimisa=rezultat.notificare_trimisa,
         creat_la=rezultat.creat_la,
     )
 
 
-@router.get("/stare-carduri", response_model=list[StareCarduriResponse])
-async def stare_carduri(
+@router.get("/stare-conturi", response_model=list[StareConturiResponse])
+async def stare_conturi(
     administrator: UserContext = Depends(cere_administrator),
     client: Client = Depends(get_admin_supabase),
-) -> list[StareCarduriResponse]:
-    """Starea cardurilor tuturor conturilor, pentru lista completa.
+) -> list[StareConturiResponse]:
+    """Starea conturilor tuturor clientilor, pentru lista completa.
 
     Ruta proprie, nu un camp adaugat la lista de conturi din
     api/identity/admin/conturi: aceea raspunde la alta intrebare si apartine
     fluxului de verificare a identitatii.
     """
-    pe_om = await AnalizaRepository(client).stare_carduri_toti()
+    pe_om = await AnalizaRepository(client).stare_conturi_toti()
     return [
-        StareCarduriResponse(id_utilizator=uid, total=s["total"], blocate=s["blocate"])
+        StareConturiResponse(id_utilizator=uid, total=s["total"], blocate=s["blocate"])
         for uid, s in pe_om.items()
     ]

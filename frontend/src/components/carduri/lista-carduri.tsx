@@ -13,10 +13,17 @@ import {
   type DateSensibileCard,
 } from "@/lib/actions/carduri";
 import type { CardAfisat } from "@/lib/data/carduri";
+import type { ContBancar } from "@/lib/data/conturi";
 import { ETICHETE_STIL_CARD, GRADIENTE_STIL_CARD } from "@/lib/stil-card";
 import { cn, formateazaSuma } from "@/lib/utils";
 
-export function ListaCarduri({ carduri }: { carduri: CardAfisat[] }) {
+export function ListaCarduri({
+  carduri,
+  conturi,
+}: {
+  carduri: CardAfisat[];
+  conturi: ContBancar[];
+}) {
   const router = useRouter();
   const [selectatId, setSelectatId] = useState<string | null>(null);
   const [seActualizeaza, startTransition] = useTransition();
@@ -35,9 +42,11 @@ export function ListaCarduri({ carduri }: { carduri: CardAfisat[] }) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Carduri</h1>
-          <p className="mt-1 text-[15px] text-ink-soft">Cardurile asociate contului tău Galaxy Bank.</p>
+          <p className="mt-1 text-[15px] text-ink-soft">
+            Fiecare card plătește din contul lui.
+          </p>
         </div>
-        {carduri.length > 0 ? <AdaugaCardDrawer compact /> : null}
+        {carduri.length > 0 ? <AdaugaCardDrawer compact conturi={conturi} /> : null}
       </div>
 
       {carduri.length === 0 ? (
@@ -45,7 +54,7 @@ export function ListaCarduri({ carduri }: { carduri: CardAfisat[] }) {
           <p className="text-[15px] leading-[22px] text-ink-soft">
             Nu ai niciun card încă. Adaugă unul ca să poți trimite și primi bani.
           </p>
-          <AdaugaCardDrawer />
+          <AdaugaCardDrawer conturi={conturi} />
         </section>
       ) : (
         <div className="mt-6 flex flex-col gap-4">
@@ -61,7 +70,9 @@ export function ListaCarduri({ carduri }: { carduri: CardAfisat[] }) {
               }}
             >
               <div className="flex items-start justify-between">
-                <span className="text-[13px] text-white/80">Card {ETICHETE_STIL_CARD[card.stil]}</span>
+                <span className="text-[13px] text-white/80">
+                  {card.tip === "virtual" ? "Card virtual" : `Card ${ETICHETE_STIL_CARD[card.stil]}`}
+                </span>
                 {card.blocat ? (
                   <span className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-medium text-white">
                     <Lock size={12} strokeWidth={1.75} aria-hidden />
@@ -73,9 +84,13 @@ export function ListaCarduri({ carduri }: { carduri: CardAfisat[] }) {
               <p className="tabular mt-6 text-[19px] tracking-[0.08em]">{card.numarMascat}</p>
 
               <div className="mt-4 flex items-end justify-between">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide text-white/70">Sold</p>
-                  <p className="tabular text-[13px]">{formateazaSuma(card.soldCurent)}</p>
+                <div className="min-w-0">
+                  <p className="truncate text-[10px] uppercase tracking-wide text-white/70">
+                    {card.numeCont ?? "Fără cont"}
+                  </p>
+                  <p className="tabular text-[13px]">
+                    {formateazaSuma(card.sold, card.valuta)}
+                  </p>
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] uppercase tracking-wide text-white/70">Expira</p>
@@ -153,7 +168,18 @@ function DetaliuCard({ card }: { card: CardAfisat }) {
       />
       <Rand eticheta="CCV" valoare={dateSensibile?.ccv ?? "•••"} mono />
       <Rand eticheta="Expira" valoare={card.dataExpirare} mono />
-      <Rand eticheta="Sold" valoare={formateazaSuma(card.soldCurent)} mono />
+      <Rand eticheta="Tip" valoare={card.tip === "virtual" ? "Virtual" : "Fizic"} />
+      <Rand eticheta="Cont" valoare={card.numeCont ?? "—"} />
+      <Rand eticheta="Sold cont" valoare={formateazaSuma(card.sold, card.valuta)} mono />
+      <Rand
+        eticheta="Limita zilnica"
+        valoare={
+          card.limitaZilnica === null
+            ? "Fără limită"
+            : formateazaSuma(card.limitaZilnica, card.valuta)
+        }
+        mono
+      />
       <Rand eticheta="Stare" valoare={card.blocat ? "Blocat" : "Activ"} />
 
       <Button

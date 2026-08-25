@@ -10,16 +10,16 @@ import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { decideCont } from "@/lib/actions/admin-analiza";
 
 /**
- * Blocarea si deblocarea cardurilor, dintr-un rand din lista de conturi.
+ * Blocarea si deblocarea conturilor, dintr-un rand din lista de conturi.
  *
  * Acelasi drum ca in raportul unui cont: aceeasi actiune de server, aceeasi
  * confirmare, aceeasi observatie obligatorie, si intra in acelasi istoric. Un
  * administrator nu trebuie sa aiba doua feluri de a bloca pe cineva, cu doua
  * urme diferite in urma lor.
  *
- * Blocarea opreste platile cu cardul, nu si transferurile pe IBAN — scris in
- * confirmare, ca sa nu ramana cineva cu impresia ca a inchis o usa care e
- * deschisa.
+ * Blocarea opreste tot ce pleaca din conturile omului: si platile cu cardul, si
+ * transferurile. Bariera e in baza de date (0030), deci tine si daca cineva
+ * ocoleste aplicatia.
  */
 export function BlocareCont({
   idUtilizator,
@@ -63,7 +63,7 @@ export function BlocareCont({
   }
 
   if (total === 0) {
-    return <span className="shrink-0 text-[12px] text-ink-faint">Fără carduri</span>;
+    return <span className="shrink-0 text-[12px] text-ink-faint">Fără conturi</span>;
   }
 
   return (
@@ -95,11 +95,11 @@ export function BlocareCont({
         dismissible={!seTrimite}
       >
         <DrawerContent
-          title={esteBlocat ? "Deblochezi cardurile?" : "Blochezi cardurile acestui client?"}
+          title={esteBlocat ? "Deblochezi conturile?" : "Blochezi conturile acestui client?"}
           description={
             esteBlocat
-              ? `${nume} își va putea folosi cardurile din nou și va fi anunțat.`
-              : `Cardurile lui ${nume} vor fi blocate imediat și va primi o notificare cu motivul. Transferurile pe IBAN NU sunt oprite.`
+              ? `${nume} își va putea folosi din nou conturile și va fi anunțat.`
+              : `Conturile lui ${nume} vor fi blocate imediat: nu mai pot pleca bani nici prin card, nici prin transfer. Banii care vin către el intră normal. Va primi o notificare cu motivul.`
           }
           cuInchidere={!seTrimite}
           footer={
@@ -110,7 +110,7 @@ export function BlocareCont({
               disabled={observatieLipsa}
               onClick={confirma}
             >
-              {esteBlocat ? "Da, deblochează" : "Da, blochează cardurile"}
+              {esteBlocat ? "Da, deblochează" : "Da, blochează conturile"}
             </Button>
           }
         >

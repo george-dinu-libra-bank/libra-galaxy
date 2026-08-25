@@ -433,7 +433,7 @@ export type Decizie = "acceptat" | "frauda" | "deblocat";
 export type RezultatAnaliza = {
   decizie: Decizie;
   observatie: string | null;
-  carduri_atinse: number;
+  conturi_atinse: number;
   notificare_trimisa: boolean;
   creat_la: string;
 };
@@ -444,7 +444,7 @@ export type IstoricAnaliza = {
   observatie: string | null;
   gravitate: number | null;
   numar_semnalari: number | null;
-  carduri_blocate: number;
+  conturi_blocate: number;
   creat_la: string;
 };
 
@@ -455,12 +455,12 @@ export const ETICHETE_DECIZIE: Record<Decizie, string> = {
 };
 
 export type StareCont = {
-  carduri_total: number;
-  carduri_blocate: number;
+  conturi_total: number;
+  conturi_blocate: number;
   analize: IstoricAnaliza[];
 };
 
-export type StareCarduri = {
+export type StareConturi = {
   id_utilizator: string;
   total: number;
   blocate: number;

@@ -1,8 +1,8 @@
 import { Users } from "lucide-react";
 import { cereAdmin } from "@/lib/admin";
 import { obtineToateConturile } from "@/lib/data/admin-verificari";
-import { obtineStareCarduriToti } from "@/lib/data/admin-tranzactii";
-import type { ProfilAdmin, StareCarduri } from "@/lib/tipuri-admin";
+import { obtineStareConturiToti } from "@/lib/data/admin-tranzactii";
+import type { ProfilAdmin, StareConturi } from "@/lib/tipuri-admin";
 import { BackendError } from "@/lib/backend";
 import { Banda } from "@/components/ui/banda";
 import { RestabilesteBiometrie } from "@/components/admin/restabileste-biometrie";
@@ -24,14 +24,14 @@ export default async function ConturiPage() {
   let conturi: ProfilAdmin[] = [];
   let eroare: string | null = null;
 
-  // Starea cardurilor vine separat si nu blocheaza lista: daca ruta cade,
-  // conturile se vad oricum, doar fara butoanele de blocare.
-  let carduri: StareCarduri[] = [];
+  // Starea conturilor vine separat si nu blocheaza lista: daca ruta cade,
+  // lista se vede oricum, doar fara butoanele de blocare.
+  let stariConturi: StareConturi[] = [];
 
   try {
-    [conturi, carduri] = await Promise.all([
+    [conturi, stariConturi] = await Promise.all([
       obtineToateConturile(admin.token),
-      obtineStareCarduriToti(admin.token).catch(() => []),
+      obtineStareConturiToti(admin.token).catch(() => []),
     ]);
   } catch (exc) {
     eroare =
@@ -47,7 +47,7 @@ export default async function ConturiPage() {
           Toate conturile
         </h1>
         <p className="mt-1.5 text-[15px] leading-[22px] text-ink-soft">
-          Blochează sau deblochează cardurile unui client, ori restabilește manual referința
+          Blochează sau deblochează conturile unui client, ori restabilește manual referința
           biometrică dacă pozele din storage au dispărut.
         </p>
       </div>
@@ -69,7 +69,7 @@ export default async function ConturiPage() {
             <RandCont
               key={cont.id}
               cont={cont}
-              carduri={carduri.find((c) => c.id_utilizator === cont.id) ?? null}
+              stare={stariConturi.find((c) => c.id_utilizator === cont.id) ?? null}
             />
           ))}
         </div>
@@ -80,10 +80,10 @@ export default async function ConturiPage() {
 
 function RandCont({
   cont,
-  carduri,
+  stare,
 }: {
   cont: ProfilAdmin;
-  carduri: StareCarduri | null;
+  stare: StareConturi | null;
 }) {
   const eticheta = ETICHETE_STATUS[cont.verification_status] ?? ETICHETE_STATUS.pending;
 
@@ -101,20 +101,20 @@ function RandCont({
           {eticheta.text}
         </span>
 
-        {carduri && carduri.blocate > 0 ? (
+        {stare && stare.blocate > 0 ? (
           <span className="mt-1.5 ml-1.5 inline-block rounded-full bg-danger/10 px-2 py-0.5 text-[11px] font-medium text-danger">
-            Carduri blocate
+            Conturi blocate
           </span>
         ) : null}
       </span>
 
       <span className="flex shrink-0 items-center gap-2">
-        {carduri ? (
+        {stare ? (
           <BlocareCont
             idUtilizator={cont.id}
             nume={cont.nume}
-            total={carduri.total}
-            blocate={carduri.blocate}
+            total={stare.total}
+            blocate={stare.blocate}
           />
         ) : null}
         <RestabilesteBiometrie userId={cont.id} nume={cont.nume} />

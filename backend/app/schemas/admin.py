@@ -73,7 +73,7 @@ class AnalizaRequest(BaseModel):
 class AnalizaResponse(BaseModel):
     decizie: str
     observatie: str | None = None
-    carduri_atinse: int
+    conturi_atinse: int
     notificare_trimisa: bool
     creat_la: str
 
@@ -84,25 +84,24 @@ class IstoricAnalizaResponse(BaseModel):
     observatie: str | None = None
     gravitate: int | None = None
     numar_semnalari: int | None = None
-    carduri_blocate: int
+    conturi_blocate: int
     creat_la: str
 
 
 class StareContResponse(BaseModel):
     """Istoricul deciziilor plus starea reala a cardurilor.
 
-    Starea nu se deduce din ultima decizie: clientul isi poate bloca si debloca
-    singur cardurile din aplicatie, deci istoricul administratorului nu e
-    singura sursa de adevar.
+    Starea nu se deduce din ultima decizie: un administrator poate bloca sau
+    debloca oricand, iar istoricul unei singure analize nu spune unde s-a ajuns.
     """
 
-    carduri_total: int
-    carduri_blocate: int
+    conturi_total: int
+    conturi_blocate: int
     analize: list[IstoricAnalizaResponse]
 
 
-class StareCarduriResponse(BaseModel):
-    """Cate carduri are un om si cate ii sunt blocate."""
+class StareConturiResponse(BaseModel):
+    """Cate conturi are un om si cate ii sunt blocate administrativ."""
 
     id_utilizator: str
     total: int

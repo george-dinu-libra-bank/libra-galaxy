@@ -9,12 +9,15 @@ cineva mai departe — si poate bloca oricand, ca act de sine statator.
 Nimic nu se aplica pe contul cuiva fara ca un om sa fi cerut acea masura anume.
 Detectia propune, nu dispune.
 
-Ce NU face blocarea, si de ce e scris aici, nu doar in migrare: opreste platile
-cu cardul, fiindca RPC-ul de plata verifica `carduri.is_blocked`, dar nu
-opreste transferurile pe IBAN. `public.core_banking` nu se uita la starea
-cardurilor, iar modificarea ei ar fi insemnat rescrierea unei functii
-existente. Aplicatia verifica inainte de transfer (vezi frontend), ceea ce
-acopera drumul normal — nu si pe cineva care ar chema RPC-ul direct.
+Blocarea opreste tot ce pleaca din conturile omului: si platile cu cardul, si
+transferurile. Bariera e un trigger pe `conturi_bancare` (0030), care refuza
+orice scadere de sold pe un cont blocat — deci tine si cand cineva cheama
+RPC-ul direct, ocolind aplicatia. Banii pot in continuare INTRA intr-un cont
+blocat: altfel masura ar lovi si in cei care ii trimit bani.
+
+Pana la 0030 blocarea se facea pe `carduri.is_blocked` si nu oprea
+transferurile. Acela era si steagul prin care clientul isi bloca un card
+pierdut, asa ca cele doua se calcau reciproc.
 """
 
 import logging
@@ -34,16 +37,17 @@ MAX_OBSERVATIE = 2000
 MESAJE = {
     "frauda": (
         "blocare",
-        "Cardurile tale au fost blocate temporar",
+        "Contul tau a fost blocat temporar",
         "Am observat activitate neobisnuita pe contul tau si, ca masura de "
-        "protectie, cardurile au fost blocate temporar. Transferurile nu sunt "
-        "afectate. Te rugam sa contactezi banca pentru a clarifica situatia.",
+        "protectie, retragerile si platile au fost oprite temporar. Banii care "
+        "vin catre tine intra in continuare normal. Te rugam sa contactezi "
+        "banca pentru a clarifica situatia.",
     ),
     "deblocat": (
         "deblocare",
-        "Cardurile tale au fost deblocate",
-        "Verificarea s-a incheiat, iar cardurile tale functioneaza din nou "
-        "normal. Iti multumim pentru rabdare.",
+        "Contul tau a fost deblocat",
+        "Verificarea s-a incheiat, iar contul tau functioneaza din nou normal. "
+        "Iti multumim pentru rabdare.",
     ),
 }
 
@@ -52,7 +56,7 @@ MESAJE = {
 class RezultatAnaliza:
     decizie: str
     observatie: str | None
-    carduri_atinse: int
+    conturi_atinse: int
     notificare_trimisa: bool
     creat_la: str
 
@@ -96,12 +100,12 @@ class AnalizaContService:
         # `aplica_blocarea` nu se deduce din decizie: a consemna o suspiciune de
         # frauda nu blocheaza pe nimeni. Cardurile se ating doar cand
         # administratorul a apasat butonul de blocare sau de deblocare.
-        carduri_atinse = 0
+        conturi_atinse = 0
         blocheaza = decizie == "frauda" and aplica_blocarea
         if blocheaza:
-            carduri_atinse = await self._analize.schimba_blocarea(user_id, True)
+            conturi_atinse = await self._analize.schimba_blocarea(user_id, True)
         elif decizie == "deblocat":
-            carduri_atinse = await self._analize.schimba_blocarea(user_id, False)
+            conturi_atinse = await self._analize.schimba_blocarea(user_id, False)
 
         rand = await self._analize.scrie_analiza(
             {
@@ -112,7 +116,7 @@ class AnalizaContService:
                 "gravitate": gravitate,
                 "numar_semnalari": numar_semnalari,
                 "zile_analizate": zile,
-                "carduri_blocate": carduri_atinse,
+                "conturi_blocate": conturi_atinse,
             }
         )
 
@@ -122,7 +126,7 @@ class AnalizaContService:
         notificare_trimisa = False
         # Clientul e anuntat cand i se schimba situatia, nu cand cineva scrie o
         # observatie despre el. O suspiciune consemnata fara masuri nu-l sperie.
-        anunta = (blocheaza or decizie == "deblocat") and carduri_atinse > 0
+        anunta = (blocheaza or decizie == "deblocat") and conturi_atinse > 0
         if anunta and decizie in MESAJE:
             tip, titlu, mesaj = MESAJE[decizie]
             if observatie:
@@ -140,7 +144,7 @@ class AnalizaContService:
         return RezultatAnaliza(
             decizie=decizie,
             observatie=observatie,
-            carduri_atinse=carduri_atinse,
+            conturi_atinse=conturi_atinse,
             notificare_trimisa=notificare_trimisa,
             creat_la=str(rand.get("creat_la")) if rand else "",
         )

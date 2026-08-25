@@ -81,8 +81,8 @@ export default async function PaginaRaport({
           gravitate={Math.round(raport.scor_maxim)}
           numarSemnalari={raport.numar_semnalari}
           zile={zile}
-          esteBlocat={stare.carduri_blocate > 0}
-          carduriTotal={stare.carduri_total}
+          esteBlocat={stare.conturi_blocate > 0}
+          conturiTotal={stare.conturi_total}
           istoric={stare.analize}
         />
       ) : null}

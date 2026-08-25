@@ -64,7 +64,7 @@ function Rand({
 
 /**
  * Sursa transferului: unul dintre conturile proprii sau soldul comun al unui
- * grup din care faci parte (0009_core_banking_groups.sql).
+ * grup din care faci parte (functia core_banking_groups).
  */
 export function AlegeContDrawer({
   conturi,

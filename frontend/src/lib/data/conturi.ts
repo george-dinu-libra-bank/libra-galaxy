@@ -17,7 +17,7 @@ export type ContBancar = {
  * Conturile bancare ale utilizatorului curent, cel mai vechi primul — primul
  * din lista e contul principal, cel deschis la inregistrare.
  *
- * Banii stau aici, nu pe profil si nu pe card (0007_conturi_bancare.sql).
+ * Banii stau aici, nu pe profil si nu pe card (tabela conturi_bancare (creata direct in Supabase, fara migrare in repo)).
  */
 export async function obtineConturiUtilizator(): Promise<ContBancar[]> {
   const supabase = await createClient();

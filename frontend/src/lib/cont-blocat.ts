@@ -6,32 +6,31 @@ export const MESAJ_CONT_BLOCAT =
   "Contul tău este blocat temporar. Verifică mesajele din aplicație sau contactează banca.";
 
 /**
- * Daca administratorul a blocat cardurile acestui om.
+ * Daca administratorul a blocat vreun cont al acestui om.
  *
- * Verificarea sta in aplicatie, nu in functiile de baza de date care mai bine
- * ar fi facut-o (`core_banking`, `core_banking_groups`, operatiunile de
- * credit). Acelea exista deja si nu le rescriem, asa ca fiecare drum prin care
- * pot pleca bani trebuie sa cheme functia asta inainte.
+ * Se uita la `conturi_bancare.blocat_administrativ`, nu la carduri. Inainte
+ * numara cardurile cu `is_blocked`, ceea ce parea acelasi lucru dar nu era:
+ * `is_blocked` e si butonul prin care CLIENTUL isi blocheaza un card pierdut,
+ * asa ca un om care isi bloca propriul card ramanea si fara transferuri. Cele
+ * doua sunt acum steaguri diferite, cu intelesuri diferite.
  *
- * Limita, spusa pe fata: acopera drumurile prin aplicatie — singurele folosite
- * de interfata — dar nu si pe cineva care ar chema RPC-urile direct cu tokenul
- * lui. Platile cu cardul sunt singurele oprite chiar in baza de date, fiindca
- * `creeaza_plata` si `aproba_plata` verifica ele insele `carduri.is_blocked`.
- *
- * Un singur loc, ca sa nu apara al doilea drum neaparat cand cineva adauga
- * maine inca o cale prin care ies bani.
+ * Verificarea de aici e o comoditate, nu bariera: din 0030, un trigger pe
+ * `conturi_bancare` refuza orice scadere de sold pe un cont blocat, deci
+ * blocarea tine si daca cineva cheama RPC-ul direct, ocolind aplicatia.
+ * Rostul acestei functii e sa dea un mesaj omenesc inainte, in loc sa lase
+ * utilizatorul sa se loveasca de o eroare de baza de date.
  */
 export async function contEsteBlocat(idUtilizator: string): Promise<boolean> {
   const supabaseAdmin = createAdminClient();
 
   const { count, error } = await supabaseAdmin
-    .from("carduri")
+    .from("conturi_bancare")
     .select("id", { count: "exact", head: true })
     .eq("id_user", idUtilizator)
-    .eq("is_blocked", true);
+    .eq("blocat_administrativ", true);
 
   // La eroare lasam sa treaca: o interogare cazuta nu trebuie sa blocheze toti
-  // clientii bancii. Blocarea reala a platilor cu cardul ramane oricum in baza.
+  // clientii bancii, iar bariera adevarata e oricum in baza de date.
   if (error) return false;
 
   return (count ?? 0) > 0;
