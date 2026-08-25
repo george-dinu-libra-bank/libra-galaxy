@@ -44,7 +44,7 @@ class DocumentIntelligenceAgent:
     spec = DOCUMENT_INTELLIGENCE
 
     def select_tools(self, user_text: str, intent: str) -> list[SelectedTool]:
-        # Categoria = folderul din galaxy-bank-knowledge (migratia 0027).
+        # Categoria = folderul din galaxy-bank-knowledge (migratia 0033).
         # Ingustare aplicata doar unde intentia chiar garanteaza subiectul —
         # credit_intent e singura care ajunge aici prin fallback-ul router-ului
         # (routing.py::DEFAULT_AGENT_ID) fara sa fie o intrebare generica.

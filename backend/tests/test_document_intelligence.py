@@ -5,7 +5,7 @@ def test_credit_intent_narrows_search_to_credite_category():
     """credit_intent e singura intentie care ajunge la document_intelligence
     prin fallback-ul router-ului (routing.py::DEFAULT_AGENT_ID) fara sa fie
     o intrebare generica — deci e singura unde ingustarea pe categorie
-    (migratia 0027) e sigur justificata."""
+    (migratia 0033) e sigur justificata."""
     selections = DocumentIntelligenceAgent().select_tools("vreau un credit ipotecar", "credit_intent")
 
     assert len(selections) == 1

@@ -12,7 +12,7 @@ from app.core.errors import RetrievalError
 logger = logging.getLogger("libra.rag")
 
 # PGRST202 = "function not found in schema cache" — semnul ca migratia
-# 0027_rag_categorie_si_cautare_hibrida.sql (care extinde match_knowledge_chunks
+# 0033_rag_categorie_si_cautare_hibrida.sql (care extinde match_knowledge_chunks
 # cu p_query_text/p_categories) inca n-a fost rulata pe acest proiect Supabase.
 # Migratiile se aplica manual (nu exista acces direct la Postgres din backend),
 # deci poate exista un interval intre "codul e pe main" si "migratia a rulat" —
@@ -147,7 +147,7 @@ class KnowledgeRepository:
                 raise RetrievalError("Cautarea in baza de cunostinte a esuat.") from exc
             logger.warning(
                 "match_knowledge_chunks fara p_query_text/p_categories — migratia "
-                "0027_rag_categorie_si_cautare_hibrida.sql inca nu a fost aplicata; "
+                "0033_rag_categorie_si_cautare_hibrida.sql inca nu a fost aplicata; "
                 "cautarea continua fara filtru de categorie si fara plasa de siguranta full-text."
             )
             try:

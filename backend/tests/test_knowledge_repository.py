@@ -20,7 +20,7 @@ class _RpcApelFals:
 
 
 class ClientFals:
-    """Migratia 0027 nu e inca aplicata: RPC-ul cu p_query_text/p_categories
+    """Migratia 0033 nu e inca aplicata: RPC-ul cu p_query_text/p_categories
     nu exista, dar cel vechi (fara ele) tot merge."""
 
     def __init__(self, esueaza_cu_pgrst202: bool, randuri: list[dict] | None = None) -> None:
@@ -56,7 +56,7 @@ async def test_search_uses_full_payload_when_the_new_rpc_exists():
 
 @pytest.mark.anyio
 async def test_search_falls_back_to_legacy_rpc_when_migration_not_yet_applied():
-    """PGRST202 (functie negasita) inseamna ca migratia 0027 inca nu a fost
+    """PGRST202 (functie negasita) inseamna ca migratia 0033 inca nu a fost
     rulata — cautarea trebuie sa reincerce fara p_query_text/p_categories, nu
     sa pice complet (raportat/reprodus live: exact asta se intampla inainte
     de acest fix, contra proiectului Supabase real, neactualizat inca)."""

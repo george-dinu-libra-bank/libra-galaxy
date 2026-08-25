@@ -18,7 +18,7 @@ class RetrievalProfile:
     document_types: list[str] | None = None
     audience: str = "customer"
     # Categoria = folderul din galaxy-bank-knowledge (derivata in DB din
-    # knowledge_documents.sursa, migratia 0027) — ingusteaza cautarea la un
+    # knowledge_documents.sursa, migratia 0033) — ingusteaza cautarea la un
     # subiect, cand agentul stie deja despre ce e vorba (ex. credit_intent).
     categories: list[str] | None = None
 
@@ -58,7 +58,7 @@ class RetrievalService:
             top_k=profile.top_k,
             min_score=profile.min_score,
             # Textul brut al interogarii, nu embedding-ul — RPC-ul il foloseste
-            # doar ca plasa de siguranta full-text (migratia 0027), separat de
+            # doar ca plasa de siguranta full-text (migratia 0033), separat de
             # similaritatea vectoriala de mai sus.
             query_text=query,
             categories=profile.categories,

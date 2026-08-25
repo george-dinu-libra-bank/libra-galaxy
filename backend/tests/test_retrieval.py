@@ -36,7 +36,7 @@ class KnowledgeRepositoryFals:
 async def test_search_forwards_query_text_and_categories_to_repository():
     """query_text (plasa de siguranta full-text) si categories (filtru de
     izolare pe folder) trebuie sa ajunga neschimbate la repository — vezi
-    migratia 0027_rag_categorie_si_cautare_hibrida.sql."""
+    migratia 0033_rag_categorie_si_cautare_hibrida.sql."""
     knowledge = KnowledgeRepositoryFals()
     service = RetrievalService(EmbeddingProviderFals(), knowledge, EmbeddingCacheFals(), "test-key")
     profile = RetrievalProfile(categories=["credite"])
