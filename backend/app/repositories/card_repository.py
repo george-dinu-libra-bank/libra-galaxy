@@ -9,7 +9,9 @@ from supabase import Client
 # tools/card_tools.py — nu identifica singure cardul, spre deosebire de numar/CVV.
 # Coloanele trebuie sa existe in baza reala, nu doar in migrarile din repo:
 # schema din cloud a luat-o inainte (vezi conturi_bancare, absent din migrari).
-CAMPURI = "id,sold_curent,is_blocked,creat_la,data_expirare,card_style"
+# `sold_curent` nu se citeste: e coloana moarta. Nicio functie SQL din proiect
+# nu o scrie, iar in baza reala e 0 pe toate cardurile. Banii stau pe cont.
+CAMPURI = "id,id_cont,is_blocked,creat_la,data_expirare,card_style,tip,limita_zilnica"
 
 
 class CardRepository:

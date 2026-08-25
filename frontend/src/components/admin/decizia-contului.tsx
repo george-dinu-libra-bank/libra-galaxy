@@ -49,16 +49,16 @@ const TEXTE: Record<
     cereObservatie: true,
   },
   blocheaza: {
-    titlu: "Blochezi cardurile acestui client?",
+    titlu: "Blochezi conturile acestui client?",
     descriere: (n) =>
-      `Cardurile lui ${n} vor fi blocate imediat și va primi o notificare cu motivul. Transferurile pe IBAN NU sunt oprite.`,
-    buton: "Da, blochează cardurile",
+      `Conturile lui ${n} vor fi blocate imediat: nu mai pot pleca bani nici prin card, nici prin transfer. Banii care vin către el intră normal. Va primi o notificare cu motivul.`,
+    buton: "Da, blochează conturile",
     exemplu: "Ex. blocat preventiv până la clarificarea plăților din 21.08",
     cereObservatie: true,
   },
   deblocheaza: {
-    titlu: "Deblochezi cardurile?",
-    descriere: (n) => `${n} își va putea folosi cardurile din nou și va fi anunțat.`,
+    titlu: "Deblochezi conturile?",
+    descriere: (n) => `${n} își va putea folosi din nou conturile și va fi anunțat.`,
     buton: "Da, deblochează",
     exemplu: "Ex. clientul a confirmat plățile, documente verificate",
     cereObservatie: true,
@@ -72,7 +72,7 @@ export function DeciziaContului({
   numarSemnalari,
   zile,
   esteBlocat,
-  carduriTotal,
+  conturiTotal,
   istoric,
 }: {
   idUtilizator: string;
@@ -81,7 +81,7 @@ export function DeciziaContului({
   numarSemnalari: number;
   zile: number;
   esteBlocat: boolean;
-  carduriTotal: number;
+  conturiTotal: number;
   istoric: IstoricAnaliza[];
 }) {
   const router = useRouter();
@@ -163,13 +163,13 @@ export function DeciziaContului({
           <Banda ton={esteBlocat ? "eroare" : "info"}>
             {esteBlocat ? (
               <>
-                Cardurile acestui client sunt <strong className="font-semibold">blocate</strong>.
-                Transferurile pe IBAN nu sunt oprite.
+                Conturile acestui client sunt <strong className="font-semibold">blocate</strong>.
+                Nu mai pot pleca bani nici prin card, nici prin transfer.
               </>
             ) : (
               <>
-                Cardurile sunt active ({carduriTotal}
-                {carduriTotal === 1 ? " card" : " carduri"}).
+                Conturile sunt active ({conturiTotal}
+                {conturiTotal === 1 ? " cont" : " conturi"}).
               </>
             )}
           </Banda>
@@ -182,17 +182,17 @@ export function DeciziaContului({
               iconaStanga={<Unlock size={18} strokeWidth={1.75} aria-hidden />}
               onClick={() => setActiune("deblocheaza")}
             >
-              Deblochează cardurile
+              Deblochează conturile
             </Button>
           ) : (
             <Button
               varianta="danger"
               className="w-full sm:w-auto"
-              disabled={carduriTotal === 0}
+              disabled={conturiTotal === 0}
               iconaStanga={<Lock size={18} strokeWidth={1.75} aria-hidden />}
               onClick={() => setActiune("blocheaza")}
             >
-              Blochează cardurile
+              Blochează conturile
             </Button>
           )}
         </div>
@@ -245,11 +245,11 @@ export function DeciziaContului({
   );
 }
 
-/** Aceeasi decizie inseamna altceva daca s-au atins carduri sau nu. */
+/** Aceeasi decizie inseamna altceva daca s-au atins conturi sau nu. */
 function eticheta(r: IstoricAnaliza): string {
   if (r.decizie === "acceptat") return "Verificat, fără probleme";
-  if (r.decizie === "deblocat") return "Cardurile au fost deblocate";
-  return r.carduri_blocate > 0 ? "Cardurile au fost blocate" : "Suspiciune de fraudă consemnată";
+  if (r.decizie === "deblocat") return "Conturile au fost deblocate";
+  return r.conturi_blocate > 0 ? "Conturile au fost blocate" : "Suspiciune de fraudă consemnată";
 }
 
 function Istoric({ randuri }: { randuri: IstoricAnaliza[] }) {

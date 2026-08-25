@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server";
  * destinatia sunt conturi bancare: utilizatorul alege din care dintre conturile
  * lui plateste, iar IBAN-ul introdus identifica un cont al beneficiarului.
  *
- * De la 0009_core_banking_groups.sql sursa poate fi si soldul unui grup din
+ * De la functia core_banking_groups (vezi 0000_instantaneu_inainte_de_credite.sql) sursa poate fi si soldul unui grup din
  * care faci parte — destinatia ramane mereu un cont, dupa IBAN.
  */
 
@@ -54,7 +54,7 @@ export async function obtineConturiTransfer(): Promise<ContSursa[]> {
       nume: cont.nume,
       numarMascat: cont.ibanMascat,
       sold: cont.sold,
-      // Contul isi are propria valuta de la 0013_schimb_valutar.sql; suma
+      // Contul isi are propria valuta de la 0019_schimb_valutar_suma.sql; suma
       // introdusa in formular se interpreteaza in valuta sursei.
       valuta: cont.valuta,
       blocat: false,

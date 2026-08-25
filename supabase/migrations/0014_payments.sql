@@ -19,7 +19,7 @@ create table if not exists public.payments (
   id              uuid primary key default gen_random_uuid(),
   id_user         uuid        not null references public.profiles (id)         on delete cascade,
   id_card         uuid        not null references public.carduri (id)          on delete cascade,
-  -- Contul din care se ia suma. Banii nu stau pe card (0007_conturi_bancare.sql).
+  -- Contul din care se ia suma. Banii nu stau pe card (conturi_bancare).
   id_cont         uuid                 references public.conturi_bancare (id)  on delete set null,
   card_ultimele4  text        not null,
   suma            numeric(14,2) not null,

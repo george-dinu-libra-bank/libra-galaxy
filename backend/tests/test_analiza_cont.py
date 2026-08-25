@@ -12,22 +12,24 @@ CLIENT = uuid4()
 
 
 class _AnalizeFalse:
-    def __init__(self, carduri: list[dict] | None = None) -> None:
-        self.carduri_rand = carduri if carduri is not None else [
-            {"id": "c1", "is_blocked": False},
-            {"id": "c2", "is_blocked": False},
+    def __init__(self, conturi: list[dict] | None = None) -> None:
+        self.conturi_rand = conturi if conturi is not None else [
+            {"id": "c1", "blocat_administrativ": False},
+            {"id": "c2", "blocat_administrativ": False},
         ]
         self.analize: list[dict] = []
         self.notificari: list[dict] = []
         self.notificare_crapa = False
 
-    async def carduri(self, _user_id):
-        return self.carduri_rand
+    async def conturi(self, _user_id):
+        return self.conturi_rand
 
     async def schimba_blocarea(self, _user_id, blocat):
-        de_schimbat = [c for c in self.carduri_rand if bool(c["is_blocked"]) != blocat]
+        de_schimbat = [
+            c for c in self.conturi_rand if bool(c["blocat_administrativ"]) != blocat
+        ]
         for c in de_schimbat:
-            c["is_blocked"] = blocat
+            c["blocat_administrativ"] = blocat
         return len(de_schimbat)
 
     async def scrie_analiza(self, campuri):
@@ -74,31 +76,31 @@ async def test_frauda_consemnata_nu_blocheaza_singura() -> None:
 
     rezultat = await _serviciu(analize).decide(CLIENT, ADMIN, "frauda", "acte falsificate")
 
-    assert rezultat.carduri_atinse == 0
-    assert not any(c["is_blocked"] for c in analize.carduri_rand)
+    assert rezultat.conturi_atinse == 0
+    assert not any(c["blocat_administrativ"] for c in analize.conturi_rand)
     assert analize.notificari == []
 
 
 @pytest.mark.anyio
-async def test_blocarea_ceruta_anume_blocheaza_toate_cardurile() -> None:
+async def test_blocarea_ceruta_anume_blocheaza_toate_conturile() -> None:
     analize = _AnalizeFalse()
 
     rezultat = await _serviciu(analize).decide(
         CLIENT, ADMIN, "frauda", "acte falsificate", aplica_blocarea=True
     )
 
-    assert rezultat.carduri_atinse == 2
-    assert all(c["is_blocked"] for c in analize.carduri_rand)
+    assert rezultat.conturi_atinse == 2
+    assert all(c["blocat_administrativ"] for c in analize.conturi_rand)
 
 
 @pytest.mark.anyio
 async def test_deblocarea_ridica_blocarea() -> None:
-    analize = _AnalizeFalse([{"id": "c1", "is_blocked": True}])
+    analize = _AnalizeFalse([{"id": "c1", "blocat_administrativ": True}])
 
     rezultat = await _serviciu(analize).decide(CLIENT, ADMIN, "deblocat", "clarificat")
 
-    assert rezultat.carduri_atinse == 1
-    assert not analize.carduri_rand[0]["is_blocked"]
+    assert rezultat.conturi_atinse == 1
+    assert not analize.conturi_rand[0]["blocat_administrativ"]
 
 
 @pytest.mark.anyio
@@ -108,19 +110,19 @@ async def test_acceptarea_nu_atinge_contul() -> None:
 
     rezultat = await _serviciu(analize).decide(CLIENT, ADMIN, "acceptat", "explicat de client")
 
-    assert rezultat.carduri_atinse == 0
-    assert not any(c["is_blocked"] for c in analize.carduri_rand)
+    assert rezultat.conturi_atinse == 0
+    assert not any(c["blocat_administrativ"] for c in analize.conturi_rand)
 
 
 @pytest.mark.anyio
-async def test_un_card_deja_blocat_nu_se_numara_de_doua_ori() -> None:
-    analize = _AnalizeFalse([{"id": "c1", "is_blocked": True}, {"id": "c2", "is_blocked": False}])
+async def test_un_cont_deja_blocat_nu_se_numara_de_doua_ori() -> None:
+    analize = _AnalizeFalse([{"id": "c1", "blocat_administrativ": True}, {"id": "c2", "blocat_administrativ": False}])
 
     rezultat = await _serviciu(analize).decide(
         CLIENT, ADMIN, "frauda", None, aplica_blocarea=True
     )
 
-    assert rezultat.carduri_atinse == 1
+    assert rezultat.conturi_atinse == 1
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +216,7 @@ async def test_o_notificare_esuata_nu_pierde_decizia() -> None:
     )
 
     assert not rezultat.notificare_trimisa
-    assert rezultat.carduri_atinse == 2
+    assert rezultat.conturi_atinse == 2
     assert len(analize.analize) == 1
 
 
@@ -250,5 +252,5 @@ async def test_contul_inexistent_e_verificat_inainte_sa_se_blocheze_ceva() -> No
             CLIENT, ADMIN, "frauda", None, aplica_blocarea=True
         )
 
-    assert not any(c["is_blocked"] for c in analize.carduri_rand)
+    assert not any(c["blocat_administrativ"] for c in analize.conturi_rand)
     assert analize.analize == []

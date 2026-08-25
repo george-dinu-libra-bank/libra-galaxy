@@ -196,7 +196,7 @@ export function ConfirmaPlataDrawer({
             </p>
             <p className="max-w-xs text-[13.5px] leading-[19px] text-ink-faint">
               {pas === "aprobata"
-                ? `${activa.comerciant} a primit confirmarea. Suma a fost scoasă din cont.`
+                ? `${activa.comerciant} a primit confirmarea. Suma a fost scoasă din ${activa.numeCont ?? "contul cardului"}.`
                 : pas === "respinsa"
                   ? "Nu s-a mișcat niciun ban."
                   : pas === "expirata"
@@ -226,9 +226,12 @@ export function ConfirmaPlataDrawer({
                 <CreditCard size={18} strokeWidth={1.75} aria-hidden />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[14.5px] font-semibold text-ink">Card {activa.cardMascat}</p>
+                <p className="truncate text-[14.5px] font-semibold text-ink">
+                  {activa.numeCont ?? `Card ${activa.cardMascat}`}
+                </p>
                 <p className="tabular text-[12.5px] text-ink-faint">
-                  {ramas > 0 ? `Expiră în ${formateazaRamas(ramas)}` : "Se verifică…"}
+                  Card {activa.cardMascat}
+                  {ramas > 0 ? ` · expiră în ${formateazaRamas(ramas)}` : " · se verifică…"}
                 </p>
               </div>
             </div>
