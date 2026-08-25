@@ -25,6 +25,7 @@ from supabase import Client
 from app.agents.compliance_kyc import ComplianceKycAgent
 from app.agents.document_intelligence import DocumentIntelligenceAgent
 from app.agents.engagement import EngagementAgent
+from app.agents.credit_advisor import CreditAdvisorAgent
 from app.agents.financial_advisor import FinancialAdvisorAgent
 from app.agents.transaction_intelligence import TransactionIntelligenceAgent
 from app.attachments.service import AttachmentService
@@ -119,6 +120,7 @@ def get_orchestrator() -> Orchestrator:
 
     agents = {
         "financial_advisor": FinancialAdvisorAgent(),
+        "credit_advisor": CreditAdvisorAgent(),
         "transaction_intelligence": TransactionIntelligenceAgent(),
         "document_intelligence": DocumentIntelligenceAgent(),
         "engagement": EngagementAgent(),

@@ -72,19 +72,24 @@ export function CerereWizard({
   suma,
   luni,
   conturi,
+  initiale,
 }: {
   suma: number;
   luni: number;
   conturi: ContBancar[];
+  /** Valori pre-completate, venite din URL — azi de la asistent, care strange
+   * datele in chat. Raman editabile si trec prin aceleasi validari: formularul
+   * e tot al omului, doar ca nu mai porneste gol. */
+  initiale?: Partial<Campuri>;
 }) {
   const router = useRouter();
   const [pas, setPas] = useState<Pas>("date");
 
   const [valori, setValori] = useState<Campuri>({
-    venit: "",
-    angajator: "",
-    vechime: "",
-    obligatii: "",
+    venit: initiale?.venit ?? "",
+    angajator: initiale?.angajator ?? "",
+    vechime: initiale?.vechime ?? "",
+    obligatii: initiale?.obligatii ?? "",
   });
   const [erori, setErori] = useState<Partial<Record<keyof Campuri, string | null>>>({});
   const [atinse, setAtinse] = useState<Partial<Record<keyof Campuri, boolean>>>({});

@@ -23,6 +23,7 @@ nimic. Deciziile raman in `CreditService`, dupa motorul determinist.
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urlencode
 
 from app.core.security import PERMISSION_ACCOUNTS_READ, Principal
 from app.credit import amortizare
@@ -34,7 +35,10 @@ from app.tools.base import RiskLevel, SideEffect, ToolDefinition
 # vorbeste despre solduri si cashflow. Un al saselea agent ar taia in doua exact
 # contextul de care are nevoie ca sa raspunda („poti sa-mi permiti rata asta?"
 # cere si creditul, si cheltuielile).
-_AGENTI = frozenset({"financial_advisor", "engagement"})
+# `credit_advisor`, nu `financial_advisor`: acela nu foloseste registrul de
+# tool-uri (`select_tools()` intoarce mereu [], vezi agents/financial_advisor.py),
+# deci tool-urile atasate lui erau inregistrate dar imposibil de cerut.
+_AGENTI = frozenset({"credit_advisor"})
 
 # Ce inseamna fiecare stare pentru cel care intreaba. Modelul primeste explicatia
 # gata scrisa, ca sa nu inventeze el ce urmeaza — „in_analiza" nu spune nimanui
@@ -184,7 +188,121 @@ def build_credit_tools(repository: CreditRepository) -> list[ToolDefinition]:
             "cost_total": float(rata * luni - suma),
         }
 
+    async def prepare_credit_application(_principal: Principal, args: dict) -> dict:
+        """Pregateste cererea, dar NU o depune.
+
+        Depunerea cere `consimtamant=true` — un acord informat, dat de om, despre
+        interogarea Biroului de Credit si prelucrarea datelor lui. Un model care
+        deduce acordul dintr-o conversatie nu e acelasi lucru cu omul care bifeaza
+        casuta, iar aici diferenta e juridica, nu de stil. De aceea tool-ul e
+        `PREPARES_MUTATION`: strange datele, le valideaza fata de limitele
+        produsului, calculeaza rata cu motorul real si intoarce o adresa care
+        deschide formularul **completat**. Ultimul pas ramane o apasare a lui.
+
+        Acelasi tipar ca la Agentul Actiuni din docs/AGENTS.md: agentul propune,
+        executia ramane in serviciu, dupa confirmare explicita in interfata.
+        """
+        produs = await repository.produs(PRODUS_IMPLICIT)
+        if produs is None:
+            return {"error": "Catalogul de produse nu e disponibil momentan."}
+
+        lipsesc: list[str] = []
+        try:
+            suma = Decimal(str(args.get("suma", "0")))
+            luni = int(args.get("luni", 0))
+            venit = Decimal(str(args.get("venit_declarat", "0")))
+            obligatii = Decimal(str(args.get("obligatii_declarate", "0")))
+            vechime = int(args.get("vechime_angajator_luni", 0))
+        except (InvalidOperation, TypeError, ValueError):
+            return {"error": "Una dintre valori nu e un numar valid."}
+
+        angajator = str(args.get("angajator") or "").strip()
+
+        # Se spune ce lipseste, pe nume: modelul trebuie sa poata cere exact
+        # bucata care ii lipseste, nu sa reia tot chestionarul de la capat.
+        if suma <= 0:
+            lipsesc.append("suma dorita")
+        if luni <= 0:
+            lipsesc.append("durata in luni")
+        if venit <= 0:
+            lipsesc.append("venitul lunar net")
+        if not angajator:
+            lipsesc.append("numele angajatorului")
+        if vechime <= 0:
+            lipsesc.append("vechimea la angajatorul actual, in luni")
+
+        if lipsesc:
+            return {"ready": False, "missing": lipsesc}
+
+        minim = Decimal(str(produs["suma_min"]))
+        maxim = Decimal(str(produs["suma_max"]))
+        if not (minim <= suma <= maxim):
+            return {
+                "ready": False,
+                "error": (
+                    f"Suma trebuie sa fie intre {minim} si {maxim} RON pentru "
+                    f"{produs['nume']}."
+                ),
+            }
+        if not (int(produs["luni_min"]) <= luni <= int(produs["luni_max"])):
+            return {
+                "ready": False,
+                "error": (
+                    f"Durata trebuie sa fie intre {produs['luni_min']} si "
+                    f"{produs['luni_max']} luni."
+                ),
+            }
+
+        dobanda = Decimal(str(produs["dobanda_anuala"]))
+        principal_bani = amortizare.bani_din_lei(suma)
+        rata = amortizare.lei_din_bani(
+            amortizare.rata_lunara_bani(principal_bani, dobanda, luni)
+        )
+
+        parametri = urlencode({
+            "suma": str(int(suma)), "luni": luni,
+            "venit": str(venit), "angajator": angajator,
+            "vechime": vechime, "obligatii": str(obligatii),
+        })
+
+        return {
+            "ready": True,
+            "suma": float(suma),
+            "luni": luni,
+            "rata_lunara": float(rata),
+            "venit_declarat": float(venit),
+            "angajator": angajator,
+            "vechime_angajator_luni": vechime,
+            "obligatii_declarate": float(obligatii),
+            "link": f"/credite/cerere?{parametri}",
+            "ce_urmeaza": (
+                "Formularul se deschide completat. Cererea se depune abia dupa ce "
+                "omul verifica datele si bifeaza acordul — asistentul nu poate da "
+                "acel acord in locul lui."
+            ),
+        }
+
     return [
+        ToolDefinition(
+            name="prepare_credit_application",
+            description=(
+                "Pregateste o cerere de credit din datele stranse in conversatie si "
+                "intoarce o adresa care deschide formularul completat. Argumente: "
+                "'suma', 'luni', 'venit_declarat', 'angajator', "
+                "'vechime_angajator_luni', 'obligatii_declarate'. Daca lipseste ceva, "
+                "intoarce lista in 'missing' — cere-i utilizatorului exact acele "
+                "date. NU depune cererea: acordul si trimiterea raman ale omului."
+            ),
+            callback=prepare_credit_application,
+            allowed_agents=_AGENTI,
+            required_permissions=frozenset({PERMISSION_ACCOUNTS_READ}),
+            # Pregateste o mutatie, nu o face. Contractul din tools/base.py cere
+            # confirmare doar pentru MUTATES, dar o punem si aici: e cel mai
+            # aproape de „bani in joc" din tot ce are asistentul.
+            side_effect=SideEffect.PREPARES_MUTATION,
+            risk_level=RiskLevel.MEDIUM,
+            requires_confirmation=True,
+        ),
         ToolDefinition(
             name="get_credit_applications",
             description=(

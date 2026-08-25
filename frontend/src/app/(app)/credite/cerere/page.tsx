@@ -14,13 +14,25 @@ export const metadata: Metadata = {
 export default async function CererePage({
   searchParams,
 }: {
-  searchParams: Promise<{ suma?: string; luni?: string }>;
+  // `venit`/`angajator`/`vechime`/`obligatii` vin de la asistent, care pregateste
+  // cererea in chat si trimite omul aici cu formularul completat. Sunt doar
+  // valori initiale intr-un formular pe care el il vede si il poate schimba —
+  // consimtamantul si trimiterea raman ale lui.
+  searchParams: Promise<{
+    suma?: string;
+    luni?: string;
+    venit?: string;
+    angajator?: string;
+    vechime?: string;
+    obligatii?: string;
+  }>;
 }) {
-  const [{ suma: sumaBruta, luni: luniBrute }, produs, conturi] = await Promise.all([
+  const [parametri, produs, conturi] = await Promise.all([
     searchParams,
     obtineProdusCredit(),
     obtineConturiUtilizator(),
   ]);
+  const { suma: sumaBruta, luni: luniBrute } = parametri;
 
   if (!produs) {
     return (
@@ -74,7 +86,17 @@ export default async function CererePage({
           </Banda>
         </div>
       ) : (
-        <CerereWizard suma={suma} luni={luni} conturi={conturiRon} />
+        <CerereWizard
+          suma={suma}
+          luni={luni}
+          conturi={conturiRon}
+          initiale={{
+            venit: parametri.venit ?? "",
+            angajator: parametri.angajator ?? "",
+            vechime: parametri.vechime ?? "",
+            obligatii: parametri.obligatii ?? "",
+          }}
+        />
       )}
     </div>
   );
