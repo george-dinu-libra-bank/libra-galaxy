@@ -118,7 +118,7 @@ export default async function DashboardPage() {
         <Logo size={44} className="justify-self-center" />
 
         <div className="flex items-start justify-end gap-3">
-          <ClopotelNotificari />
+          <ClopotelNotificari notificari={notificari} />
 
           <AvatarUtilizator
             avatarUrl={profil?.avatar_url ?? null}
