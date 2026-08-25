@@ -7,12 +7,37 @@ import type { StilCard, TipCard } from "@/lib/data/carduri";
 
 export type RezultatCard = { eroare?: string };
 
-function generate16DigitNumber() {
-  const randomPart = Math.floor(100000000000 + Math.random() * 900000000000);
-  return `${randomPart}0022`;
+/**
+ * Un numar de card de 16 cifre, valid Luhn.
+ *
+ * Varianta de dinainte lipea un sufix fix — `${aleator}0022` — asa ca TOATE
+ * cardurile din baza se terminau in 0022. Ultimele patru cifre sunt insa exact
+ * ce vede omul cand confirma o plata („Card •••• 0022"), iar acum, cand fiecare
+ * card plateste din alt cont, doua carduri identice la afisare inseamna ca nu
+ * poti sti din ce cont pleaca banii.
+ *
+ * Cifra de control Luhn nu e ceruta de baza (constrangerea verifica doar 16
+ * cifre), dar e ce documenteaza schema si ce valideaza orice formular de
+ * checkout serios.
+ */
+function genereazaNumarCard(): string {
+  const cifre = Array.from({ length: 15 }, () => Math.floor(Math.random() * 10));
+
+  // Luhn: se dubleaza fiecare a doua cifra pornind din dreapta, iar rezultatele
+  // peste 9 se reduc scazand 9. Cifra de control aduce totalul la un multiplu de 10.
+  let suma = 0;
+  cifre.forEach((cifra, i) => {
+    // Cu 15 cifre si cifra de control pe pozitia 16, indicii pari se dubleaza.
+    const dublata = i % 2 === 0 ? cifra * 2 : cifra;
+    suma += dublata > 9 ? dublata - 9 : dublata;
+  });
+
+  const control = (10 - (suma % 10)) % 10;
+  return cifre.join("") + String(control);
 }
-function generate3DigitNumber() {
-  return Math.floor(100 + Math.random() * 900);
+
+function genereazaCcv(): string {
+  return String(Math.floor(100 + Math.random() * 900));
 }
 
 export async function adaugaCard(
@@ -42,7 +67,7 @@ export async function adaugaCard(
 
   if (!cont) return { eroare: "Contul ales nu este al tau." };
 
-  const numarCard = generate16DigitNumber();
+  const numarCard = genereazaNumarCard();
 
   const now = new Date();
   const luna = String(now.getMonth() + 1).padStart(2, "0");
@@ -50,7 +75,7 @@ export async function adaugaCard(
 
   const expiras_at = `${luna}/${anul}`;
 
-  const ccv = generate3DigitNumber();
+  const ccv = genereazaCcv();
 
   const { error } = await supabaseAdmin.from("carduri").insert({
     id_user: user.id,
