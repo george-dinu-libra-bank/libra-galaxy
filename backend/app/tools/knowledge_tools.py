@@ -11,7 +11,15 @@ def build_knowledge_tools(retrieval_service: RetrievalService) -> list[ToolDefin
         if not query:
             return {"hits": []}
 
-        profile = RetrievalProfile(languages=[principal.locale] if principal.locale else None)
+        # categorie_hint vine de la agent (SelectedTool.args), calculat determinist
+        # din intentia clasificata — NU de la model — ca sa nu inguste cautarea pe
+        # baza unei presupuneri a LLM-ului. Momentan setat doar pentru
+        # credit_intent (vezi document_intelligence.py::select_tools).
+        categorie_hint = args.get("categorie_hint")
+        profile = RetrievalProfile(
+            languages=[principal.locale] if principal.locale else None,
+            categories=[categorie_hint] if categorie_hint else None,
+        )
         hits = await retrieval_service.search(query, profile)
 
         return {
