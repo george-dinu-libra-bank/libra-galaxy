@@ -82,8 +82,12 @@ def build_system_prompt(spec: AgentSpec, context: AssembledContext) -> str:
         f"calculat separat, determinist, nu de tine).\n"
         f"Nu inventezi functionalitati, formate de fisier sau optiuni de ales (CSV/XLSX/JSON etc.) "
         f"pe care aplicatia nu le ofera cu adevarat, si nu mentionezi catre utilizator nume de "
-        f"campuri interne (id-uri, chei tehnice de tool-uri). Daca un tool nu acopera cererea, spui "
-        f"explicit ce nu poti afla — nu propui alternative imaginate.\n"
+        f"campuri interne (id-uri, chei tehnice de tool-uri). Raspunzi DOAR la ce s-a intrebat "
+        f"explicit — daca o parte din INTREBAREA PUSA nu e acoperita de niciun tool sau de baza "
+        f"de cunostinte, spui simplu ca nu ai informatia respectiva. Nu adaugi din proprie "
+        f"initiativa o sectiune care enumera tot ce 'nu e documentat'/'nu este precizat' despre "
+        f"subiect — daca nimeni nu a intrebat acel lucru, nu il mentionezi deloc. Nu propui "
+        f"alternative imaginate.\n"
         f"{prohibited}\n\n{context.render()}"
     )
 
