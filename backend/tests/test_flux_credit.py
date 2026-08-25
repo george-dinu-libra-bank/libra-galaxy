@@ -63,7 +63,7 @@ class DepozitFals:
         # Numit cu underscore: `rate` e si metoda, iar atributul ar umbri-o.
         self._rate: dict[str, list[dict]] = {}
         self.verificari_scrise: list[dict] = []
-        self.evenimente: list[dict] = []
+        self.evenimente_scrise: list[dict] = []
         self.documente_scrise: dict[str, dict] = {}
         self.mesaje_scrise: list[dict] = []
         self.notificari_scrise: list[dict] = []
@@ -272,8 +272,16 @@ class DepozitFals:
     async def sterge_document(self, cale: str) -> None:
         self.fisiere.pop(cale, None)
 
+    async def evenimente(self, id_cerere) -> list[dict]:
+        return [
+            {**e, "id": str(uuid.uuid4()), "creat_la": datetime.now(timezone.utc).isoformat(),
+             "detalii": e.get("detalii")}
+            for e in self.evenimente_scrise
+            if e["id_cerere"] == str(id_cerere)
+        ]
+
     async def eveniment(self, campuri: dict[str, Any]) -> None:
-        self.evenimente.append(campuri)
+        self.evenimente_scrise.append(campuri)
 
     # -- credite ------------------------------------------------------------
 
