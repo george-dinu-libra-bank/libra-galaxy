@@ -72,38 +72,44 @@ export function BulaMesaj({
         </a>
       ) : null}
 
-      {!alMeu && actiuneRapida?.tip === "transfer" ? (
-        <a
-          href={actiuneRapida.url}
-          className="flex w-full max-w-[280px] flex-col gap-3 rounded-card p-4 text-white shadow-lg transition-transform duration-150 ease-soft active:scale-[0.98]"
-          style={{ background: GRADIENTE_STIL_CARD.standard }}
-        >
-          {actiuneRapida.numeCont ? <span className="text-[13px] text-white/80">{actiuneRapida.numeCont}</span> : null}
-          {actiuneRapida.iban ? (
-            <span className="tabular text-[15px] tracking-[0.06em]">
-              {formateazaIban(actiuneRapida.iban)}
-              {actiuneRapida.valuta ? <span className="ml-2 text-[12px] text-white/80">{actiuneRapida.valuta}</span> : null}
-            </span>
-          ) : null}
-          <span className="flex items-center justify-between rounded-field bg-white/15 px-3 py-2 text-[13px] font-medium">
-            Transferuri
-            <ArrowRight size={14} strokeWidth={1.75} aria-hidden />
-          </span>
-        </a>
+      {!alMeu && actiuneRapida?.tip === "transfer" && actiuneRapida.conturi.length > 0 ? (
+        <div className="flex w-full flex-col items-center gap-2.5">
+          {actiuneRapida.conturi.map((cont) => (
+            <a
+              key={cont.id}
+              href={`/transfer?cont=${cont.id}`}
+              className="flex w-full max-w-[320px] flex-col gap-2.5 rounded-card p-4 text-white shadow-lg transition-transform duration-150 ease-soft active:scale-[0.98]"
+              style={{ background: GRADIENTE_STIL_CARD.standard }}
+            >
+              <span className="text-[13px] text-white/80">
+                {cont.nume ? `${cont.nume} LIBRA` : "Cont LIBRA"}
+              </span>
+              <span className="tabular whitespace-nowrap text-[13px] tracking-[0.02em]">
+                {formateazaIban(cont.iban)}
+                {cont.valuta ? <span className="ml-2 text-[11px] text-white/80">{cont.valuta}</span> : null}
+              </span>
+              <span className="flex items-center justify-center rounded-field bg-white/15 px-3 py-2 text-[13px] font-medium">
+                Transfer nou
+              </span>
+            </a>
+          ))}
+        </div>
       ) : null}
 
       {!alMeu && actiuneRapida && ACTIUNI_SIMPLE[actiuneRapida.tip] ? (
         (() => {
           const { eticheta, icona: Icona } = ACTIUNI_SIMPLE[actiuneRapida.tip];
           return (
-            <a
-              href={actiuneRapida.url}
-              className="flex items-center gap-2 rounded-field bg-primary-600 px-4 py-2.5 text-[13px] font-medium text-white shadow-lg transition-transform duration-150 ease-soft active:scale-[0.98] hover:bg-primary-700"
-            >
-              <Icona size={16} strokeWidth={1.75} aria-hidden />
-              {eticheta}
-              <ArrowRight size={14} strokeWidth={1.75} aria-hidden />
-            </a>
+            <div className="flex w-full justify-center">
+              <a
+                href={actiuneRapida.url}
+                className="flex items-center gap-2 rounded-field bg-primary-600 px-4 py-2.5 text-[13px] font-medium text-white shadow-lg transition-transform duration-150 ease-soft active:scale-[0.98] hover:bg-primary-700"
+              >
+                <Icona size={16} strokeWidth={1.75} aria-hidden />
+                {eticheta}
+                <ArrowRight size={14} strokeWidth={1.75} aria-hidden />
+              </a>
+            </div>
           );
         })()
       ) : null}

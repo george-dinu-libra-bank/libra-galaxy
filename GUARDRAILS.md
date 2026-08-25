@@ -632,15 +632,20 @@ Complet, nemascat — decizie explicita (§12): IBAN-ul propriu nu e un secret.
 ```text
 User: Vreau să fac un transfer.
 Assistant: Sigur — poți iniția un transfer chiar de aici.
-           [card: Cont Curent · RO49AAAA1B31007593840000 · RON · Transferuri →]
+           [card: Cont Curent LIBRA · RO49AAAA1B31007593840000 · RON
+                  [Transfer nou]]
+           [card: Cont Euro LIBRA · RO50AAAA1B31007593840001 · EUR
+                  [Transfer nou]]
 ```
 
 `intent.py:transfer_intent` scurtcircuiteaza in `orchestrator.py::
 _handle_transfer_request` **inainte** de rutarea catre orice agent — modelul
 nu vede niciodata cererea, deci nu poate decide, narra sau inventa cum
-"executa" un transfer (CLAUDE.md #9). Cardul din raspuns e doar un link de
-navigare determinist spre `/transfer` (nume cont + IBAN complet, §12 + valuta),
-niciodata o mutatie reala.
+"executa" un transfer (CLAUDE.md #9). Raspunsul listeaza TOATE conturile
+utilizatorului (nume + IBAN complet, §12 + valuta) — niciodata doar primul
+cont "ales" pentru el — fiecare intr-un card separat, cu propriul buton
+"Transfer nou" spre `/transfer?cont=<id>`, ca transferul sa porneasca deja
+din contul ales, niciodata o mutatie reala.
 
 ## Scenariul G — Cerere de credit
 
@@ -677,6 +682,10 @@ Assistant: Salut, Florin! Cu ce te pot ajuta azi? Pot să răspund la întrebăr
            despre conturi, carduri, tranzacții, credite, transferuri sau
            produsele Galaxy Bank.
 ```
+
+Numele vine din `profiles.nume` ("Nume Prenume", convenția buletinului); se
+afiseaza doar ultimul cuvant (prenumele), la fel ca in
+`frontend/src/app/(app)/dashboard/page.tsx`.
 
 Inainte: "salut" cadea pe intentia "unknown" -> `document_intelligence` ->
 cautare RAG fara rezultate -> refuzul generic ("nu pot raspunde la aceasta

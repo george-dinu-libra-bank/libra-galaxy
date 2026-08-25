@@ -45,12 +45,20 @@ export function FereastraChat({
   const audioRedare = useRef<HTMLAudioElement>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const bucatiAudio = useRef<Blob[]>([]);
+  const inputMesaj = useRef<HTMLTextAreaElement>(null);
 
   const mesajeAfisate = mesajOptimist ? [...mesajeInitiale, mesajOptimist] : mesajeInitiale;
 
   useEffect(() => {
     sfarsit.current?.scrollIntoView({ block: "end" });
   }, [mesajeAfisate.length]);
+
+  // Cand se schimba conversatia — "Conversație nouă" sau alegerea uneia
+  // existente din drawer — campul de scris trebuie sa fie deja activ, ca
+  // utilizatorul sa poata scrie direct, fara sa mai dea click in el.
+  useEffect(() => {
+    inputMesaj.current?.focus();
+  }, [conversatieIdInitial]);
 
   function dupaTrimitere(conversatieId: string, esteConversatieNoua: boolean) {
     setMesajOptimist(null);
@@ -306,6 +314,7 @@ export function FereastraChat({
 
         <textarea
           id="mesaj-asistent"
+          ref={inputMesaj}
           rows={1}
           value={continut}
           onChange={(e) => setContinut(e.target.value)}

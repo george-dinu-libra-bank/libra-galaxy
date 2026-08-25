@@ -1,6 +1,6 @@
 import pytest
 
-from app.orchestration.intent import classify_intent
+from app.orchestration.intent import classify_intent, starts_with_greeting
 from app.orchestration.routing import AgentRouter
 
 
@@ -99,6 +99,28 @@ def test_greeting_root_does_not_false_positive_on_longer_question():
     # "vreau"/"aplic"/"imprumut" din credit_intent) — plafonul de lungime
     # (_GREETING_MAX_CHARS) e ce o tine departe de fallback-ul de salut.
     assert classify_intent("Este o oferta buna la credit ipotecar?") == "unknown"
+
+
+def test_starts_with_greeting_detects_greeting_plus_real_request():
+    # "salut, vreau sa fac un transfer" clasifica drept transfer_intent (asa
+    # trebuie), dar salutul nu trebuie sa dispara complet — starts_with_greeting
+    # e verificarea separata pe care orchestrator.py o foloseste ca sa atenteze
+    # un "Salut, {nume}! " inaintea raspunsului real.
+    assert starts_with_greeting("salut, vreau sa fac un transfer") is True
+    assert classify_intent("salut, vreau sa fac un transfer") == "transfer_intent"
+
+
+def test_starts_with_greeting_requires_the_message_to_start_with_it():
+    # "buna" ca parte dintr-o alta propozitie nu conteaza — doar cand mesajul
+    # chiar INCEPE cu un salut.
+    assert starts_with_greeting("cred ca am o oferta buna la credit") is False
+
+
+def test_starts_with_greeting_does_not_false_positive_on_salutare_prefix():
+    # "salut" e prefix al lui "salutare" — trebuie sa nu se opreasca la
+    # primul potrivit partial cand exista un cuvant mai lung care se potriveste
+    # exact.
+    assert starts_with_greeting("Salutare, ce mai faci?") is True
 
 
 def test_transfer_intent_wins_over_spending_analysis_stem():

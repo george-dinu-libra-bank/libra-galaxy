@@ -158,6 +158,24 @@ _GREETING_PHRASES: tuple[str, ...] = (
 _GREETING_MAX_CHARS = 30
 
 
+def starts_with_greeting(text: str) -> bool:
+    """True daca mesajul INCEPE cu un salut, indiferent ce urmeaza dupa (ex.
+    "salut, vreau sa fac un transfer") — spre deosebire de classify_intent,
+    care intoarce un singur intent per mesaj, asta se foloseste separat, ca sa
+    se poata atasa un salut personalizat inaintea oricarui alt raspuns
+    (vezi orchestrator.py::_greeting_prefix). Fara plafon de lungime: aici nu
+    e vorba de a alege intentia principala a mesajului (unde "buna" ar putea
+    deturna o intrebare lunga fara alta potrivire), ci doar de un prefix
+    aditiv peste orice raspuns real."""
+    normalized = _normalize(text).strip()
+    for phrase in _GREETING_PHRASES:
+        if normalized == phrase:
+            return True
+        if normalized.startswith(phrase) and not normalized[len(phrase)].isalnum():
+            return True
+    return False
+
+
 def classify_intent(text: str) -> str:
     normalized = _normalize(text)
 

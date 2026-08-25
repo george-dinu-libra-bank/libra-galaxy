@@ -56,7 +56,7 @@ export async function trimiteMesaj(
     confidence: NivelIncredere;
     agent_id: string;
     file: { url: string; filename: string; kind: string } | null;
-    quick_action: { kind: string; account_name: string | null; iban: string | null; currency: string | null; url: string } | null;
+    quick_action: { kind: string; accounts: { id: string; name: string | null; iban: string; currency: string | null }[]; url: string } | null;
     audio_base64: string | null;
   }>("/assistant/messages", {
     method: "POST",
@@ -80,7 +80,11 @@ export async function trimiteMesaj(
     agentId: date.agent_id,
     fisierGenerat: date.file ? { url: date.file.url, nume: date.file.filename } : null,
     actiuneRapida: date.quick_action
-      ? { tip: date.quick_action.kind, numeCont: date.quick_action.account_name, iban: date.quick_action.iban, valuta: date.quick_action.currency, url: date.quick_action.url }
+      ? {
+          tip: date.quick_action.kind,
+          conturi: date.quick_action.accounts.map((cont) => ({ id: cont.id, nume: cont.name, iban: cont.iban, valuta: cont.currency })),
+          url: date.quick_action.url,
+        }
       : null,
     audioBase64: date.audio_base64 ?? undefined,
   };

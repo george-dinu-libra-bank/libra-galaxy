@@ -18,11 +18,16 @@ export type FisierGenerat = {
   nume: string;
 };
 
+export type ContActiuneRapida = {
+  id: string;
+  nume: string | null;
+  iban: string;
+  valuta: string | null;
+};
+
 export type ActiuneRapida = {
   tip: string;
-  numeCont: string | null;
-  iban: string | null;
-  valuta: string | null;
+  conturi: ContActiuneRapida[];
   url: string;
 };
 
@@ -67,7 +72,7 @@ export async function obtineMesaje(idConversatie: string): Promise<MesajAsistent
       channel: "text" | "voce";
       created_at: string;
       file: { url: string; filename: string; kind: string } | null;
-      quick_action: { kind: string; account_name: string | null; iban: string | null; currency: string | null; url: string } | null;
+      quick_action: { kind: string; accounts: { id: string; name: string | null; iban: string; currency: string | null }[]; url: string } | null;
     }[]
   >(`/assistant/conversations/${idConversatie}/messages`);
 
@@ -81,7 +86,11 @@ export async function obtineMesaje(idConversatie: string): Promise<MesajAsistent
     creatLa: m.created_at,
     fisierGenerat: m.file ? { url: m.file.url, nume: m.file.filename } : null,
     actiuneRapida: m.quick_action
-      ? { tip: m.quick_action.kind, numeCont: m.quick_action.account_name, iban: m.quick_action.iban, valuta: m.quick_action.currency, url: m.quick_action.url }
+      ? {
+          tip: m.quick_action.kind,
+          conturi: m.quick_action.accounts.map((cont) => ({ id: cont.id, nume: cont.name, iban: cont.iban, valuta: cont.currency })),
+          url: m.quick_action.url,
+        }
       : null,
   }));
 }

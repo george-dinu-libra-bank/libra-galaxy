@@ -22,11 +22,16 @@ class GeneratedFileOut(BaseModel):
     kind: str = "pdf"
 
 
+class QuickActionAccountOut(BaseModel):
+    id: str
+    name: str | None
+    iban: str
+    currency: str | None
+
+
 class QuickActionOut(BaseModel):
     kind: str
-    account_name: str | None
-    iban: str | None
-    currency: str | None
+    accounts: list[QuickActionAccountOut] = Field(default_factory=list)
     url: str
 
 

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from app.rag.chunking import Chunk, fixed_window_chunk, section_aware_chunk
 from app.rag.registry import KnowledgeDocument
 
-_SECTION_AWARE_TYPES = {"procedură", "produs", "faq", "referinta", "index", "politica"}
+_SECTION_AWARE_TYPES = {"procedură", "produs", "faq", "referinta", "index", "politică"}
 
 
 @dataclass(frozen=True)

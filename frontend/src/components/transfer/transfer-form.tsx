@@ -18,14 +18,17 @@ export function TransferForm({
   conturi,
   beneficiari,
   beneficiarInitial = null,
+  contInitial = null,
 }: {
   conturi: ContSursa[];
   beneficiari: BeneficiarTransfer[];
   beneficiarInitial?: BeneficiarTransfer | null;
+  /** Cont preselectat (ex. venit din cardul de transfer al asistentului, ?cont=<id>). */
+  contInitial?: ContSursa | null;
 }) {
   const router = useRouter();
   const [contSursa, setContSursa] = useState<ContSursa | null>(
-    conturi.find((c) => !c.blocat) ?? conturi[0] ?? null,
+    contInitial ?? conturi.find((c) => !c.blocat) ?? conturi[0] ?? null,
   );
   const [beneficiar, setBeneficiar] = useState<BeneficiarTransfer | null>(beneficiarInitial);
   const [suma, setSuma] = useState("");
@@ -162,7 +165,7 @@ export function TransferForm({
         />
 
         <Camp
-          eticheta="Sumă (RON)"
+          eticheta={contSursa ? `Sumă (${contSursa.valuta})` : "Sumă"}
           inputMode="decimal"
           placeholder="0,00"
           value={suma}

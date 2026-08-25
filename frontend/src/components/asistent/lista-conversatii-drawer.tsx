@@ -22,6 +22,7 @@ export function ListaConversatiiDrawer({
   conversatieActivaId: string | null;
 }) {
   const router = useRouter();
+  const [deschis, setDeschis] = useState(false);
   const [dePersConfirmat, setDePersConfirmat] = useState<string | null>(null);
   const [seSterge, startTransition] = useTransition();
 
@@ -39,7 +40,7 @@ export function ListaConversatiiDrawer({
   }
 
   return (
-    <Drawer>
+    <Drawer open={deschis} onOpenChange={setDeschis}>
       <DrawerTrigger
         aria-label="Istoricul conversațiilor"
         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface text-ink-soft shadow-sm transition-colors hover:bg-primary-50 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
@@ -50,6 +51,7 @@ export function ListaConversatiiDrawer({
       <DrawerContent title="Conversații" description="Alege o conversație anterioară sau pornește una nouă.">
         <Link
           href="/asistent?nou=1"
+          onClick={() => setDeschis(false)}
           className="mb-3 flex h-12 items-center justify-center gap-2 rounded-field border border-primary-100 bg-primary-50 text-[14px] font-semibold text-primary-700 transition-colors hover:bg-primary-100"
         >
           <Plus size={16} strokeWidth={1.75} aria-hidden />
@@ -92,16 +94,24 @@ export function ListaConversatiiDrawer({
                 );
               }
 
+              const activa = conversatie.id === conversatieActivaId;
+
               return (
                 <div
                   key={conversatie.id}
                   className={cn(
-                    "group flex items-center gap-1 rounded-field transition-colors hover:bg-primary-50",
-                    conversatie.id === conversatieActivaId && "bg-primary-50",
+                    "group flex items-center gap-1 rounded-field border transition-colors",
+                    activa ? "border-white/70" : "border-transparent hover:border-primary-400",
                   )}
                 >
-                  <Link href={`/asistent?c=${conversatie.id}`} className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-2.5">
-                    <span className="truncate text-[14px] font-medium text-ink">{conversatie.titlu}</span>
+                  <Link
+                    href={`/asistent?c=${conversatie.id}`}
+                    onClick={() => setDeschis(false)}
+                    className="flex min-w-0 flex-1 flex-col items-center gap-0.5 px-3 py-2.5"
+                  >
+                    <span className="w-full truncate text-center text-[14px] font-medium text-ink">
+                      {conversatie.titlu}
+                    </span>
                     <span className="text-[12px] text-ink-faint">{dataScurta(conversatie.actualizatLa)}</span>
                   </Link>
                   <button

@@ -353,12 +353,83 @@ async def test_transfer_intent_never_reaches_any_agent() -> None:
     assert chemat is False
     assert result.agent_id == "transfer_quick_action"
     assert result.quick_action is not None
-    assert result.quick_action.account_name == "Cont Curent"
+    assert len(result.quick_action.accounts) == 1
+    assert result.quick_action.accounts[0].id == "c1"
+    assert result.quick_action.accounts[0].name == "Cont Curent"
     # IBAN complet, nemascat — cardul apare doar in chat-ul propriu al titularului
-    # (vezi comentariul de pe QuickActionResult.iban din orchestrator.py).
-    assert result.quick_action.iban == "RO49AAAA1B31007593840000"
-    assert result.quick_action.currency == "RON"
+    # (vezi comentariul de pe QuickActionAccount.iban din orchestrator.py).
+    assert result.quick_action.accounts[0].iban == "RO49AAAA1B31007593840000"
+    assert result.quick_action.accounts[0].currency == "RON"
     assert result.quick_action.url == "/transfer"
+
+
+@pytest.mark.anyio
+async def test_greeting_prefix_attaches_to_a_short_circuited_action() -> None:
+    """Raportat live: "salut, vreau sa fac un transfer" clasifica drept
+    transfer_intent (corect), dar salutul disparea complet din raspuns — acum
+    handle_message ataseaza "Salut, {prenume}! " inaintea textului scurtcircuitului,
+    nu ca mesaj separat."""
+    banking = BankingFalse(
+        accounts=[AccountRow(id="c1", name="Cont Curent", iban="RO49AAAA1B31007593840000", balance=100.0, currency="RON", created_at="")]
+    )
+    orchestrator = _construieste_orchestrator(
+        agents={"document_intelligence": AgentFals()}, banking=banking,
+        profiles=ProfilesFalse(profil={"nume": "Motrun Florin"}),
+    )
+
+    result = await orchestrator.handle_message(UTILIZATOR, None, "salut, vreau sa fac un transfer")
+
+    assert result.agent_id == "transfer_quick_action"
+    assert result.text.startswith("Salut, Florin! ")
+    assert "poți iniția un transfer" in result.text
+    assert result.quick_action is not None
+
+
+@pytest.mark.anyio
+async def test_greeting_prefix_does_not_attach_when_message_has_no_greeting() -> None:
+    banking = BankingFalse(
+        accounts=[AccountRow(id="c1", name="Cont Curent", iban="RO49AAAA1B31007593840000", balance=100.0, currency="RON", created_at="")]
+    )
+    orchestrator = _construieste_orchestrator(banking=banking, profiles=ProfilesFalse(profil={"nume": "Motrun Florin"}))
+
+    result = await orchestrator.handle_message(UTILIZATOR, None, "Vreau sa fac un transfer")
+
+    assert not result.text.startswith("Salut")
+
+
+@pytest.mark.anyio
+async def test_greeting_prefix_attaches_to_a_normal_agent_answer() -> None:
+    """Acelasi mecanism, dar pe fluxul normal (agent.respond), nu doar pe
+    scurtcircuite deterministe — "salut" nu clasifica singur ca intent, deci
+    mesajul cade pe intentia reala (aici "unknown" -> document_intelligence)."""
+    agent = AgentFals(text="Ai cheltuit 120 RON luna asta.")
+    orchestrator = _construieste_orchestrator(
+        agents={"document_intelligence": agent}, profiles=ProfilesFalse(profil={"nume": "Motrun Florin"})
+    )
+
+    result = await orchestrator.handle_message(UTILIZATOR, None, "salut, ce mai stii despre banca asta")
+
+    assert result.text == "Salut, Florin! Ai cheltuit 120 RON luna asta."
+
+
+@pytest.mark.anyio
+async def test_transfer_intent_includes_all_accounts_not_just_the_first() -> None:
+    """Raportat live: cardul de transfer arata un singur cont, desi
+    utilizatorul are mai multe (ex. RON + EUR). CLAUDE.md #9: modelul nu
+    trebuie sa "aleaga" un cont pentru utilizator — se arata toate."""
+    banking = BankingFalse(
+        accounts=[
+            AccountRow(id="c1", name="Cont Curent", iban="RO49AAAA1B31007593840000", balance=100.0, currency="RON", created_at=""),
+            AccountRow(id="c2", name="Cont Euro", iban="RO50AAAA1B31007593840001", balance=50.0, currency="EUR", created_at=""),
+        ]
+    )
+    orchestrator = _construieste_orchestrator(agents={"document_intelligence": AgentFals()}, banking=banking)
+
+    result = await orchestrator.handle_message(UTILIZATOR, None, "Vreau sa fac un transfer")
+
+    assert result.quick_action is not None
+    assert len(result.quick_action.accounts) == 2
+    assert [account.currency for account in result.quick_action.accounts] == ["RON", "EUR"]
 
 
 @pytest.mark.anyio
@@ -386,8 +457,7 @@ async def test_credit_intent_still_reaches_the_agent_but_gets_a_quick_action() -
     assert result.quick_action is not None
     assert result.quick_action.kind == "credit"
     assert result.quick_action.url == "/credite/cerere"
-    assert result.quick_action.account_name is None
-    assert result.quick_action.iban is None
+    assert result.quick_action.accounts == ()
 
 
 @pytest.mark.anyio
@@ -425,7 +495,7 @@ async def test_group_intent_never_reaches_any_agent() -> None:
     assert result.quick_action is not None
     assert result.quick_action.kind == "grup"
     assert result.quick_action.url == "/grupuri"
-    assert result.quick_action.account_name is None
+    assert result.quick_action.accounts == ()
 
 
 @pytest.mark.anyio
@@ -442,14 +512,16 @@ async def test_greeting_never_reaches_any_agent_and_uses_the_profile_name() -> N
 
     agent.respond = spy
     orchestrator = _construieste_orchestrator(
-        agents={"document_intelligence": agent}, profiles=ProfilesFalse(profil={"nume": "Florin"})
+        # profiles.nume e "Nume Prenume" (convenția buletinului) — salutul
+        # foloseste doar prenumele, ultimul cuvant, la fel ca in dashboard/page.tsx.
+        agents={"document_intelligence": agent}, profiles=ProfilesFalse(profil={"nume": "Motrun Florin"})
     )
 
     result = await orchestrator.handle_message(UTILIZATOR, None, "salut")
 
     assert chemat is False
     assert result.agent_id == "greeting"
-    assert "Florin" in result.text
+    assert result.text.startswith("Salut, Florin!")
 
 
 @pytest.mark.anyio

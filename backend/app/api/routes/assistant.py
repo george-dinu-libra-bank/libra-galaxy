@@ -59,8 +59,12 @@ def _quick_action_out_from_result(quick_action) -> QuickActionOut | None:
     if quick_action is None:
         return None
     return QuickActionOut(
-        kind=quick_action.kind, account_name=quick_action.account_name,
-        iban=quick_action.iban, currency=quick_action.currency, url=quick_action.url,
+        kind=quick_action.kind,
+        accounts=[
+            {"id": account.id, "name": account.name, "iban": account.iban, "currency": account.currency}
+            for account in quick_action.accounts
+        ],
+        url=quick_action.url,
     )
 
 

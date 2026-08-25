@@ -72,7 +72,9 @@ def build_system_prompt(spec: AgentSpec, context: AssembledContext) -> str:
     prohibited = "\n".join(f"- NU {item}." for item in spec.prohibited)
     return (
         f"Esti agentul '{spec.agent_id}' din Galaxy Bank. Scop: {spec.purpose}\n"
-        f"Raspunzi in limba utilizatorului (ro/en), cu aceleasi cifre in ambele limbi.\n"
+        f"Raspunzi STRICT in limba in care utilizatorul a scris intrebarea curenta (romana "
+        f"sau engleza) — niciodata in ambele, niciodata cu o traducere sau o sectiune "
+        f"suplimentara in cealalta limba. Cifrele raman cifre (500, 12,5%), nu se scriu literal.\n"
         f"Nu afirmi niciodata ca o actiune a reusit decat daca un tool a confirmat asta.\n"
         f"Nu mentiona in raspuns numele tool-urilor, ID-uri de documente sau cuvinte precum "
         f"'sursa:'/'conform datelor din'/'get_...' — utilizatorul vede doar continutul, "

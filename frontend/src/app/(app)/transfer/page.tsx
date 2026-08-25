@@ -9,9 +9,9 @@ export const metadata: Metadata = {
 export default async function TransferPage({
   searchParams,
 }: {
-  searchParams: Promise<{ beneficiar?: string }>;
+  searchParams: Promise<{ beneficiar?: string; cont?: string }>;
 }) {
-  const [{ beneficiar: beneficiarId }, conturi, beneficiari] = await Promise.all([
+  const [{ beneficiar: beneficiarId, cont: contId }, conturi, beneficiari] = await Promise.all([
     searchParams,
     obtineConturiTransfer(),
     obtineBeneficiariRecenti(),
@@ -19,8 +19,16 @@ export default async function TransferPage({
 
   const beneficiarInitial =
     beneficiari.find((b) => b.id === beneficiarId || b.iban === beneficiarId) ?? null;
+  // Vine din cardul de transfer al asistentului (?cont=<id>) — transferul
+  // porneste direct din contul ales acolo, nu dintr-unul default.
+  const contInitial = conturi.find((c) => c.id === contId) ?? null;
 
   return (
-    <TransferForm conturi={conturi} beneficiari={beneficiari} beneficiarInitial={beneficiarInitial} />
+    <TransferForm
+      conturi={conturi}
+      beneficiari={beneficiari}
+      beneficiarInitial={beneficiarInitial}
+      contInitial={contInitial}
+    />
   );
 }
