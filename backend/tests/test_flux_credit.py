@@ -185,11 +185,31 @@ class DepozitFals:
                 if mesaj["citit_de_client_la"] is None:
                     mesaj["citit_de_client_la"] = _dt.now(timezone.utc).isoformat()
 
+    async def numara_necitite_analist(self, id_cereri) -> dict[str, int]:
+        contor: dict[str, int] = {}
+        cerute = {str(i) for i in id_cereri}
+        for mesaj in self.mesaje_scrise:
+            if mesaj["id_cerere"] not in cerute or mesaj["autor"] != "client":
+                continue
+            if mesaj.get("citit_de_analist_la") is None:
+                contor[mesaj["id_cerere"]] = contor.get(mesaj["id_cerere"], 0) + 1
+        return contor
+
+    async def marcheaza_mesaje_citite_analist(self, id_cerere) -> None:
+        from datetime import datetime as _dt
+
+        for mesaj in self.mesaje_scrise:
+            if mesaj["id_cerere"] == str(id_cerere) and mesaj["autor"] == "client":
+                if mesaj.get("citit_de_analist_la") is None:
+                    mesaj["citit_de_analist_la"] = _dt.now(timezone.utc).isoformat()
+
     async def numara_necitite(self, id_cereri) -> dict[str, int]:
         contor: dict[str, int] = {}
         cerute = {str(i) for i in id_cereri}
         for mesaj in self.mesaje_scrise:
-            if mesaj["id_cerere"] not in cerute or mesaj["autor"] == "client":
+            # Ca in codul real: doar `analist`. `sistem` e produs de fapta
+            # clientului, deci n-are ce sa-i aprinda bulina.
+            if mesaj["id_cerere"] not in cerute or mesaj["autor"] != "analist":
                 continue
             if mesaj.get("citit_de_client_la") is None:
                 contor[mesaj["id_cerere"]] = contor.get(mesaj["id_cerere"], 0) + 1
@@ -206,7 +226,8 @@ class DepozitFals:
     async def adauga_mesaj(self, campuri: dict[str, Any]) -> dict:
         rand = {
             "id": str(uuid.uuid4()), "creat_la": datetime.now(timezone.utc).isoformat(),
-            "id_autor": None, "id_document": None, "citit_de_client_la": None, **campuri,
+            "id_autor": None, "id_document": None,
+            "citit_de_client_la": None, "citit_de_analist_la": None, **campuri,
         }
         self.mesaje_scrise.append(rand)
         return rand

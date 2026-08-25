@@ -70,6 +70,10 @@ STATUSURI_ANULABILE = ("ciorna", "in_analiza", "analiza_manuala", "asteapta_docu
 # poata inchide.
 STATUSURI_IN_LUCRU = ("analiza_manuala", "asteapta_documente")
 
+# Unde firul mai poate primi mesaje. Include 'oferta': acolo clientul are cel
+# mai des intrebari, iar un raspuns nu schimba nimic din angajament.
+STATUSURI_CU_FIR = STATUSURI_IN_LUCRU + ("oferta", "in_analiza")
+
 # Cat mai traieste fisierul dupa ce dosarul s-a inchis. Randul din
 # credit_documente ramane pentru totdeauna, cu ce s-a citit si cine a confirmat;
 # doar adeverinta propriu-zisa dispare. O luna acopera o contestatie facuta la
@@ -485,23 +489,38 @@ class CreditService:
 
     # -- analiza manuala ----------------------------------------------------
 
+    async def _cu_necitite_analist(self, cereri: list[dict]) -> list[dict]:
+        """Adauga pe fiecare cerere cate mesaje ale clientului n-a citit banca.
+
+        O singura interogare pentru toata lista, ca la contorul clientului —
+        altfel coada analistului ar face cate una per dosar.
+        """
+        if not cereri:
+            return cereri
+        contor = await self._depozit.numara_necitite_analist(
+            [UUID(str(c["id"])) for c in cereri]
+        )
+        return [{**c, "mesaje_necitite": contor.get(str(c["id"]), 0)} for c in cereri]
+
     async def cereri_in_analiza(self) -> list[dict]:
         # Coada e citita des si numai de administratori, deci e locul potrivit ca
         # sa se declanseze curatarea documentelor expirate: nu exista cron in
         # proiect, iar operatiunea trebuie sa porneasca din ceva ce se intampla
         # oricum. Nu poate darama citirea — vezi `_curata_documente_expirate`.
         await self._curata_documente_expirate()
-        return await self._depozit.cereri_in_analiza()
+        return await self._cu_necitite_analist(await self._depozit.cereri_in_analiza())
 
     async def cereri_toate(self, status: str | None = None) -> list[dict]:
         if status and status not in STATUSURI_CERERE:
             raise OperatiuneRefuzata(f"Statusul '{status}' nu exista.")
-        return await self._expira_ofertele_trecute(await self._depozit.cereri_toate(status))
+        return await self._cu_necitite_analist(
+            await self._expira_ofertele_trecute(await self._depozit.cereri_toate(status))
+        )
 
     async def credite_toate(self) -> list[dict]:
         return await self._depozit.credite_toate()
 
-    async def dosar(self, id_cerere: UUID) -> dict:
+    async def dosar(self, id_cerere: UUID, *, marcheaza_citit: bool = False) -> dict:
         """Tot ce trebuie sa vada un analist despre o cerere, intr-un singur apel.
 
         Verificarile si documentele vin impreuna cu cererea fiindca fara ele
@@ -511,6 +530,13 @@ class CreditService:
         cerere = await self._depozit.cerere(id_cerere)
         if not cerere:
             raise CreditNegasit("Cererea nu exista.")
+
+        # Deschiderea dosarului stinge contorul analistului: firul vine in acest
+        # raspuns, deci in clipa asta chiar l-a vazut. Nu se face la orice
+        # citire — listarile cheama `dosar()` fara steag, si acolo n-a citit
+        # nimeni nimic.
+        if marcheaza_citit:
+            await self._depozit.marcheaza_mesaje_citite_analist(id_cerere)
 
         documente = await self._depozit.documente(id_cerere)
         return {
@@ -745,10 +771,17 @@ class CreditService:
         cerere = await self._depozit.cerere(id_cerere)
         if not cerere:
             raise CreditNegasit("Cererea nu exista.")
-        if cerere["status"] not in STATUSURI_IN_LUCRU:
+
+        # Un mesaj simplu are voie si peste o oferta emisa; unul care schimba
+        # starea, nu. Clientul putea scrie in orice stare nefinala, inclusiv
+        # 'oferta', dar analistul putea raspunde doar din cele doua stari de
+        # lucru — deci cine intreba ceva despre oferta primita ramanea fara
+        # raspuns posibil. Un raspuns nu e o decizie si nu atinge oferta.
+        permise = STATUSURI_IN_LUCRU if status_nou is not None else STATUSURI_CU_FIR
+        if cerere["status"] not in permise:
             raise OperatiuneRefuzata(
-                f"Doar o cerere aflata in lucru poate primi un mesaj; "
-                f"asta e in starea '{cerere['status']}'."
+                f"Nu se mai poate scrie pe o cerere aflata in starea "
+                f"'{cerere['status']}'."
             )
 
         text = (mesaj or "").strip()
@@ -810,7 +843,12 @@ class CreditService:
         return await self._depozit.mesaje(id_cerere)
 
     async def marcheaza_firul_citit(self, id_cerere: UUID, user_id: UUID) -> None:
-        """Firul a fost deschis: mesajele bancii nu mai sunt necitite."""
+        """Firul a fost deschis: mesajele bancii nu mai sunt necitite.
+
+        „Ale bancii" inseamna `autor = 'analist'`, nu „tot ce nu e al clientului":
+        mesajele `sistem` sunt generate de fapta lui (a incarcat un document),
+        deci numarate ca necitite i-ar aprinde bulina pentru ce a facut singur.
+        """
         await self._cerere_proprie(id_cerere, user_id)
         await self._depozit.marcheaza_mesaje_citite(id_cerere)
 
@@ -953,8 +991,11 @@ class CreditService:
         # Documentul intra si in fir, ca dosarul sa aiba o singura cronologie:
         # "s-a cerut X -> a venit Y". Textul se genereaza din ce s-a citit, ca
         # analistul sa vada rezultatul fara sa deschida documentul.
+        # `sistem`, nu `client`: textul e generat din ce a citit OCR-ul, iar sub
+        # semnatura clientului parea ca l-a scris el ("S-a citit un venit net de
+        # X RON"). Valoarea era permisa de baza si nefolosita de nimeni.
         await self._depozit.adauga_mesaj({
-            "id_cerere": str(id_cerere), "autor": "client", "id_autor": str(user_id),
+            "id_cerere": str(id_cerere), "autor": "sistem", "id_autor": str(user_id),
             "id_document": str(document["id"]),
             "text": (
                 f"Am incarcat adeverinta de venit. S-a citit un venit net de "

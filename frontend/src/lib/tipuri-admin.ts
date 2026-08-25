@@ -185,6 +185,9 @@ export type CerereCredit = {
   motive: MotivSauFactor[];
   /** null cand pipeline-ul AI consultativ n-a rulat inca pentru cererea asta. */
   semnale: SemnaleRezumat | null;
+  /** Cate mesaje ale clientului n-a deschis inca banca. Pe rutele clientului
+   * acelasi camp inseamna invers — vezi CerereResponse din schemas/credit.py. */
+  mesaje_necitite: number;
 };
 
 export type VerificareVenit = {

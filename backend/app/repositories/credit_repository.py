@@ -45,7 +45,10 @@ CAMPURI_DOCUMENT = (
     "status,hash_fisier,venit_confirmat,confirmat_de,confirmat_la,sters_la,creat_la"
 )
 
-CAMPURI_MESAJ = "id,id_cerere,autor,id_autor,text,id_document,creat_la,citit_de_client_la"
+CAMPURI_MESAJ = (
+    "id,id_cerere,autor,id_autor,text,id_document,creat_la,"
+    "citit_de_client_la,citit_de_analist_la"
+)
 
 BUCKET_DOCUMENTE = "credit-documente"
 # Cat traieste un link catre o adeverinta. Cinci minute inseamna ca un URL
@@ -352,8 +355,49 @@ class CreditRepository:
                 self._client.table("credit_mesaje")
                 .update({"citit_de_client_la": datetime.now(timezone.utc).isoformat()})
                 .eq("id_cerere", str(id_cerere))
-                .neq("autor", "client")
+                .eq("autor", "analist")
                 .is_("citit_de_client_la", "null")
+                .execute()
+            )
+
+        await to_thread.run_sync(interogare)
+
+    async def numara_necitite_analist(self, id_cereri: list[UUID]) -> dict[str, int]:
+        """Cate mesaje ale clientilor n-a deschis inca banca, pe cerere.
+
+        Simetricul lui `numara_necitite`, dar pentru cealalta parte a firului.
+        Fara el, un dosar in care clientul a scris „nu inteleg ce vreti" statea
+        in coada pana se uita cineva din intamplare in el.
+        """
+        if not id_cereri:
+            return {}
+
+        def interogare() -> dict[str, int]:
+            raspuns = (
+                self._client.table("credit_mesaje")
+                .select("id_cerere")
+                .in_("id_cerere", [str(i) for i in id_cereri])
+                .eq("autor", "client")
+                .is_("citit_de_analist_la", "null")
+                .execute()
+            )
+            contor: dict[str, int] = {}
+            for rand in raspuns.data or []:
+                cheie = str(rand["id_cerere"])
+                contor[cheie] = contor.get(cheie, 0) + 1
+            return contor
+
+        return await to_thread.run_sync(interogare)
+
+    async def marcheaza_mesaje_citite_analist(self, id_cerere: UUID) -> None:
+        """Analistul a deschis dosarul: mesajele clientului nu mai sunt necitite."""
+        def interogare() -> None:
+            (
+                self._client.table("credit_mesaje")
+                .update({"citit_de_analist_la": datetime.now(timezone.utc).isoformat()})
+                .eq("id_cerere", str(id_cerere))
+                .eq("autor", "client")
+                .is_("citit_de_analist_la", "null")
                 .execute()
             )
 
@@ -373,7 +417,7 @@ class CreditRepository:
                 self._client.table("credit_mesaje")
                 .select("id_cerere")
                 .in_("id_cerere", [str(i) for i in id_cereri])
-                .neq("autor", "client")
+                .eq("autor", "analist")
                 .is_("citit_de_client_la", "null")
                 .execute()
             )

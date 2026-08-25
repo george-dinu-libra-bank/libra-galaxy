@@ -447,7 +447,10 @@ async def dosar(
     rulat niciodata), porneste una noua ca task de fundal. Raspunsul de acum
     arata ce exista deja — niciodata nu asteapta dupa model.
     """
-    date = await serviciu.dosar(id_cerere)
+    # `marcheaza_citit`: firul vine in acest raspuns, deci analistul chiar il
+    # vede acum. Ruta de "ruleaza AI" cheama tot `dosar()`, dar fara steag — un
+    # buton apasat nu inseamna ca cineva a citit mesajele.
+    date = await serviciu.dosar(id_cerere, marcheaza_citit=True)
     ai_dosar = await _dosar_ai_sigur(ai_repo, id_cerere)
     background.add_task(pipeline.ruleaza, id_cerere, "lazy")
     return _dosar_response(date, ai_dosar)

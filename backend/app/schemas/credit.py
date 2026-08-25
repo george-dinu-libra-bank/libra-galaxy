@@ -77,7 +77,11 @@ class CerereResponse(BaseModel):
     dae: Decimal | None = None
     explicatie: str | None = None
     oferta_expira_la: datetime | None = None
-    # Mesaje de la banca pe care clientul nu le-a deschis inca — sursa bulinei.
+    # Sursa bulinei — dar directia depinde de cine intreaba: pe rutele clientului
+    # inseamna mesaje de la banca pe care el nu le-a deschis, pe cele de
+    # administrare inseamna mesaje ale clientului pe care nu le-a deschis banca.
+    # Doua coloane in `credit_mesaje` (`citit_de_client_la`, `citit_de_analist_la`),
+    # un singur camp in contract: fiecare parte vede „cate am eu de citit".
     mesaje_necitite: int = 0
 
 

@@ -37,6 +37,7 @@ export function ConversatieCerere({
   parteaMea,
   trimite,
   eticheta = "Discuție cu banca",
+  doarCitire = false,
 }: {
   mesaje: MesajFir[];
   /** Cine se uita: bulele lui stau in dreapta. */
@@ -44,6 +45,10 @@ export function ConversatieCerere({
   /** Actiunea de server care scrie mesajul. Difera intre client si administrare. */
   trimite: (text: string) => Promise<{ eroare?: string }>;
   eticheta?: string;
+  /** Firul se citeste, dar nu se mai scrie — dosar inchis. Caseta dispare de
+   * tot: lasata acolo cu un `trimite` care refuza, omul scrie tot mesajul si
+   * afla abia dupa ce apasa. */
+  doarCitire?: boolean;
 }) {
   const router = useRouter();
   const [continut, setContinut] = useState("");
@@ -78,7 +83,12 @@ export function ConversatieCerere({
     <section className="flex flex-col">
       <p className="text-[12px] font-semibold text-ink">{eticheta}</p>
 
-      <div className="mt-2 flex max-h-72 flex-col gap-3 overflow-y-auto rounded-field bg-muted/60 p-3">
+      <div
+        role="log"
+        aria-live="polite"
+        aria-label={eticheta}
+        className="mt-2 flex max-h-72 flex-col gap-3 overflow-y-auto rounded-field bg-muted/60 p-3"
+      >
         {mesaje.length === 0 ? (
           <p className="py-4 text-center text-[13px] text-ink-faint">
             Niciun mesaj încă.
@@ -155,6 +165,7 @@ export function ConversatieCerere({
         </div>
       ) : null}
 
+      {doarCitire ? null : (
       <div className="mt-2 flex items-end gap-2">
         <textarea
           value={continut}
@@ -183,6 +194,7 @@ export function ConversatieCerere({
           <Send size={17} strokeWidth={1.75} aria-hidden />
         </button>
       </div>
+      )}
     </section>
   );
 }

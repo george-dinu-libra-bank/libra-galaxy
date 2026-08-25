@@ -12,6 +12,7 @@ import {
   type SemnaleRezumat,
   type StatusCerere,
 } from "@/lib/tipuri-admin";
+import { Bulina } from "@/components/ui/bulina";
 import { cn } from "@/lib/utils";
 
 /**
@@ -109,8 +110,13 @@ function RandCerere({ cerere }: { cerere: CerereCredit }) {
   return (
     <Link
       href={`/admin/credite/${cerere.id}`}
-      className="flex items-center gap-4 rounded-card border border-line bg-surface p-4 shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+      className="relative flex items-center gap-4 rounded-card border border-line bg-surface p-4 shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
     >
+      {/* Clientul a scris ceva ce n-a citit nimeni inca. Fara semnalul asta, un
+          dosar in care omul intreaba „nu inteleg ce vreti" statea in coada pana
+          se uita cineva din intamplare in el. */}
+      <Bulina numar={cerere.mesaje_necitite} className="absolute right-3 top-3" />
+
       <span
         className={cn(
           "flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-full",

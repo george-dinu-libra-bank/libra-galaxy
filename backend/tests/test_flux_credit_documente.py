@@ -493,7 +493,8 @@ def test_documentul_incarcat_lasa_un_mesaj_in_fir(client, depozit: DepozitFals) 
     document = _incarca(client, id_cerere)
 
     ultimul = _fir(client, id_cerere)[-1]
-    assert ultimul["autor"] == "client"
+    # `sistem`, nu `client`: textul e produs de OCR, nu scris de om.
+    assert ultimul["autor"] == "sistem"
     assert ultimul["id_document"] == document["id"]
     # Textul se genereaza din ce a citit OCR-ul, ca analistul sa vada rezultatul
     # fara sa deschida documentul. `_incarca` trimite implicit 4.850,00.
@@ -732,3 +733,81 @@ def test_decizia_ajunge_la_client_nu_doar_in_baza(client, depozit: DepozitFals) 
     assert "indatorare" in fir[-1]["text"]
     assert depozit.notificari_scrise[-1]["titlu"] == "Cererea de credit nu a fost aprobata"
     assert depozit.notificari_scrise[-1]["tip"] == "atentionare"
+
+
+def test_analistul_poate_raspunde_si_pe_o_oferta(client, depozit: DepozitFals) -> None:
+    """Dead-end real: clientul putea scrie pe oferta, analistul nu putea raspunde.
+
+    Un raspuns nu e o decizie si nu atinge angajamentul — dar o actiune care
+    schimba starea (`cere_documente`) ramane refuzata acolo.
+    """
+    id_cerere = _cerere_evaluata(client)
+    _decizie(client, id_cerere, "aproba")
+
+    client.post(
+        "/api/v1/credite/cereri/" + id_cerere + "/mesaje",
+        json={"text": "Pot semna saptamana viitoare?"},
+    )
+
+    raspuns = client.post(
+        "/api/v1/admin/credite/cereri/" + id_cerere + "/mesaje",
+        json={"text": "Da, oferta e valabila 7 zile."},
+    )
+    assert raspuns.status_code == 201, raspuns.text
+
+    # Dar starea nu se schimba de aici.
+    assert _decizie(client, id_cerere, "cere_documente", "Mai vrem ceva.").status_code == 422
+    assert client.get("/api/v1/credite/cereri").json()[0]["status"] == "oferta"
+
+
+def test_incarcarea_proprie_nu_aprinde_bulina_clientului(
+    client, depozit: DepozitFals
+) -> None:
+    """Necitit inseamna `autor='analist'`, nu „tot ce nu e al clientului".
+
+    Mesajul de document e semnat `sistem`, dar il produce fapta clientului — o
+    bulina pentru propria incarcare n-are ce sa-i spuna.
+    """
+    id_cerere = _cerere_evaluata(client)
+    _incarca(client, id_cerere)
+
+    cereri = client.get("/api/v1/credite/cereri").json()
+    assert next(c for c in cereri if c["id"] == id_cerere)["mesaje_necitite"] == 0
+
+
+def test_banca_vede_ca_a_primit_un_mesaj(client, depozit: DepozitFals) -> None:
+    """Necititul era unidirectional: clientul vedea bulina, banca nu.
+
+    Un dosar in care clientul a scris „nu inteleg ce vreti" statea in coada pana
+    se uita cineva din intamplare in el.
+    """
+    id_cerere = _cerere_evaluata(client)
+    # `notifica`, nu `cere_documente`: al doilea muta dosarul in
+    # 'asteapta_documente', iar coada `analiza-manuala` nu-l mai contine.
+    _decizie(client, id_cerere, "notifica", "Verificam vechimea.")
+
+    client.post(
+        "/api/v1/credite/cereri/" + id_cerere + "/mesaje",
+        json={"text": "Nu inteleg ce fel de adeverinta."},
+    )
+
+    coada = client.get("/api/v1/admin/credite/analiza-manuala").json()
+    assert next(c for c in coada if c["id"] == id_cerere)["mesaje_necitite"] == 1
+
+    # Deschiderea dosarului o stinge: firul vine in acelasi raspuns.
+    client.get("/api/v1/admin/credite/cereri/" + id_cerere)
+    coada = client.get("/api/v1/admin/credite/analiza-manuala").json()
+    assert next(c for c in coada if c["id"] == id_cerere)["mesaje_necitite"] == 0
+
+
+def test_cele_doua_buline_sunt_independente(client, depozit: DepozitFals) -> None:
+    """Doua coloane, nu una cu rol dublu: altfel deschiderea firului de catre
+    analist ar stinge si bulina clientului."""
+    id_cerere = _cerere_evaluata(client)
+    _decizie(client, id_cerere, "notifica", "Ceva de citit.")
+    client.post("/api/v1/credite/cereri/" + id_cerere + "/mesaje", json={"text": "Ok."})
+
+    client.get("/api/v1/admin/credite/cereri/" + id_cerere)
+
+    cereri = client.get("/api/v1/credite/cereri").json()
+    assert next(c for c in cereri if c["id"] == id_cerere)["mesaje_necitite"] == 1
