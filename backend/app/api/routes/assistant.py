@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 
@@ -35,16 +36,49 @@ from app.schemas.assistant import (
     ConversationOut,
     GeneratedFileOut,
     MessageOut,
+    QuickActionOut,
     SendMessageRequest,
     SendMessageResponse,
     VoiceMessageResponse,
 )
+
+logger = logging.getLogger("libra.assistant")
 
 router = APIRouter(prefix="/assistant")
 
 
 def _request_id(request: Request) -> str:
     return request.headers.get("X-Request-ID") or new_request_id()
+
+
+def _quick_action_out(data: dict | None) -> QuickActionOut | None:
+    return QuickActionOut(**data) if data else None
+
+
+def _quick_action_out_from_result(quick_action) -> QuickActionOut | None:
+    if quick_action is None:
+        return None
+    return QuickActionOut(
+        kind=quick_action.kind, account_name=quick_action.account_name,
+        iban=quick_action.iban, currency=quick_action.currency, url=quick_action.url,
+    )
+
+
+async def _sinteza_optionala(text: str, locale: str) -> str | None:
+    """Sinteza vocala, la cerere, pentru un mesaj text (SendMessageRequest.tts).
+
+    Best-effort: daca Azure AI Speech nu e configurat sau esueaza, raspunsul
+    text tot ajunge la utilizator — doar fara audio, nu se pierde intreg
+    mesajul pentru o functie optionala."""
+    if not text.strip():
+        return None
+    try:
+        voice_provider = get_voice_provider()
+        audio = await voice_provider.synthesize(text, locale)
+        return base64.b64encode(audio).decode("ascii")
+    except Exception:
+        logger.exception("sinteza vocala optionala a esuat; raspunsul merge doar ca text")
+        return None
 
 
 def _limiteaza_mesaje_asistent(user_id: str) -> None:
@@ -67,12 +101,16 @@ async def send_message(
     result = await orchestrator.handle_message(
         principal, body.conversation_id, body.text, attachment_ids=body.attachment_ids, channel="text"
     )
+    audio_base64 = await _sinteza_optionala(result.text, principal.locale) if body.tts else None
+
     response = SendMessageResponse(
         conversation_id=result.conversation_id, message_id=result.message_id, text=result.text,
         citations=[CitationOut(**citation) for citation in result.citations], confidence=result.confidence,
         agent_id=result.agent_id,
         file=GeneratedFileOut(url=result.generated_file.url, filename=result.generated_file.filename,
                                kind=result.generated_file.kind) if result.generated_file else None,
+        quick_action=_quick_action_out_from_result(result.quick_action),
+        audio_base64=audio_base64,
     )
     return success(response.model_dump(), request_id=_request_id(request))
 
@@ -100,6 +138,7 @@ async def send_voice_message(
         conversation_id=result.conversation_id, message_id=result.message_id, text=result.text,
         citations=[CitationOut(**citation) for citation in result.citations], confidence=result.confidence,
         agent_id=result.agent_id, audio_base64=base64.b64encode(audio_reply).decode("ascii"),
+        quick_action=_quick_action_out_from_result(result.quick_action),
     )
     return success(response.model_dump(), request_id=_request_id(request))
 
@@ -175,6 +214,7 @@ async def list_messages(
             citations=[CitationOut(**citation) for citation in row.citations],
             confidence=row.confidence, channel=row.channel, created_at=row.created_at,
             file=files_by_message.get(row.id),
+            quick_action=_quick_action_out(row.quick_action),
         ).model_dump()
         for row in rows
     ]

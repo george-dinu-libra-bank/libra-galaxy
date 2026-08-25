@@ -11,6 +11,11 @@
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
+    // Testele ruleaza cu runnerul din Node (`npm test`), care le incarca drept
+    // ESM si cere extensia in specificator. Sigur aici pentru ca `noEmit` e
+    // true: TypeScript nu scrie niciun fisier, deci n-are ce lasa in urma un
+    // import catre un `.ts` inexistent la runtime.
+    "allowImportingTsExtensions": true,
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,

@@ -35,6 +35,43 @@ from app.orchestration.routing import AgentRouter
         ("Export my transactions please", "export_request"),
         ("Download my transaction history", "export_request"),
         ("I need an account statement", "export_request"),
+        ("Cand expira cardul meu?", "card_question"),
+        ("Ce carduri am?", "card_question"),
+        ("Ce stil are cardul meu?", "card_question"),
+        ("When does my card expire?", "card_question"),
+        ("Vreau sa fac un transfer", "transfer_intent"),
+        ("Vreau sa fac o tranzactie", "transfer_intent"),
+        ("Vreau sa fac o plata", "transfer_intent"),
+        ("Sa trimit bani cuiva", "transfer_intent"),
+        ("Initiez un transfer", "transfer_intent"),
+        ("Make a transfer", "transfer_intent"),
+        ("I want to send money", "transfer_intent"),
+        ("Start a transfer", "transfer_intent"),
+        # Raportat live: "poti sa mi transferi bani?" nu era prins de vechea
+        # lista de fraze exacte (doar "vreau sa..."/"fac un..."), fiindca era o
+        # cerere politicoasa la persoana a doua, nu la intai.
+        ("Poti sa mi transferi bani intr un cont?", "transfer_intent"),
+        ("Poti sa imi faci un transfer?", "transfer_intent"),
+        ("Ai putea sa transferi 100 de lei catre Ana?", "transfer_intent"),
+        ("Can you transfer money to my friend?", "transfer_intent"),
+        ("As vrea sa fac un credit,, ce conditii trebuie sa indeplinesc", "credit_intent"),
+        ("Vreau un credit", "credit_intent"),
+        ("Vreau sa aplic pentru un credit", "credit_intent"),
+        ("As vrea un imprumut", "credit_intent"),
+        ("I want a loan", "credit_intent"),
+        ("Apply for a loan", "credit_intent"),
+        ("Vreau sa creez un grup pentru a strange bani pentru o excursie", "group_intent"),
+        ("Vreau sa fac un grup", "group_intent"),
+        ("Creeaza un grup", "group_intent"),
+        ("Create a group", "group_intent"),
+        ("Start a savings group", "group_intent"),
+        ("salut", "greeting"),
+        ("Salut!", "greeting"),
+        ("Buna ziua", "greeting"),
+        ("Buna", "greeting"),
+        ("neata", "greeting"),
+        ("Hello", "greeting"),
+        ("Hi", "greeting"),
     ],
 )
 def test_classify_intent(text, expected_intent):
@@ -47,6 +84,29 @@ def test_export_request_wins_over_spending_analysis_stem():
     # spending_analysis si ar ajunge la LLM in loc sa se scurtcircuiteze
     # determinist (orchestrator.py::_handle_export_request).
     assert classify_intent("Exporta-mi tranzactiile din ultima luna") == "export_request"
+
+
+def test_greeting_does_not_swallow_a_real_question_attached_to_it():
+    # "buna" e in lista de salut, dar cand mesajul chiar contine o intrebare
+    # reala, aceea trebuie sa castige — salutul e doar fallback-ul de dupa
+    # tabela principala, verificat in classify_intent.
+    assert classify_intent("Buna, cat am cheltuit luna asta?") == "spending_analysis"
+
+
+def test_greeting_root_does_not_false_positive_on_longer_question():
+    # "buna" apare si ca adjectiv ("oferta buna"), nu doar ca salut. Fraza de
+    # mai jos nu se potriveste cu nimic din tabela principala (nu contine
+    # "vreau"/"aplic"/"imprumut" din credit_intent) — plafonul de lungime
+    # (_GREETING_MAX_CHARS) e ce o tine departe de fallback-ul de salut.
+    assert classify_intent("Este o oferta buna la credit ipotecar?") == "unknown"
+
+
+def test_transfer_intent_wins_over_spending_analysis_stem():
+    # "tranzactie" contine radacina "tranzact" (spending_analysis), dar
+    # transfer_intent e verificat inaintea lui — altfel "vreau sa fac o
+    # tranzactie" ar cadea gresit pe spending_analysis in loc sa
+    # declanseze scurtcircuitul determinist _handle_transfer_request.
+    assert classify_intent("Vreau sa fac o tranzactie de 100 RON") == "transfer_intent"
 
 
 def test_diacritics_do_not_change_classification():
@@ -72,9 +132,19 @@ def test_router_maps_intent_to_declared_agent():
     assert router.select("what_if") == "financial_advisor"
     assert router.select("spending_analysis") == "transaction_intelligence"
     assert router.select("document_question") == "document_intelligence"
+    assert router.select("card_question") == "transaction_intelligence"
 
 
 def test_router_defaults_unknown_to_document_intelligence():
     router = AgentRouter()
     assert router.select("unknown") == "document_intelligence"
     assert router.select("something_never_declared") == "document_intelligence"
+
+
+def test_router_defaults_credit_intent_to_document_intelligence():
+    # credit_intent nu e inregistrat pe niciun AgentSpec (la fel ca
+    # export_request/transfer_intent) — dar spre deosebire de acelea, NU se
+    # scurtcircuiteaza in orchestrator.py, ci chiar ajunge la agent prin
+    # fallback-ul implicit, ca RAG-ul din document_intelligence sa raspunda
+    # la partea informativa (conditii de eligibilitate).
+    assert AgentRouter().select("credit_intent") == "document_intelligence"

@@ -61,15 +61,20 @@ class _Urma(_Interogare):
 
 
 class _ClientFals:
-    def __init__(self, rol: str = "admin", tranzactii: list[dict] | None = None) -> None:
+    def __init__(self, rol: str | None = "admin", tranzactii: list[dict] | None = None) -> None:
+        """`rol=None` = utilizator fara niciun rand in user_roles, cazul obisnuit."""
         self._rol = rol
         self._tranzactii = tranzactii or []
         self.inserari: list[dict] = []
 
     def table(self, nume: str):
-        # Rolul se citeste din user_roles, nu din profiles (docs/AGENTS.md).
-        # `eq()` e un no-op in lantul fals de mai sus, deci filtrarea dupa rol
-        # se face aici: un rand doar cand contul chiar e administrator.
+        # Drepturile stau in user_roles, nu in profiles (vezi ROL_ADMIN si
+        # migratia 0018). profiles ramane sursa datelor de cont, atat.
+        #
+        # `eq()` e un no-op in lantul fals de mai sus, deci filtrarea dupa rol se
+        # face aici — codul real cere `.eq("role", ROL_ADMIN)`. Fara filtrul asta
+        # un `rol="client"` ar produce un rand si ar trece drept administrator,
+        # adica exact invers decat verifica testul.
         if nume == "user_roles":
             randuri = (
                 [{"user_id": str(ADMIN.user_id), "role": self._rol}]
@@ -82,7 +87,6 @@ class _ClientFals:
                 [
                     {
                         "id": str(ADMIN.user_id),
-                        "rol": self._rol,
                         "nume": "Ana Popescu",
                         "email": "ana@exemplu.ro",
                         "telefon": "+40712345678",
@@ -127,7 +131,33 @@ def test_zona_de_administrator_cere_autentificare() -> None:
 
 
 def test_un_client_obisnuit_primeste_403() -> None:
+    """Are rand in user_roles, dar cu alt rol."""
     _cu_client(_ClientFals(rol="client"))
+    try:
+        raspuns = TestClient(app).get("/api/v1/admin/conturi-semnalate")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert raspuns.status_code == 403
+
+
+def test_fara_niciun_rol_primeste_403() -> None:
+    """Cazul obisnuit: niciun rand in user_roles, deci maybe_single() da None."""
+    _cu_client(_ClientFals(rol=None))
+    try:
+        raspuns = TestClient(app).get("/api/v1/admin/conturi-semnalate")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert raspuns.status_code == 403
+
+
+def test_vechea_valoare_administrator_nu_mai_trece() -> None:
+    """
+    'administrator' era valoarea ceruta de backend inainte de 0018, cand
+    frontendul cerea deja 'admin'. Daca cineva o reintroduce, testul cade.
+    """
+    _cu_client(_ClientFals(rol="administrator"))
     try:
         raspuns = TestClient(app).get("/api/v1/admin/conturi-semnalate")
     finally:

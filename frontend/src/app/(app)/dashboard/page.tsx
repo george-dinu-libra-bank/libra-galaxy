@@ -8,6 +8,7 @@ import { ListaConturi } from "@/components/dashboard/lista-conturi";
 import { SchimbValutarDrawer } from "@/components/dashboard/schimb-valutar-drawer";
 import { SoldAnimat } from "@/components/dashboard/sold-animat";
 import { UltimeleTranzactii } from "@/components/dashboard/ultimele-tranzactii";
+import { MesajeBanca } from "@/components/dashboard/mesaje-banca";
 import { VerificaIdentitateBanner } from "@/components/dashboard/verifica-identitate-banner";
 import { Banda } from "@/components/ui/banda";
 import { Bulina } from "@/components/ui/bulina";
@@ -16,6 +17,7 @@ import { Logo } from "@/components/ui/logo";
 import { obtineConturiUtilizator, totalSold } from "@/lib/data/conturi";
 import { obtineCereri } from "@/lib/data/credite";
 import type { StareCerere } from "@/lib/data/credite";
+import { obtineNotificari } from "@/lib/data/notificari";
 import { obtineCursuri } from "@/lib/data/curs-valutar";
 import { obtineTranzactiiUtilizator } from "@/lib/data/tranzactii";
 import { createClient } from "@/lib/supabase/server";
@@ -73,6 +75,9 @@ export default async function DashboardPage() {
   const conturi = await obtineConturiUtilizator();
   const tranzactii = await obtineTranzactiiUtilizator(TRANZACTII_REZUMAT);
   const cursuri = await obtineCursuri();
+  // Mesajele bancii nu pot darama dashboardul: daca tabela lipseste (migrarea
+  // 0018 nerulata inca), lista vine goala si restul ecranului se vede la fel.
+  const notificari = await obtineNotificari().catch(() => []);
 
   // Bulina de pe cardul de credite: cate mesaje de la banca n-a deschis inca.
   // Contorul vine gata numarat de backend, pe fiecare cerere (o singura
@@ -136,6 +141,10 @@ export default async function DashboardPage() {
               <VerificaIdentitateBanner />
             </div>
           ) : null}
+
+          <div className="mt-4">
+            <MesajeBanca notificari={notificari} />
+          </div>
 
           <ListaConturi conturi={conturi} />
 

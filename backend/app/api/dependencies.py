@@ -44,6 +44,7 @@ from app.providers.voice import MicrosoftVoiceProvider
 from app.rag.retrieval import RetrievalService
 from app.repositories.attachment_repository import AttachmentRepository
 from app.repositories.banking_read_repository import BankingReadRepository
+from app.repositories.card_repository import CardRepository
 from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.credit_ai_repository import CreditAiRepository
 from app.repositories.credit_repository import CreditRepository
@@ -51,13 +52,22 @@ from app.repositories.embedding_cache_repository import EmbeddingCacheRepository
 from app.repositories.knowledge_repository import KnowledgeRepository
 from app.repositories.memory_repository import MemoryRepository
 from app.repositories.message_repository import MessageRepository
+from app.repositories.profile_repository import ProfileRepository
 from app.repositories.summary_repository import SummaryRepository
 from app.repositories.telemetry_repository import TelemetryRepository
 from app.services.transaction_export_service import TransactionExportService
 from app.tools.banking_tools import build_banking_tools
+from app.tools.card_tools import build_card_tools
 from app.tools.knowledge_tools import build_knowledge_tools
 from app.tools.registry import ToolRegistry
 from app.tools.scenario_tools import SCENARIO_TOOL
+
+# Valoarea din public.user_roles.role care da drepturi de administrator.
+# Aceeasi in trei locuri care trebuie sa spuna acelasi lucru: aici, in
+# frontend/src/lib/admin.ts si in public.este_administrator() din baza de date.
+# Cand au fost diferite, oamenii intrau in interfata de admin si primeau 403 la
+# fiecare apel.
+ROL_ADMIN = "admin"
 
 
 @lru_cache
@@ -85,6 +95,10 @@ def get_orchestrator() -> Orchestrator:
     memories = MemoryRepository(client)
     telemetry = TelemetryRepository(client)
     banking = BankingReadRepository(client)
+    cards = CardRepository(client)
+    profiles = ProfileRepository(client)
+    knowledge = KnowledgeRepository(client)
+    embedding_cache = EmbeddingCacheRepository(client)
     attachments = AttachmentRepository(client)
     attachment_storage = AttachmentStorage(client, settings.attachments_bucket)
     export_storage = ExportStorage(client, settings.export_bucket)
@@ -93,7 +107,9 @@ def get_orchestrator() -> Orchestrator:
     chat_provider = MicrosoftFoundryChatProvider(settings)
     retrieval_service = get_retrieval_service()
 
-    tools = ToolRegistry([*build_banking_tools(banking), SCENARIO_TOOL, *build_knowledge_tools(retrieval_service)])
+    tools = ToolRegistry([
+        *build_banking_tools(banking), *build_card_tools(cards), SCENARIO_TOOL, *build_knowledge_tools(retrieval_service),
+    ])
 
     agents = {
         "financial_advisor": FinancialAdvisorAgent(),
@@ -109,7 +125,7 @@ def get_orchestrator() -> Orchestrator:
         tool_registry=tools, agents=agents, router=AgentRouter(),
         chat_provider=chat_provider, environment=settings.environment,
         chat_price_in=settings.chat_price_per_million_input, chat_price_out=settings.chat_price_per_million_output,
-        export_service=export_service,
+        export_service=export_service, banking=banking, profiles=profiles,
     )
 
 
@@ -213,13 +229,6 @@ def get_voice_provider() -> MicrosoftVoiceProvider:
     return MicrosoftVoiceProvider(get_settings())
 
 
-# Valoarea din `public.user_roles.role`, asa cum e ea in baza reala — 'admin',
-# nu 'administrator'. Constanta, nu literal repetat, ca sa nu mai divergheze
-# intre backend, frontend si politicile din baza (vezi `este_administrator()`,
-# care inca verifica 'administrator' si de aceea nu poate fi folosita ca atare).
-ROL_ADMINISTRATOR = "admin"
-
-
 @dataclass(frozen=True, slots=True)
 class UserContext:
     user_id: UUID
@@ -267,29 +276,44 @@ def get_user_supabase(
     return create_user_client(settings, user.access_token)
 
 
+def get_admin_supabase() -> Client:
+    """Clientul privilegiat, ca dependinta — ca sa poata fi inlocuit in teste.
+
+    Trece peste RLS, deci orice ruta care il foloseste isi verifica singura
+    drepturile: baza de date nu o mai face in locul ei. Folosit de rutele care
+    scriu in tabele fara politica de insert (analize_cont, notificari), tocmai
+    ca scrierea sa nu poata veni din alta parte.
+    """
+    return get_service_client()
+
+
 async def cere_administrator(
     user: UserContext = Depends(get_current_user),
     client: Client = Depends(get_user_supabase),
 ) -> UserContext:
     """Lasa sa treaca numai administratorii.
 
-    Verificarea intreaba baza de date, nu tokenul: un rol pus in JWT ar fi mai
-    ieftin de citit, dar ar ramane valabil pana expira tokenul, inclusiv dupa ce
-    i-a fost luat cuiva dreptul.
+    Rolul se citeste din `public.user_roles(user_id, role)`, singura sursa de
+    adevar pentru drepturi (vezi ROL_ADMIN). Verificarea intreaba baza de date,
+    nu tokenul: un rol pus in JWT ar fi mai ieftin de citit, dar ar ramane
+    valabil pana expira tokenul, inclusiv dupa ce i-a fost luat cuiva dreptul.
+    Varianta si mai veche citea `profiles.rol`, ramas in urma fata de user_roles
+    si inghetat de trigger-ul `profiles_protejeaza_campuri`: aceiasi oameni erau
+    'admin' intr-o parte si 'client' in cealalta, deci frontendul ii lasa in
+    ecranul de administrare iar backendul le raspundea 403.
 
-    Rolul se citeste din `public.user_roles`, sursa de adevar documentata in
-    docs/AGENTS.md si singura pe care o intretine echipa. Varianta anterioara
-    citea `profiles.rol`, care exista in schema dar ramasese in urma: aceiasi
-    oameni aveau 'admin' in user_roles si 'client' in profiles, deci frontendul
-    ii lasa in ecranul de administrare, iar backendul le raspundea 403. In plus,
-    `profiles.rol` e inghetat de trigger-ul `profiles_protejeaza_campuri`, deci
-    nici nu putea fi adus la zi fara sa se atinga trigger-ul (REGULI.md #2: o
-    singura implementare per responsabilitate).
+    Chiar daca cineva ar ocoli verificarea de aici, RLS ramane bariera reala:
+    politicile din 0009 cer public.este_administrator(), care citeste aceeasi
+    tabela si aceeasi valoare.
 
-    `limit(1)`, nu `maybe_single()`: tabela n-are index unic pe (user_id, role),
-    deci acelasi om poate aparea de doua ori. `maybe_single()` ar arunca exact
-    atunci si l-ar da afara pe un administrator adevarat — aceeasi capcana pe
-    care o evita si checkAdmin din frontend.
+    Interogarea merge cu tokenul utilizatorului, deci trece prin politica
+    "Enable users to view their own data only" de pe user_roles: fiecare isi
+    vede doar propriul rand, iar cine n-are niciunul primeste zero randuri.
+
+    Se filtreaza pe rol si se ia `limit(1)`, **nu** `maybe_single()`: tabela
+    n-are index unic pe (user_id, role), deci acelasi om poate aparea de doua
+    ori. S-a intamplat: un rand duplicat a facut `maybe_single()` sa arunce si
+    l-a dat afara pe un administrator adevarat. `limit(1)` nu are cum.
     """
 
     def interogare() -> bool:
@@ -297,7 +321,7 @@ async def cere_administrator(
             client.table("user_roles")
             .select("role")
             .eq("user_id", str(user.user_id))
-            .eq("role", ROL_ADMINISTRATOR)
+            .eq("role", ROL_ADMIN)
             .limit(1)
             .execute()
         )

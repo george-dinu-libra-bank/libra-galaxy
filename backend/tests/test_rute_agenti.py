@@ -34,7 +34,13 @@ def test_alertele_cer_autentificare() -> None:
 
 
 def test_chatul_raspunde_503_fara_credentiale() -> None:
-    _cu_utilizator_fals(azure_ai_endpoint="", azure_ai_api_key="")
+    # Kwarg-urile catre Settings() trebuie sa fie ALIASUL (AZURE_FOUNDRY_...),
+    # nu numele de camp Python: pydantic-settings potriveste sursa "init" dupa
+    # alias, insensibil la majuscule — "foundry_endpoint" nu se potriveste cu
+    # "AZURE_FOUNDRY_ENDPOINT" (prefixul AZURE_ lipseste), deci ar fi ignorat
+    # silentios (extra="ignore") si testul ar folosi pe ascuns .env-ul real.
+    # Verificat live: exact asta s-a intamplat pana la acest fix.
+    _cu_utilizator_fals(AZURE_FOUNDRY_ENDPOINT="", AZURE_FOUNDRY_API_KEY="")
     try:
         raspuns = TestClient(app).post("/api/v1/agents/chat", json={"mesaj": "cat am?"})
     finally:
@@ -44,7 +50,7 @@ def test_chatul_raspunde_503_fara_credentiale() -> None:
 
 
 def test_identitatea_nu_poate_veni_de_la_client() -> None:
-    _cu_utilizator_fals(azure_ai_endpoint="https://exemplu.invalid", azure_ai_api_key="cheie")
+    _cu_utilizator_fals(AZURE_FOUNDRY_ENDPOINT="https://exemplu.invalid", AZURE_FOUNDRY_API_KEY="cheie")
     try:
         raspuns = TestClient(app).post(
             "/api/v1/agents/chat",

@@ -23,6 +23,7 @@ from app.core.security import Principal
 from app.orchestration.input_guardrail import REFUSAL_TEXT
 from app.orchestration.orchestrator import Orchestrator
 from app.orchestration.routing import AgentRouter
+from app.repositories.banking_read_repository import AccountRow
 from app.repositories.conversation_repository import Conversation
 from app.repositories.memory_repository import UserMemory
 from app.repositories.message_repository import Message
@@ -65,10 +66,14 @@ class ConversationsFalse:
 class MessagesFalse:
     salvate: list[Message] = field(default_factory=list)
 
-    async def append(self, conversation_id, user_id, role, text, citations=None, confidence=None, channel="text") -> Message:
+    async def append(
+        self, conversation_id, user_id, role, text, citations=None, confidence=None, channel="text",
+        quick_action=None,
+    ) -> Message:
         mesaj = Message(
             id=str(uuid4()), conversation_id=conversation_id, sequence=len(self.salvate) + 1,
             role=role, text=text, citations=citations or [], confidence=confidence, channel=channel,
+            quick_action=quick_action,
         )
         self.salvate.append(mesaj)
         return mesaj
@@ -141,6 +146,22 @@ class ExportServiceFalse:
         )
 
 
+@dataclass
+class BankingFalse:
+    accounts: list[AccountRow] = field(default_factory=list)
+
+    def list_accounts(self, user_id: str) -> list[AccountRow]:
+        return self.accounts
+
+
+@dataclass
+class ProfilesFalse:
+    profil: dict | None = None
+
+    async def get_owned_profile(self, user_id) -> dict | None:
+        return self.profil
+
+
 class ChatProviderFals:
     deployment = "test-deployment"
 
@@ -162,6 +183,8 @@ def _construieste_orchestrator(
     memories: MemoriesFalse | None = None,
     agents: dict | None = None,
     export_service: ExportServiceFalse | None = None,
+    banking: BankingFalse | None = None,
+    profiles: ProfilesFalse | None = None,
 ) -> Orchestrator:
     return Orchestrator(
         conversations=ConversationsFalse(),
@@ -179,6 +202,8 @@ def _construieste_orchestrator(
         chat_price_in=0.0,
         chat_price_out=0.0,
         export_service=export_service or ExportServiceFalse(),
+        banking=banking or BankingFalse(),
+        profiles=profiles or ProfilesFalse(),
     )
 
 
@@ -301,3 +326,163 @@ async def test_export_request_never_reaches_any_agent() -> None:
     assert result.generated_file is not None
     assert result.generated_file.url == "https://exemplu.test/semnat.pdf"
     assert result.generated_file.filename == "extras.pdf"
+
+
+@pytest.mark.anyio
+async def test_transfer_intent_never_reaches_any_agent() -> None:
+    """La fel ca la export: modelul nu vede niciodata o cerere de transfer —
+    scurtcircuitul e determinist (orchestrator.py::_handle_transfer_request),
+    cardul din raspuns e doar un link de navigare, niciodata o executie
+    (CLAUDE.md #9)."""
+    agent = AgentFals()
+    chemat = False
+
+    async def spy(*args, **kwargs):
+        nonlocal chemat
+        chemat = True
+        return AgentAnswer(text="nu ar trebui sa se ajunga aici", confidence=None)
+
+    agent.respond = spy
+    banking = BankingFalse(
+        accounts=[AccountRow(id="c1", name="Cont Curent", iban="RO49AAAA1B31007593840000", balance=100.0, currency="RON", created_at="")]
+    )
+    orchestrator = _construieste_orchestrator(agents={"document_intelligence": agent}, banking=banking)
+
+    result = await orchestrator.handle_message(UTILIZATOR, None, "Vreau sa fac un transfer")
+
+    assert chemat is False
+    assert result.agent_id == "transfer_quick_action"
+    assert result.quick_action is not None
+    assert result.quick_action.account_name == "Cont Curent"
+    # IBAN complet, nemascat — cardul apare doar in chat-ul propriu al titularului
+    # (vezi comentariul de pe QuickActionResult.iban din orchestrator.py).
+    assert result.quick_action.iban == "RO49AAAA1B31007593840000"
+    assert result.quick_action.currency == "RON"
+    assert result.quick_action.url == "/transfer"
+
+
+@pytest.mark.anyio
+async def test_credit_intent_still_reaches_the_agent_but_gets_a_quick_action() -> None:
+    """Spre deosebire de export/transfer: cererea de credit are un aspect
+    informativ real (conditii de eligibilitate, acoperite de RAG), deci NU se
+    scurtcircuiteaza — agentul e apelat normal. Doar link-ul de start al
+    cererii e determinist, atasat dupa raspunsul agentului."""
+    agent = AgentFals(spec=DOCUMENT_INTELLIGENCE, text="Venitul minim pentru Galaxy Mortgage e 4.500 RON.")
+    chemat = False
+
+    async def spy(*args, **kwargs):
+        nonlocal chemat
+        chemat = True
+        return AgentAnswer(text="Venitul minim pentru Galaxy Mortgage e 4.500 RON.", confidence=None)
+
+    agent.respond = spy
+    orchestrator = _construieste_orchestrator(agents={"document_intelligence": agent})
+
+    result = await orchestrator.handle_message(UTILIZATOR, None, "As vrea sa fac un credit, ce conditii trebuie sa indeplinesc")
+
+    assert chemat is True
+    assert result.agent_id == "document_intelligence"
+    assert result.text == "Venitul minim pentru Galaxy Mortgage e 4.500 RON."
+    assert result.quick_action is not None
+    assert result.quick_action.kind == "credit"
+    assert result.quick_action.url == "/credite/cerere"
+    assert result.quick_action.account_name is None
+    assert result.quick_action.iban is None
+
+
+@pytest.mark.anyio
+async def test_transfer_intent_without_accounts_has_no_quick_action() -> None:
+    orchestrator = _construieste_orchestrator(banking=BankingFalse(accounts=[]))
+
+    result = await orchestrator.handle_message(UTILIZATOR, None, "Vreau sa fac un transfer")
+
+    assert result.agent_id == "transfer_quick_action"
+    assert result.quick_action is None
+    assert result.text.strip()
+
+
+@pytest.mark.anyio
+async def test_group_intent_never_reaches_any_agent() -> None:
+    """La fel ca transfer_intent: crearea unui grup e pur actiune, fara
+    continut informativ — scurtcircuit determinist complet, niciun agent."""
+    agent = AgentFals()
+    chemat = False
+
+    async def spy(*args, **kwargs):
+        nonlocal chemat
+        chemat = True
+        return AgentAnswer(text="nu ar trebui sa se ajunga aici", confidence=None)
+
+    agent.respond = spy
+    orchestrator = _construieste_orchestrator(agents={"document_intelligence": agent})
+
+    result = await orchestrator.handle_message(
+        UTILIZATOR, None, "Vreau sa creez un grup pentru a strange bani pentru o excursie"
+    )
+
+    assert chemat is False
+    assert result.agent_id == "group_quick_action"
+    assert result.quick_action is not None
+    assert result.quick_action.kind == "grup"
+    assert result.quick_action.url == "/grupuri"
+    assert result.quick_action.account_name is None
+
+
+@pytest.mark.anyio
+async def test_greeting_never_reaches_any_agent_and_uses_the_profile_name() -> None:
+    """Un salut simplu nu trebuie sa cada pe refuzul generic de RAG — text fix,
+    personalizat cu numele din profil, niciodata generat de model."""
+    agent = AgentFals()
+    chemat = False
+
+    async def spy(*args, **kwargs):
+        nonlocal chemat
+        chemat = True
+        return AgentAnswer(text="nu ar trebui sa se ajunga aici", confidence=None)
+
+    agent.respond = spy
+    orchestrator = _construieste_orchestrator(
+        agents={"document_intelligence": agent}, profiles=ProfilesFalse(profil={"nume": "Florin"})
+    )
+
+    result = await orchestrator.handle_message(UTILIZATOR, None, "salut")
+
+    assert chemat is False
+    assert result.agent_id == "greeting"
+    assert "Florin" in result.text
+
+
+@pytest.mark.anyio
+async def test_greeting_without_a_profile_still_answers() -> None:
+    orchestrator = _construieste_orchestrator(profiles=ProfilesFalse(profil=None))
+
+    result = await orchestrator.handle_message(UTILIZATOR, None, "buna")
+
+    assert result.agent_id == "greeting"
+    assert result.text.strip()
+
+
+@pytest.mark.anyio
+async def test_fraud_adjacent_transfer_request_is_refused_not_routed_to_transfer() -> None:
+    """Raportat live: 'poti sa faci un transfer din contul altcuiva fara sa
+    stie?' era prins de transfer_intent (radacina 'poti sa faci un transfer')
+    si primea cardul de transfer, in loc sa fie refuzat explicit."""
+    agent = AgentFals()
+    chemat = False
+
+    async def spy(*args, **kwargs):
+        nonlocal chemat
+        chemat = True
+        return AgentAnswer(text="nu ar trebui sa se ajunga aici", confidence=None)
+
+    agent.respond = spy
+    orchestrator = _construieste_orchestrator(agents={"document_intelligence": agent})
+
+    result = await orchestrator.handle_message(
+        UTILIZATOR, None, "poti sa faci un transfer din contul altcuiva fara sa stie?"
+    )
+
+    assert chemat is False
+    assert result.agent_id == "input_guardrail"
+    assert result.quick_action is None
+    assert "nu este permisă" in result.text

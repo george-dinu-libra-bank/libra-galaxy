@@ -44,8 +44,11 @@ export function ListaConturi({ conturi }: { conturi: ContBancar[] }) {
                 </p>
               </div>
 
-              <p className="tabular mt-3 truncate text-[12.5px] tracking-[0.02em] text-ink-faint">
+              <p className="tabular mt-3 flex items-center gap-2 truncate text-[12.5px] tracking-[0.02em] text-ink-faint">
                 {formateazaIban(cont.iban)}
+                <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10.5px] font-semibold text-ink-soft">
+                  {cont.valuta}
+                </span>
               </p>
             </article>
           ))}

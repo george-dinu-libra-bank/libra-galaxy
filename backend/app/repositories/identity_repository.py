@@ -42,18 +42,47 @@ def seteaza_selfie_referinta(id_user: str, cale: str) -> None:
     client.table("profiles").update({"selfie_referinta_path": cale}).eq("id", id_user).execute()
 
 
-def gaseste_id_user_dupa_email(email: str) -> str | None:
+def gaseste_user_dupa_email(email: str) -> tuple[str | None, bool]:
+    """
+    (id_user, biometrie_activata) pentru emailul dat, sau (None, False).
+
+    Cele doua se citesc impreuna pentru ca apelantul le vrea pe amandoua
+    inainte sa decida ceva — vezi verifica_login_fata.
+
+    `biometrie_activata` a aparut in migratia 0019, care se aplica manual pe
+    Supabase cloud. Pana atunci coloana lipseste, iar select-ul intoarce
+    eroare; in cazul asta reincercam fara ea si presupunem `True`, adica exact
+    comportamentul de dinainte. Un login biometric n-are voie sa se strice
+    fiindca o migratie inca n-a fost rulata.
+    """
     client = get_service_client()
-    raspuns = (
-        client.table("profiles")
-        .select("id")
-        .ilike("email", email.strip())
-        .limit(1)
-        .execute()
-    )
+
+    try:
+        raspuns = (
+            client.table("profiles")
+            .select("id, biometrie_activata")
+            .ilike("email", email.strip())
+            .limit(1)
+            .execute()
+        )
+    except Exception:
+        logger.warning(
+            "gaseste_user_dupa_email: coloana biometrie_activata lipseste "
+            "(migratia 0019 neaplicata?), continui ca si cum ar fi activata"
+        )
+        raspuns = (
+            client.table("profiles")
+            .select("id")
+            .ilike("email", email.strip())
+            .limit(1)
+            .execute()
+        )
+
     if not raspuns.data:
-        return None
-    return raspuns.data[0]["id"]
+        return None, False
+
+    rand = raspuns.data[0]
+    return rand["id"], bool(rand.get("biometrie_activata", True))
 
 
 def gaseste_selfie_verificat(id_user: str) -> str | None:

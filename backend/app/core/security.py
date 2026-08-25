@@ -24,9 +24,10 @@ from app.core.logging import user_id_var
 
 PERMISSION_ASSISTANT_USE = "assistant:use"
 PERMISSION_ACCOUNTS_READ = "accounts:read"
+PERMISSION_CARDS_READ = "cards:read"
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
-    "customer": {PERMISSION_ASSISTANT_USE, PERMISSION_ACCOUNTS_READ},
+    "customer": {PERMISSION_ASSISTANT_USE, PERMISSION_ACCOUNTS_READ, PERMISSION_CARDS_READ},
 }
 
 _SUPPORTED_ALGORITHMS = ["ES256", "RS256"]

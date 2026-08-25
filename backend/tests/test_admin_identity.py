@@ -53,8 +53,11 @@ def _profil(**suprascrieri) -> dict:
 class _ClientRol:
     """Raspunde doar la interogarea de rol din cere_administrator.
 
-    Rolul se citeste din `user_roles` (docs/AGENTS.md), cu `limit(1)`, deci
-    raspunsul e o LISTA de randuri: goala pentru cine nu e administrator.
+    Rolul se citeste din user_roles.role, cu valoarea 'admin' (vezi ROL_ADMIN
+    si migratia 0018). `rol=None` = niciun rand, cazul unui client obisnuit.
+
+    Codul real cere `.eq("role", ROL_ADMIN).limit(1)`, deci raspunsul e o LISTA
+    de randuri — goala pentru cine nu e administrator, nu un dict cu `role`.
     """
 
     def __init__(self, rol: str | None = "admin") -> None:

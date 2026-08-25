@@ -3,10 +3,13 @@ from uuid import UUID
 from anyio import to_thread
 from supabase import Client
 
-# Numarul de card, CVV-ul si data expirarii nu ies niciodata catre un agent.
+# Numarul complet de card si CVV-ul nu ies niciodata catre un agent — nici
+# macar nu sunt citite aici, ca sa nu poata scapa printr-o extindere gresita
+# mai tarziu (GUARDRAILS.md #13). Data expirarii si stilul sunt sigure pentru
+# tools/card_tools.py — nu identifica singure cardul, spre deosebire de numar/CVV.
 # Coloanele trebuie sa existe in baza reala, nu doar in migrarile din repo:
 # schema din cloud a luat-o inainte (vezi conturi_bancare, absent din migrari).
-CAMPURI = "id,sold_curent,is_blocked,creat_la"
+CAMPURI = "id,sold_curent,is_blocked,creat_la,data_expirare,card_style"
 
 
 class CardRepository:

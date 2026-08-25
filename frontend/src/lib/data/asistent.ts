@@ -18,6 +18,14 @@ export type FisierGenerat = {
   nume: string;
 };
 
+export type ActiuneRapida = {
+  tip: string;
+  numeCont: string | null;
+  iban: string | null;
+  valuta: string | null;
+  url: string;
+};
+
 export type MesajAsistent = {
   id: string;
   rol: "user" | "assistant";
@@ -27,6 +35,7 @@ export type MesajAsistent = {
   canal: "text" | "voce";
   creatLa: string;
   fisierGenerat: FisierGenerat | null;
+  actiuneRapida: ActiuneRapida | null;
 };
 
 export type ConversatieAsistent = {
@@ -58,6 +67,7 @@ export async function obtineMesaje(idConversatie: string): Promise<MesajAsistent
       channel: "text" | "voce";
       created_at: string;
       file: { url: string; filename: string; kind: string } | null;
+      quick_action: { kind: string; account_name: string | null; iban: string | null; currency: string | null; url: string } | null;
     }[]
   >(`/assistant/conversations/${idConversatie}/messages`);
 
@@ -70,5 +80,8 @@ export async function obtineMesaje(idConversatie: string): Promise<MesajAsistent
     canal: m.channel,
     creatLa: m.created_at,
     fisierGenerat: m.file ? { url: m.file.url, nume: m.file.filename } : null,
+    actiuneRapida: m.quick_action
+      ? { tip: m.quick_action.kind, numeCont: m.quick_action.account_name, iban: m.quick_action.iban, valuta: m.quick_action.currency, url: m.quick_action.url }
+      : null,
   }));
 }

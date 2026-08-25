@@ -1,6 +1,7 @@
-import { FileDown, Mic } from "lucide-react";
-import { cn } from "@/lib/utils";
-import type { FisierGenerat, NivelIncredere } from "@/lib/data/asistent";
+import { ArrowRight, FileDown, Landmark, Mic, Users } from "lucide-react";
+import { cn, formateazaIban } from "@/lib/utils";
+import type { ActiuneRapida, FisierGenerat, NivelIncredere } from "@/lib/data/asistent";
+import { GRADIENTE_STIL_CARD } from "@/lib/stil-card";
 
 function ora(data: string) {
   return new Date(data).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" });
@@ -12,6 +13,12 @@ const STIL_INCREDERE: Record<NonNullable<NivelIncredere>, { eticheta: string; do
   scazut: { eticheta: "Încredere scăzută", dot: "bg-danger", text: "text-danger" },
 };
 
+/** Actiuni rapide fara vizual de cont (spre deosebire de "transfer") — doar un buton de navigare. */
+const ACTIUNI_SIMPLE: Record<string, { eticheta: string; icona: typeof Landmark }> = {
+  credit: { eticheta: "Cerere de credit", icona: Landmark },
+  grup: { eticheta: "Creează grup", icona: Users },
+};
+
 export function BulaMesaj({
   rol,
   text,
@@ -19,6 +26,7 @@ export function BulaMesaj({
   canal,
   creatLa,
   fisierGenerat,
+  actiuneRapida,
 }: {
   rol: "user" | "assistant";
   text: string;
@@ -26,6 +34,7 @@ export function BulaMesaj({
   canal: "text" | "voce";
   creatLa: string;
   fisierGenerat?: FisierGenerat | null;
+  actiuneRapida?: ActiuneRapida | null;
 }) {
   const alMeu = rol === "user";
   const incredere = nivelIncredere ? STIL_INCREDERE[nivelIncredere] : null;
@@ -61,6 +70,42 @@ export function BulaMesaj({
           <FileDown size={12} strokeWidth={1.75} aria-hidden />
           Descarcă PDF
         </a>
+      ) : null}
+
+      {!alMeu && actiuneRapida?.tip === "transfer" ? (
+        <a
+          href={actiuneRapida.url}
+          className="flex w-full max-w-[280px] flex-col gap-3 rounded-card p-4 text-white shadow-lg transition-transform duration-150 ease-soft active:scale-[0.98]"
+          style={{ background: GRADIENTE_STIL_CARD.standard }}
+        >
+          {actiuneRapida.numeCont ? <span className="text-[13px] text-white/80">{actiuneRapida.numeCont}</span> : null}
+          {actiuneRapida.iban ? (
+            <span className="tabular text-[15px] tracking-[0.06em]">
+              {formateazaIban(actiuneRapida.iban)}
+              {actiuneRapida.valuta ? <span className="ml-2 text-[12px] text-white/80">{actiuneRapida.valuta}</span> : null}
+            </span>
+          ) : null}
+          <span className="flex items-center justify-between rounded-field bg-white/15 px-3 py-2 text-[13px] font-medium">
+            Transferuri
+            <ArrowRight size={14} strokeWidth={1.75} aria-hidden />
+          </span>
+        </a>
+      ) : null}
+
+      {!alMeu && actiuneRapida && ACTIUNI_SIMPLE[actiuneRapida.tip] ? (
+        (() => {
+          const { eticheta, icona: Icona } = ACTIUNI_SIMPLE[actiuneRapida.tip];
+          return (
+            <a
+              href={actiuneRapida.url}
+              className="flex items-center gap-2 rounded-field bg-primary-600 px-4 py-2.5 text-[13px] font-medium text-white shadow-lg transition-transform duration-150 ease-soft active:scale-[0.98] hover:bg-primary-700"
+            >
+              <Icona size={16} strokeWidth={1.75} aria-hidden />
+              {eticheta}
+              <ArrowRight size={14} strokeWidth={1.75} aria-hidden />
+            </a>
+          );
+        })()
       ) : null}
 
       {!alMeu && incredere ? (

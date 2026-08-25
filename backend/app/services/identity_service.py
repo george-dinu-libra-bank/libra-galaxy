@@ -1,6 +1,8 @@
 import logging
 
 from app.core.errors import IdentityImageDownloadError, IdentityResultWriteError, ValidationError
+from app.core.logging import log_event
+from app.infrastructure.calitate_poza import RaportCalitate, analizeaza_document, analizeaza_selfie
 from app.infrastructure.face_match import verifica_fete
 from app.infrastructure.ocr import extrage_cnp
 from app.repositories import identity_repository
@@ -14,6 +16,29 @@ BUCKET_SELFIE = "selfie-uri"
 
 def extrage_cnp_din_buletin(imagine_bytes: bytes) -> tuple[str | None, float]:
     return extrage_cnp(imagine_bytes)
+
+
+def evalueaza_calitate_poza(imagine_bytes: bytes, tip: str) -> RaportCalitate:
+    """
+    Verifica daca poza e destul de buna inainte sa fie folosita. Nu atinge
+    baza de date si nu persista nimic — poza se masoara si se arunca.
+
+    Metricile se logheaza (nu se intorc spre client, vezi CalitatePozaResponse):
+    pragurile din config sunt un punct de plecare, iar singurul mod onest de a
+    le calibra e sa vezi ce masoara camerele reale ale oamenilor.
+    """
+    raport = analizeaza_selfie(imagine_bytes) if tip == "selfie" else analizeaza_document(imagine_bytes)
+
+    log_event(
+        logger,
+        "calitate_poza",
+        tip=tip,
+        acceptabila=raport.acceptabila,
+        coduri=[problema.cod for problema in raport.probleme],
+        **raport.metrici,
+    )
+
+    return raport
 
 
 def _descarca(bucket: str, cale: str) -> bytes:
@@ -91,11 +116,17 @@ def verifica_login_fata(email: str, imagine_live_bytes: bytes) -> bool:
     Login biometric: compara 1:1 cadrul live cu ultimul selfie 'verified' al
     contului cu emailul dat — nu cauta in toata baza (1:N ar fi lent si mult
     mai expus la fals-pozitive). Orice pas care nu gaseste ceva (cont
-    inexistent, fara selfie verificat) se termina tacut cu False, ca sa nu
-    se poata deduce din raspuns daca un email exista sau e verificat.
+    inexistent, fara selfie verificat, biometrie oprita din setari) se termina
+    tacut cu False, ca sa nu se poata deduce din raspuns daca un email exista,
+    e verificat, sau si-a oprit biometria.
+
+    Aici e singurul loc unde oprirea biometriei chiar conteaza: ruta
+    /api/identity/login-match e neautentificata si se poate apela direct, nu
+    doar prin serverul Next.js, deci o verificare in frontend n-ar fi o
+    bariera, ci o sugestie.
     """
-    id_user = identity_repository.gaseste_id_user_dupa_email(email)
-    if not id_user:
+    id_user, biometrie_activata = identity_repository.gaseste_user_dupa_email(email)
+    if not id_user or not biometrie_activata:
         return False
 
     cale_selfie = identity_repository.gaseste_selfie_verificat(id_user)

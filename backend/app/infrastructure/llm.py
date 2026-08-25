@@ -51,7 +51,13 @@ class ClientAzure:
     """Azure AI Foundry prin azure-ai-inference."""
 
     def __init__(
-        self, endpoint: str, api_key: str, deployment: str, max_tokens: int, auth: str = "key"
+        self,
+        endpoint: str,
+        api_key: str,
+        deployment: str,
+        max_tokens: int,
+        auth: str = "key",
+        reasoning_effort: str = "low",
     ) -> None:
         from azure.ai.inference import ChatCompletionsClient
 
@@ -62,6 +68,7 @@ class ClientAzure:
         )
         self.model = deployment
         self._max_tokens = max_tokens
+        self._reasoning_effort = reasoning_effort
 
     async def completeaza(
         self, mesaje: list[dict], unelte: list[dict] | None = None
@@ -72,7 +79,15 @@ class ClientAzure:
                 messages=mesaje,
                 tools=unelte or None,
                 # Familia gpt-5 a redenumit plafonul de iesire; numele vechi da eroare.
-                model_extras={"max_completion_tokens": self._max_tokens},
+                # reasoning_effort: verificat live ca fara el o singura cerere poate
+                # sta blocata in rationament invizibil pana la timeout-ul de 300s
+                # (ServiceResponseTimeoutError) — acelasi motiv ca la
+                # providers/foundry.py, doar prin SDK-ul azure-ai-inference, care nu
+                # are parametrul nativ, deci merge tot prin model_extras.
+                model_extras={
+                    "max_completion_tokens": self._max_tokens,
+                    "reasoning_effort": self._reasoning_effort,
+                },
             )
 
         raspuns = await to_thread.run_sync(apel)
@@ -100,7 +115,7 @@ def _credential(auth: str, api_key: str):
     from azure.core.credentials import AzureKeyCredential
 
     if not api_key:
-        raise ValueError("AZURE_AI_AUTH=key, dar AZURE_AI_API_KEY lipseste.")
+        raise ValueError("AZURE_AI_AUTH=key, dar AZURE_FOUNDRY_API_KEY lipseste.")
     return AzureKeyCredential(api_key)
 
 
@@ -152,10 +167,13 @@ def get_client_model() -> ClientModel:
         raise ValueError(
             f"LLM_PROVIDER='{setari.llm_provider}' nu e suportat inca. Momentan doar 'azure'."
         )
+    # O singura sursa de credentiale Azure pentru tot ce vorbeste cu modelul —
+    # aceleasi campuri foundry_* ca providers/foundry.py, nu o pereche separata.
     return ClientAzure(
-        endpoint=setari.azure_ai_endpoint,
-        api_key=setari.azure_ai_api_key,
-        deployment=setari.azure_ai_chat_deployment,
+        endpoint=setari.foundry_endpoint,
+        api_key=setari.foundry_api_key,
+        deployment=setari.foundry_chat_deployment,
         max_tokens=setari.agent_max_tokens,
         auth=setari.azure_ai_auth,
+        reasoning_effort=setari.foundry_reasoning_effort,
     )

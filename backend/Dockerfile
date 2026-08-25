@@ -1,17 +1,20 @@
+# syntax=docker/dockerfile:1
 FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     PYTHONPATH=/app
 
 # tesseract (cu pachetul de limba romana): OCR-ul buletinului.
 # libgl1 + libglib2.0-0: opencv, folosit de DeepFace la detectia fetei.
+# fonts-dejavu-core: singurul font din imagine cu diacritice romanesti complete
+# (s si t cu virgula). Fara el, rapoartele PDF ies cu patrate in locul lor.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       tesseract-ocr \
       tesseract-ocr-ron \
       libgl1 \
       libglib2.0-0 \
+      fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -24,7 +27,12 @@ WORKDIR /app
 # Pachetul are nevoie de directorul app ca sa poata fi rezolvat, dar aici ne
 # intereseaza numai dependintele lui, asa ca punem un ciot si il stergem.
 COPY pyproject.toml ./
-RUN mkdir -p app && touch app/__init__.py \
+# Cache-ul de descarcare al pip persista intre build-uri (BuildKit), separat de
+# stratul imaginii — pachetele mari (tensorflow, prin deepface) nu ajung in
+# imagine (la fel ca inainte, cu PIP_NO_CACHE_DIR), dar nici nu se mai
+# redescarca de pe internet cand acest strat trebuie refacut.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    mkdir -p app && touch app/__init__.py \
     && pip install --upgrade pip \
     && pip install . \
     && rm -rf app

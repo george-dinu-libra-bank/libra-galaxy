@@ -52,7 +52,7 @@ export function ListaConturiSemnalate({
       : conturi;
 
     const dupa = {
-      scor: (a: ContSemnalat, b: ContSemnalat) => b.scor_maxim - a.scor_maxim,
+      scor: (a: ContSemnalat, b: ContSemnalat) => b.gravitate - a.gravitate,
       suma: (a: ContSemnalat, b: ContSemnalat) => b.suma_totala - a.suma_totala,
       numar: (a: ContSemnalat, b: ContSemnalat) => b.numar_semnalari - a.numar_semnalari,
     }[sortare];
@@ -149,7 +149,7 @@ export function ListaConturiSemnalate({
 }
 
 function RandCont({ cont, zile }: { cont: ContSemnalat; zile: number }) {
-  const ton = STIL_GRAVITATE[tonScor(cont.scor_maxim)];
+  const ton = STIL_GRAVITATE[tonScor(cont.gravitate)];
 
   return (
     <Link
@@ -163,9 +163,11 @@ function RandCont({ cont, zile }: { cont: ContSemnalat; zile: number }) {
         )}
       >
         <span className={cn("tabular text-[15px] font-bold leading-4", ton.text)}>
-          {cont.scor_maxim.toFixed(0)}
+          {cont.gravitate}
         </span>
-        <span className={cn("text-[9px] uppercase tracking-wide", ton.text)}>scor</span>
+        <span className={cn("text-[9px] uppercase tracking-wide", ton.text)}>
+            gravitate
+          </span>
       </span>
 
       <span className="min-w-0 flex-1">
