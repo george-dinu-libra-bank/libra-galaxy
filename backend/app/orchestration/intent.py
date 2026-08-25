@@ -136,6 +136,36 @@ _INTENT_PHRASES: list[tuple[str, tuple[str, ...]]] = [
         ("sfat financiar", "cum sa economisesc", "recomandare", "financial advice", "how should i save"),
     ),
     (
+        # Inaintea lui "document_question": acela prinde "comision"/"termeni", iar
+        # "ce dobanda are creditul meu" e despre dosarul omului, nu despre brosura.
+        # Radacini scurte, nu fraze intregi — lectia din comentariul de la
+        # "spending_analysis": o lista de fraze rateaza mereu o conjugare noua.
+        "credit_question",
+        (
+            # NU radacina "credit" simpla: "e o oferta buna la credit ipotecar?"
+            # e o intrebare despre produs, la care raspunde baza de cunostinte,
+            # nu dosarul omului. Aici intra doar formularile personale sau
+            # actionabile (exista un test care apara distinctia).
+            "creditul meu", "creditele mele", "creditul pe care", "credit am",
+            "am un credit", "am credite", "vreau un credit", "vreau credit",
+            "as vrea un credit", "pot lua un credit", "sa iau un credit",
+            "imprumut",  # imprumut/imprumutul/imprumuturi
+            # "rata" simplu ar prinde "declarata", "generata", "adevarata" —
+            # radacina e prea scurta ca sa stea singura. De aceea perechi.
+            "ce rata", "rata mea", "ratele", "rata lunara", "am rata",
+            "cat platesc", "cand am rata", "de plata luna asta",
+            "scadent",  # scadenta/scadente/scadenta ratei
+            "dae", "adeverint", "cerere de credit", "cererea mea",
+            # "respins" prinde respins/respinsa/respingere — in aplicatie doar
+            # creditarea respinge ceva. "cerere" simplu ar fura si cererile de
+            # plata catre comerciant, deci nu e in lista.
+            "respins", "aprobat cererea", "aprobata cererea",
+            "rambursare anticipata", "grad de indatorare", "indatorare",
+            "loan", "loans", "my installment", "installments", "monthly payment",
+            "credit application", "why was i rejected", "early repayment",
+        ),
+    ),
+    (
         "document_question",
         ("politica", "procedura", "comision", "comisioane", "termeni", "regulament", "policy", "fee", "terms"),
     ),

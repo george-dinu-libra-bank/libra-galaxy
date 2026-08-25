@@ -7,7 +7,7 @@ import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { DiscutieDrawer } from "@/components/credite/discutie-drawer";
 import { IncarcaAdeverinta } from "@/components/credite/incarca-adeverinta";
-import { acceptaOferta } from "@/lib/actions/credite";
+import { acceptaOferta, anuleazaCerere } from "@/lib/actions/credite";
 import type { ContBancar } from "@/lib/data/conturi";
 import type { CerereCredit, MesajCerere } from "@/lib/data/credite";
 import { formateazaSuma } from "@/lib/utils";
@@ -92,6 +92,51 @@ export function CereriInCurs({
         </section>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Retragerea cererii, din partea clientului.
+ *
+ * Nu e doar curatenie de ecran: inchiderea completeaza `finalizat_la` in
+ * backend, deci porneste retentia documentelor. Fara ea, un dosar abandonat isi
+ * tinea adeverinta in bucket la nesfarsit.
+ *
+ * Confirmare in doi pasi, in acelasi buton: e ireversibila, iar cererea
+ * reprezinta munca deja facuta de om (venit, angajator, vechime).
+ */
+function RetrageCererea({ idCerere }: { idCerere: string }) {
+  const router = useRouter();
+  const [confirma, setConfirma] = useState(false);
+  const [eroare, setEroare] = useState<string | null>(null);
+  const [seTrimite, startTransition] = useTransition();
+
+  if (eroare) {
+    return <span className="text-[12.5px] text-danger">{eroare}</span>;
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={seTrimite}
+      onClick={() => {
+        if (!confirma) {
+          setConfirma(true);
+          return;
+        }
+        startTransition(async () => {
+          const rezultat = await anuleazaCerere(idCerere);
+          if (rezultat.eroare) {
+            setEroare(rezultat.eroare);
+            return;
+          }
+          router.refresh();
+        });
+      }}
+      className="shrink-0 text-[12.5px] font-medium text-ink-faint underline-offset-2 hover:text-danger hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+    >
+      {confirma ? "Sigur? Apasă din nou" : "Retrage cererea"}
+    </button>
   );
 }
 
@@ -335,13 +380,16 @@ function InAnaliza({
         </div>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 flex items-center gap-3">
         <DiscutieDrawer
           idCerere={cerere.id}
           mesaje={mesaje}
           necitite={cerere.mesajeNecitite}
           deschisInitial={discutieDeschisa}
         />
+        {/* Retragerea doar aici: pe o oferta omul are ceva de semnat, iar
+            ignorarea duce singura la 'expirata'. */}
+        <RetrageCererea idCerere={cerere.id} />
       </div>
 
       {poateIncarca ? (

@@ -22,16 +22,27 @@ FINANCIAL_ADVISOR = AgentSpec(
     responsibilities=(
         "analizeaza solduri si cashflow lunar prin tool-uri proprii (agents/financiar.py)",
         "semnaleaza plati care ies din tiparul obisnuit, ca observatii statistice",
+        "spune in ce stare e o cerere de credit si ce urmeaza sa se intample",
+        "explica motivele unei decizii de creditare, asa cum le-a scris motorul",
+        "calculeaza rata si costul unui credit prin tool-ul de simulare, niciodata din cap",
     ),
     prohibited=(
         "sa calculeze el insusi solduri, cashflow sau proiectii",
         "sa execute transferuri, sa blocheze carduri sau sa schimbe reguli de alocare",
         "sa prezinte o neregularitate statistica drept frauda confirmata",
+        # Creditarea are un motor determinist si un analist uman in zona gri.
+        # Asistentul explica ce s-a hotarat deja; nu anticipeaza si nu contesta.
+        "sa spuna daca o cerere de credit va fi aprobata sau respinsa",
+        "sa promita o suma, o dobanda sau o rata pe care motorul nu le-a calculat",
+        "sa contrazica sau sa reinterpreteze decizia unui analist",
     ),
-    tool_names=frozenset(),
+    tool_names=frozenset({
+        "get_credit_applications", "get_credit_decision",
+        "get_active_credits", "get_next_installment", "simulate_credit",
+    }),
     risk_ceiling=RiskLevel.LOW,
-    prompt_version="advisor-v1-cristi",
-    intents=("account_overview", "what_if", "financial_advice"),
+    prompt_version="advisor-v2-credite",
+    intents=("account_overview", "what_if", "financial_advice", "credit_question"),
 )
 
 TRANSACTION_INTELLIGENCE = AgentSpec(

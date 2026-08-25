@@ -3,15 +3,29 @@
 ## Diagrama, tradusa in cod
 
 ```
-POST /api/v1/agents/chat
+POST /api/v1/assistant/messages
   |
   v
-Orchestrator                      app/agents/orchestrator.py
-  |-- deleaga_financiar()      -> Agent Financial Advisor   (implementat)
-  |-- deleaga_actiuni()        -> Agent Actiuni             (indisponibil)
-  |-- deleaga_intrebari_banca()-> Agent RAG Q&A             (indisponibil)
-  '-- deleaga_documente()      -> Agent Cititor Doc/Bon     (indisponibil)
+Orchestrator                      app/orchestration/orchestrator.py
+  |  intentie -> risc -> tool-uri eligibile -> context -> agent -> validare
+  |
+  |-- financial_advisor        -> solduri, cashflow, CREDITE   (implementat)
+  |-- transaction_intelligence -> tipare de cheltuieli         (implementat)
+  |-- document_intelligence    -> RAG peste galaxy-bank-knowledge (implementat)
+  |-- engagement               -> formulare pe ton potrivit    (implementat)
+  '-- compliance_kyc           -> asista un flux KYC decis deja (implementat)
 ```
+
+**Atentie la doua orchestratoare in paralel.** Ruta veche
+`POST /api/v1/agents/chat` (`app/agents/orchestrator.py` + `baza.py` +
+`registru.py` + `financiar.py`) nu mai e chemata de frontend — acesta foloseste
+exclusiv `/assistant`. E cod mort in afara de `registru.construieste_analiza`,
+folosit inca de `routes/alerte.py`. REGULI.md #2 spune ce urmeaza: se
+consolideaza pe unul singur.
+
+Diagrama de mai sus a descris pana in 2026-08-25 o lume in care RAG Q&A si
+Cititorul de documente erau „indisponibile". Amandoi exista si ruleaza —
+`knowledge_chunks` are peste 200 de fragmente indexate.
 
 Delegarea se face **agent-ca-tool**: fiecare specialist e expus orchestratorului ca un tool
 cu schema proprie. Cand e chemat, ruleaza propria bucla de tool use si intoarce un rezultat.
@@ -207,6 +221,44 @@ Verificat live (2026-08-24): deployment-ul `gpt-5-mini` din Foundry accepta
 Vizibil in dashboard: panoul din `/admin/credite/{id}` (semnale, ce a citit modelul, brief),
 badge-uri in lista de cereri, si `/admin/credite/ai` (rulari/esecuri pe etapa, cost estimat,
 rata de acord AI vs. decizia finala a omului — view-ul SQL `credit_ai_acord`).
+
+## Creditele in asistent (`app/tools/credit_tools.py`)
+
+Pana in 2026-08-25 asistentul nu stia nimic despre creditare: niciun tool,
+niciun intent, niciunul din cei cinci agenti. „De ce mi-a fost respinsa
+cererea?" cadea pe intentia `unknown`, ajungea la `document_intelligence` si
+primea un raspuns din baza de cunostinte despre produsul Galaxy Flex Personal —
+corect in general, dar despre altcineva.
+
+Cinci tool-uri, toate `READ_ONLY`/`COMPUTE` si `LOW`, atasate lui
+`financial_advisor` (creditele *sunt* situatia financiara a omului; un al
+saselea agent ar fi taiat in doua exact contextul de care are nevoie ca sa
+raspunda la „imi permit rata asta?"):
+
+| Tool | Ce intoarce |
+|---|---|
+| `get_credit_applications` | cererile clientului, cu starea si ce urmeaza |
+| `get_credit_decision` | scor, DTI, motivele scrise de motor |
+| `get_active_credits` | creditele in derulare, cu sold |
+| `get_next_installment` | urmatoarea rata neplatita, pe fiecare credit |
+| `simulate_credit` | rata, DAE si costul, **prin `app/credit/amortizare`** |
+
+`simulate_credit` e cel care conteaza: cifra vine din acelasi motor ca fluxul
+real de creditare, deci rata pe care o spune asistentul e chiar rata pe care ar
+primi-o. Un numar produs de model ar fi o promisiune pe care banca n-o poate
+onora — aceeasi disciplina ca la pipeline-ul AI de credite: modelul formuleaza,
+motorul calculeaza.
+
+`prohibited` din `FINANCIAL_ADVISOR` primeste trei interdictii noi: sa nu spuna
+daca o cerere va fi aprobata, sa nu promita o suma sau o dobanda pe care motorul
+nu le-a calculat, si sa nu contrazica decizia unui analist.
+
+**Intentia `credit_question`** (`orchestration/intent.py`) sta inaintea lui
+`document_question`, altfel „comision"/„termeni" ar fura intrebarile de credit
+catre RAG. Dar radacina simpla „credit" **nu** e in lista: „e o oferta buna la
+credit ipotecar?" e o intrebare despre produs, la care raspunde baza de
+cunostinte. Intra doar formularile personale sau actionabile („creditul meu",
+„cererea mea", „ce rata am", „respins"). Exista un test care apara distinctia.
 
 ## Ce urmeaza
 

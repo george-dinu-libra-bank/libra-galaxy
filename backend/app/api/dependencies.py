@@ -58,6 +58,7 @@ from app.repositories.telemetry_repository import TelemetryRepository
 from app.services.transaction_export_service import TransactionExportService
 from app.tools.banking_tools import build_banking_tools
 from app.tools.card_tools import build_card_tools
+from app.tools.credit_tools import build_credit_tools
 from app.tools.knowledge_tools import build_knowledge_tools
 from app.tools.registry import ToolRegistry
 from app.tools.scenario_tools import SCENARIO_TOOL
@@ -108,7 +109,12 @@ def get_orchestrator() -> Orchestrator:
     retrieval_service = get_retrieval_service()
 
     tools = ToolRegistry([
-        *build_banking_tools(banking), *build_card_tools(cards), SCENARIO_TOOL, *build_knowledge_tools(retrieval_service),
+        *build_banking_tools(banking), *build_card_tools(cards), SCENARIO_TOOL,
+        *build_knowledge_tools(retrieval_service),
+        # Creditele erau singurul produs necunoscut asistentului: "de ce mi-a fost
+        # respinsa cererea" cadea pe RAG si primea brosura produsului, nu dosarul
+        # omului. Tool-urile sunt read-only; deciziile raman in CreditService.
+        *build_credit_tools(CreditRepository(client)),
     ])
 
     agents = {
