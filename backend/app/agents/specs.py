@@ -27,6 +27,7 @@ FINANCIAL_ADVISOR = AgentSpec(
         "sa calculeze el insusi solduri, cashflow sau proiectii",
         "sa execute transferuri, sa blocheze carduri sau sa schimbe reguli de alocare",
         "sa prezinte o neregularitate statistica drept frauda confirmata",
+        "sa raspunda despre credite si rate — pentru astea exista CREDIT_ADVISOR",
     ),
     tool_names=frozenset(),
     risk_ceiling=RiskLevel.LOW,
@@ -94,8 +95,50 @@ COMPLIANCE_KYC = AgentSpec(
     intents=("kyc_workflow",),
 )
 
+# Agent propriu, nu tool-uri pe FINANCIAL_ADVISOR: acela nu foloseste registrul
+# de tool-uri (select_tools() intoarce mereu [], vezi agents/financial_advisor.py),
+# deci tool-urile declarate acolo erau inregistrate dar imposibil de cerut. In
+# practica asistentul raspundea „nu am acces la deciziile bancii" si cauta prin
+# tranzactii dupa cuvantul „rata".
+CREDIT_ADVISOR = AgentSpec(
+    agent_id="credit_advisor",
+    purpose=(
+        "Raspunde despre creditele si cererile de credit ale utilizatorului: stare, "
+        "motivele unei decizii, rate de plata, si simulari de rata."
+    ),
+    responsibilities=(
+        "spune in ce stare e o cerere si ce urmeaza sa se intample",
+        "explica motivele unei decizii asa cum le-a scris motorul determinist",
+        "citeste creditele in derulare si urmatoarea rata din tool-uri",
+        "calculeaza rata si costul prin tool-ul de simulare, niciodata din cap",
+    ),
+    prohibited=(
+        # Creditarea are un motor determinist si un analist uman in zona gri.
+        # Asistentul explica ce s-a hotarat deja; nu anticipeaza si nu contesta.
+        "sa spuna daca o cerere va fi aprobata sau respinsa",
+        "sa promita o suma, o dobanda sau o rata pe care motorul nu le-a calculat",
+        "sa contrazica sau sa reinterpreteze decizia unui analist",
+        "sa afirme ca nu are acces la datele de creditare — le are, in rezultatele tool-urilor",
+        "sa deduca rate sau credite din descrierile tranzactiilor",
+        "sa depuna el cererea sau sa spuna ca a depus-o — pregateste formularul, atat",
+        "sa bifeze sau sa presupuna acordul pentru Biroul de Credit in locul omului",
+    ),
+    tool_names=frozenset({
+        "get_credit_applications", "get_credit_decision",
+        "get_active_credits", "get_next_installment", "simulate_credit",
+        "prepare_credit_application",
+    }),
+    # MEDIUM, nu LOW: `prepare_credit_application` pregateste o mutatie. Plafonul
+    # trebuie sa o cuprinda, altfel executorul o filtreaza tacit si agentul pare
+    # ca „nu stie" sa completeze formularul.
+    risk_ceiling=RiskLevel.MEDIUM,
+    prompt_version="credit-v2-formular",
+    intents=("credit_question",),
+)
+
 ALL_AGENT_SPECS: tuple[AgentSpec, ...] = (
     FINANCIAL_ADVISOR,
+    CREDIT_ADVISOR,
     TRANSACTION_INTELLIGENCE,
     DOCUMENT_INTELLIGENCE,
     ENGAGEMENT,

@@ -70,6 +70,12 @@ export function useCanalUtilizator(
       })
       .on("broadcast", { event: "sold" }, () => {
         programeazaRefresh();
+      })
+      // Mesaj nou de la analist pe un dosar de credit. Pana acum firul se
+      // improspata doar ca efect colateral al unei miscari de bani — adica
+      // aproape niciodata cand chiar conta.
+      .on("broadcast", { event: "mesaj_credit" }, () => {
+        programeazaRefresh();
       });
 
     // Canalul e privat, deci trece prin RLS pe realtime.messages: are nevoie de

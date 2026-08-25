@@ -70,8 +70,17 @@ class _ClientFals:
     def table(self, nume: str):
         # Drepturile stau in user_roles, nu in profiles (vezi ROL_ADMIN si
         # migratia 0018). profiles ramane sursa datelor de cont, atat.
+        #
+        # `eq()` e un no-op in lantul fals de mai sus, deci filtrarea dupa rol se
+        # face aici — codul real cere `.eq("role", ROL_ADMIN)`. Fara filtrul asta
+        # un `rol="client"` ar produce un rand si ar trece drept administrator,
+        # adica exact invers decat verifica testul.
         if nume == "user_roles":
-            randuri = [{"user_id": str(ADMIN.user_id), "role": self._rol}] if self._rol else []
+            randuri = (
+                [{"user_id": str(ADMIN.user_id), "role": self._rol}]
+                if self._rol == "admin"
+                else []
+            )
             return _Interogare(randuri)
         if nume == "profiles":
             return _Interogare(

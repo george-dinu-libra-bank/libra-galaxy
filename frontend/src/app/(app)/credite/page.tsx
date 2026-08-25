@@ -2,8 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Banknote, Calculator } from "lucide-react";
 import { CereriInCurs } from "@/components/credite/cereri-in-curs";
+import { Banda } from "@/components/ui/banda";
 import { obtineConturiUtilizator } from "@/lib/data/conturi";
-import { obtineCereri, obtineCredite, obtineProdusCredit } from "@/lib/data/credite";
+import {
+  obtineCereri,
+  obtineCredite,
+  obtineMesajeCerere,
+  obtineProdusCredit,
+} from "@/lib/data/credite";
+import type { MesajCerere } from "@/lib/data/credite";
 import { cn, formateazaSuma } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -17,25 +24,55 @@ const ETICHETE: Record<string, { text: string; clasa: string }> = {
   rambursat_anticipat: { text: "Rambursat", clasa: "bg-success/10 text-success" },
 };
 
-export default async function CreditePage() {
+export default async function CreditePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ discutie?: string }>;
+}) {
+  // `?discutie=<id>` vine din notificare: firul se deschide direct, ca
+  // notificarea sa fie utilizabila, nu doar informativa.
+  const { discutie } = await searchParams;
   // Citirea creditelor incaseaza intai ratele scadente (backendul le proceseaza
   // lenes), deci soldurile de mai jos sunt la zi in momentul afisarii.
   //
   // Cererile se citesc si ele: o oferta emisa dupa ce clientul a inchis
   // wizard-ul — cazul obisnuit cand dosarul trece prin analiza manuala — n-avea
   // pana acum unde sa apara, deci nu putea fi semnata niciodata.
-  const [credite, produs, cereri, conturi] = await Promise.all([
+  const [citireCredite, produs, citireCereri, conturi] = await Promise.all([
     obtineCredite(),
     obtineProdusCredit(),
     obtineCereri(),
     obtineConturiUtilizator(),
   ]);
 
+  // Backendul cazut nu mai arata ca „n-ai niciun credit": ecranul de intrare si
+  // banda de eroare spun lucruri diferite, iar al doilea e adevarat.
+  const { credite } = citireCredite;
+  const { cereri } = citireCereri;
+  const eroare = citireCredite.eroare ?? citireCereri.eroare ?? null;
+
   // Ecranul de intrare („n-ai niciun credit, simuleaza unul") n-are ce cauta
   // sub o oferta pe care omul tocmai e invitat sa o semneze.
   const inCurs = cereri.some((cerere) =>
-    ["oferta", "analiza_manuala", "in_analiza"].includes(cerere.status),
+    ["oferta", "analiza_manuala", "asteapta_documente", "in_analiza"].includes(cerere.status),
   );
+
+  // Firele se cer si pentru dosarele inchise recent: acolo sta motivul scris de
+  // analist, iar fara el o respingere n-are unde fi citita. Raman putine — o
+  // persoana are cateva cereri, nu sute.
+  const inLucru = cereri.filter((cerere) =>
+    [
+      "oferta", "analiza_manuala", "asteapta_documente", "in_analiza",
+      "respinsa", "expirata", "anulata",
+    ].includes(cerere.status),
+  );
+  const fire = Object.fromEntries(
+    await Promise.all(
+      inLucru.map(
+        async (cerere) => [cerere.id, await obtineMesajeCerere(cerere.id)] as const,
+      ),
+    ),
+  ) as Record<string, MesajCerere[]>;
 
   const active = credite.filter((credit) => credit.status === "activ" || credit.status === "restant");
   const inchise = credite.filter((credit) => credit.status !== "activ" && credit.status !== "restant");
@@ -44,9 +81,20 @@ export default async function CreditePage() {
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
       <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Credite</h1>
 
-      <CereriInCurs cereri={cereri} conturi={conturi} />
+      {eroare ? (
+        <div className="mt-4">
+          <Banda ton="eroare">{eroare}</Banda>
+        </div>
+      ) : null}
 
-      {credite.length === 0 && !inCurs ? (
+      <CereriInCurs
+        cereri={cereri}
+        conturi={conturi}
+        mesaje={fire}
+        discutieDeschisa={discutie ?? null}
+      />
+
+      {credite.length === 0 && !inCurs && !eroare ? (
         <section className="mt-6 rounded-card bg-surface p-6 text-center shadow-sm">
           <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-50 text-primary-600">
             <Banknote size={26} strokeWidth={1.5} aria-hidden />
@@ -120,7 +168,7 @@ export default async function CreditePage() {
 function CardCredit({
   credit,
 }: {
-  credit: Awaited<ReturnType<typeof obtineCredite>>[number];
+  credit: Awaited<ReturnType<typeof obtineCredite>>["credite"][number];
 }) {
   const eticheta = ETICHETE[credit.status] ?? ETICHETE.activ;
 

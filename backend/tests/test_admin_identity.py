@@ -55,6 +55,9 @@ class _ClientRol:
 
     Rolul se citeste din user_roles.role, cu valoarea 'admin' (vezi ROL_ADMIN
     si migratia 0018). `rol=None` = niciun rand, cazul unui client obisnuit.
+
+    Codul real cere `.eq("role", ROL_ADMIN).limit(1)`, deci raspunsul e o LISTA
+    de randuri — goala pentru cine nu e administrator, nu un dict cu `role`.
     """
 
     def __init__(self, rol: str | None = "admin") -> None:
@@ -69,12 +72,14 @@ class _ClientRol:
     def eq(self, *_a, **_k):
         return self
 
-    def maybe_single(self):
+    def limit(self, *_a, **_k):
         return self
 
     def execute(self):
+        randuri = [{"role": self._rol}] if self._rol == "admin" else []
+
         class R:
-            data = {"role": self._rol} if self._rol else None
+            data = randuri
 
         return R()
 

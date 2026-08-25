@@ -5,7 +5,9 @@ import { AlertTriangle, Check, Info, Lock, Unlock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { marcheazaCitita } from "@/lib/actions/notificari";
 import type { Notificare } from "@/lib/data/notificari";
+import Link from "next/link";
 import { dataLunga } from "@/lib/momente";
+import { idCerereDinNotificare, textFaraMarcaj } from "@/lib/notificari-credit";
 
 const STIL = {
   blocare: { icoana: Lock, chenar: "border-danger/30", fundal: "bg-danger/5", ton: "text-danger" },
@@ -48,8 +50,18 @@ function Mesaj({ notificare }: { notificare: Notificare }) {
         <div className="min-w-0 flex-1">
           <h3 className="text-[14px] font-semibold text-ink">{notificare.titlu}</h3>
           <p className="mt-1 whitespace-pre-line text-[13px] leading-[19px] text-ink-soft">
-            {notificare.mesaj}
+            {/* Fara curatare, mesajele de credit i-ar arata clientului marcajul
+                tehnic de la final in clar. */}
+            {textFaraMarcaj(notificare.mesaj)}
           </p>
+          {idCerereDinNotificare(notificare.mesaj) ? (
+            <Link
+              href={"/credite?discutie=" + idCerereDinNotificare(notificare.mesaj)}
+              className="mt-2 inline-block text-[12.5px] font-semibold text-primary-600 hover:underline"
+            >
+              Deschide discutia
+            </Link>
+          ) : null}
           <p className="mt-2 text-[12px] text-ink-faint">
             {dataLunga(notificare.creat_la)}
           </p>

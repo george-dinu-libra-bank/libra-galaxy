@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, FileText, ScanLine, TriangleAlert } from "lucide-react";
+import { Check, FileText, ScanLine, Sparkles, TriangleAlert } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
@@ -19,19 +19,34 @@ import { lei, type DocumentCerere } from "@/lib/tipuri-admin";
  *
  * Ce se trimite mai departe e mereu ce scrie in camp, nu ce a citit masina.
  */
+/** Ce a extras etapa `documente` a pipeline-ului din acelasi text. */
+export type CitireModel = {
+  venit_net?: string | null;
+  angajator?: string | null;
+  incredere?: number;
+  citate?: Record<string, string | null>;
+};
+
 export function DocumentAdeverinta({
   document,
   idCerere,
+  citireModel,
 }: {
   document: DocumentCerere;
   idCerere: string;
+  /** Lipseste cand pipeline-ul n-a rulat sau etapa a esuat — panoul ramane util fara ea. */
+  citireModel?: CitireModel | null;
 }) {
   const router = useRouter();
   const [seTrimite, startTransition] = useTransition();
   const [eroare, setEroare] = useState<string | null>(null);
 
   const citit = document.extras.venit_net ?? null;
-  const [venit, setVenit] = useState(document.venit_confirmat ?? citit ?? "");
+  const citModel = citireModel?.venit_net ?? null;
+  // Regex-ul are prioritate cand a gasit ceva: e determinist si reproductibil.
+  // Modelul completeaza golul — pe formularele tipizate, unde eticheta nu sta
+  // langa cifra, el citeste ce regex-ul rateaza.
+  const [venit, setVenit] = useState(document.venit_confirmat ?? citit ?? citModel ?? "");
 
   const confirmat = document.status === "confirmat";
   const stersDinStorage = document.sters_la !== null;
@@ -104,6 +119,36 @@ export function DocumentAdeverinta({
             eticheta „net” lângă cifră. Uită-te la document și scrie tu venitul.
           </p>
         )}
+
+        {/*
+          A doua citire, a modelului. Sta langa prima, nu in locul ei: cand cele
+          doua difera, diferenta e informatia — nu ceva de ascuns prin alegerea
+          uneia. Regex-ul e reproductibil; modelul descurca formularele tipizate,
+          unde eticheta si cifra nu stau una langa alta.
+        */}
+        {citireModel ? (
+          <div className="mt-3 border-t border-line pt-3">
+            <p className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+              <Sparkles size={13} strokeWidth={2} aria-hidden className="text-primary-600" />
+              Și ce a citit modelul
+              {citireModel.incredere !== undefined
+                ? ` · încredere ${Math.round(citireModel.incredere * 100)}%`
+                : ""}
+            </p>
+            <dl className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Pereche
+                eticheta="Venit net"
+                valoare={citModel ? `${lei(citModel)} RON` : "—"}
+              />
+              <Pereche eticheta="Angajator" valoare={citireModel.angajator ?? "—"} />
+            </dl>
+            {citireModel.citate?.venit_net ? (
+              <p className="mt-2 text-[12px] italic leading-[17px] text-ink-faint">
+                „{citireModel.citate.venit_net}”
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {confirmat && citit && document.venit_confirmat !== citit ? (

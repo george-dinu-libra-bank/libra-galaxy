@@ -23,7 +23,26 @@ const MAX_OCTETI = 10 * 1024 * 1024;
  * pierde exact cifrele pe care trebuie să le citim. PDF-ul se trimite neatins —
  * dacă are strat de text, e citit exact, fără OCR.
  */
-export function IncarcaAdeverinta({ idCerere }: { idCerere: string }) {
+/**
+ * Cardul din jur, prezent doar cand componenta sta singura.
+ *
+ * Incastrata in `cereri-in-curs.tsx`, ea e deja intr-un card si sub un text
+ * care spune acelasi lucru — un al doilea card si un al doilea titlu ar fi
+ * zgomot.
+ */
+function Invelis({ incastrat, children }: { incastrat: boolean; children: React.ReactNode }) {
+  if (incastrat) return <>{children}</>;
+  return <section className="rounded-card bg-surface p-5 shadow-sm">{children}</section>;
+}
+
+export function IncarcaAdeverinta({
+  idCerere,
+  incastrat = false,
+}: {
+  idCerere: string;
+  /** Fara card si fara titlu — cand componenta e pusa intr-un ecran care le are deja. */
+  incastrat?: boolean;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [seTrimite, startTransition] = useTransition();
   const [eroare, setEroare] = useState<string | null>(null);
@@ -68,7 +87,7 @@ export function IncarcaAdeverinta({ idCerere }: { idCerere: string }) {
 
   if (citit) {
     return (
-      <section className="rounded-card bg-surface p-5 shadow-sm">
+      <Invelis incastrat={incastrat}>
         <div className="flex items-start gap-3">
           <CheckCircle2
             size={22}
@@ -85,17 +104,21 @@ export function IncarcaAdeverinta({ idCerere }: { idCerere: string }) {
             </p>
           </div>
         </div>
-      </section>
+      </Invelis>
     );
   }
 
   return (
-    <section className="rounded-card bg-surface p-5 shadow-sm">
-      <h2 className="text-[15px] font-semibold text-ink">Dovedește-ți venitul</h2>
-      <p className="mt-1 text-[13px] leading-[19px] text-ink-soft">
-        Nu vedem un salariu care intră constant în contul tău, așa că avem nevoie de o
-        adeverință de venit de la angajator. O citim automat, iar un coleg confirmă suma.
-      </p>
+    <Invelis incastrat={incastrat}>
+      {incastrat ? null : (
+        <>
+          <h2 className="text-[15px] font-semibold text-ink">Dovedește-ți venitul</h2>
+          <p className="mt-1 text-[13px] leading-[19px] text-ink-soft">
+            Nu vedem un salariu care intră constant în contul tău, așa că avem nevoie de o
+            adeverință de venit de la angajator. O citim automat, iar un coleg confirmă suma.
+          </p>
+        </>
+      )}
 
       {eroare ? (
         <div className="mt-4">
@@ -114,7 +137,7 @@ export function IncarcaAdeverinta({ idCerere }: { idCerere: string }) {
       />
 
       <Button
-        className="mt-4 w-full"
+        className={incastrat ? "w-full" : "mt-4 w-full"}
         loading={seTrimite}
         onClick={() => inputRef.current?.click()}
         iconaStanga={<FileUp size={18} strokeWidth={1.75} aria-hidden />}
@@ -126,6 +149,6 @@ export function IncarcaAdeverinta({ idCerere }: { idCerere: string }) {
         PDF sau poză, până în 10 MB. Documentul se șterge la 30 de zile după ce dosarul se
         închide.
       </p>
-    </section>
+    </Invelis>
   );
 }

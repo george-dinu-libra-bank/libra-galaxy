@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { checkAdmin } from "@/lib/admin";
 import { backendFetch, BackendError } from "@/lib/backend";
+import type { ActiuneAnalist, DosarCredit } from "@/lib/tipuri-admin";
 
 export type RezultatDecizieCredit = { eroare?: string; status?: string };
 
@@ -26,21 +27,22 @@ async function cuAdmin<T>(
 }
 
 /**
- * Aproba sau respinge o cerere din zona gri.
+ * Ce face analistul cu un dosar aflat in lucru.
  *
- * Aprobarea NU acorda creditul — genereaza oferta. Clientul o accepta tot el,
- * din aplicatie: semnatura ramane a lui, nu a administratorului.
+ * Patru actiuni, un singur endpoint. `aproba` NU acorda creditul — genereaza
+ * oferta, pe care clientul o semneaza el, din aplicatie. `cere_documente` si
+ * `notifica` cer un mesaj: el e tot ce vede clientul.
  */
 export async function decideCerereCredit(
   idCerere: string,
-  aproba: boolean,
+  actiune: ActiuneAnalist,
   nota?: string,
 ): Promise<RezultatDecizieCredit> {
   const rezultat = await cuAdmin((token) =>
     backendFetch<{ status: string }>(
       `api/v1/admin/credite/cereri/${encodeURIComponent(idCerere)}/decizie`,
       token,
-      { method: "POST", body: JSON.stringify({ aproba, nota: nota?.trim() || null }) },
+      { method: "POST", body: JSON.stringify({ actiune, nota: nota?.trim() || null }) },
     ),
   );
 
@@ -76,4 +78,52 @@ export async function confirmaVenitDinAdeverinta(
   revalidatePath("/admin/credite");
   revalidatePath(`/admin/credite/${idCerere}`);
   return { status: rezultat.date?.cerere.status };
+}
+
+/**
+ * Raspunsul analistului in fir, fara sa fie o decizie.
+ *
+ * Cele patru actiuni din `decideCerereCredit` isi scriu si ele textul in acelasi
+ * fir; asta e pentru cand nu e nimic de decis, doar de raspuns.
+ */
+export async function raspundeInFir(
+  idCerere: string,
+  text: string,
+): Promise<{ eroare?: string }> {
+  const rezultat = await cuAdmin((token) =>
+    backendFetch<Record<string, unknown>>(
+      `api/v1/admin/credite/cereri/${encodeURIComponent(idCerere)}/mesaje`,
+      token,
+      { method: "POST", body: JSON.stringify({ text }) },
+    ),
+  );
+
+  if (rezultat.eroare) return { eroare: rezultat.eroare };
+
+  revalidatePath(`/admin/credite/${idCerere}`);
+  return {};
+}
+
+
+export type RezultatRulareAi = { eroare?: string; dosar?: DosarCredit };
+
+/**
+ * "Ruleaza din nou" — spre deosebire de catch-up-ul lazy de la deschiderea
+ * dosarului, recheama efectiv modelul (backend: `forta=True`), sincron, ca
+ * analistul sa vada imediat rezultatul.
+ */
+export async function ruleazaPipelineAi(idCerere: string): Promise<RezultatRulareAi> {
+  const rezultat = await cuAdmin((token) =>
+    backendFetch<DosarCredit>(
+      `api/v1/admin/credite/cereri/${encodeURIComponent(idCerere)}/ai`,
+      token,
+      { method: "POST" },
+    ),
+  );
+
+  if (rezultat.eroare) return { eroare: rezultat.eroare };
+
+  revalidatePath("/admin/credite");
+  revalidatePath(`/admin/credite/${idCerere}`);
+  return { dosar: rezultat.date };
 }

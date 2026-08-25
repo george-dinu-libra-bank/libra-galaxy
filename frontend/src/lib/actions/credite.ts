@@ -154,6 +154,70 @@ export type RezultatDocument = {
  * Ce se întoarce e informativ: documentul e citit, nu crezut. Cifra nu intră în
  * decizie până n-o confirmă un analist.
  */
+/**
+ * Raspunsul clientului in firul dosarului.
+ *
+ * Exista ca sa aiba unde intreba cand nu intelege ce act i se cere — pana acum
+ * singura lui actiune era sa incarce un fisier si sa spere ca e cel bun.
+ */
+export async function trimiteMesajCerere(
+  idCerere: string,
+  text: string,
+): Promise<{ eroare?: string }> {
+  // `json()`, nu un POST scris de mana: `apelBackend` NU pune `Content-Type`
+  // (ca sa mearga si pentru FormData la incarcarea documentelor), iar fara el
+  // FastAPI nu poate parsa corpul si raspunde 422 — adica "eroare neasteptata"
+  // in ecran, fara nimic in consola.
+  const { eroare } = await apelBackend<Record<string, unknown>>(
+    `/api/v1/credite/cereri/${encodeURIComponent(idCerere)}/mesaje`,
+    json({ text }),
+    INDISPONIBIL,
+  );
+
+  if (eroare) return { eroare };
+
+  revalidatePath("/credite");
+  return {};
+}
+
+
+/** Firul a fost deschis — mesajele bancii nu mai sunt necitite. */
+export async function marcheazaFirulCitit(idCerere: string): Promise<{ eroare?: string }> {
+  const { eroare } = await apelBackend(
+    `/api/v1/credite/cereri/${encodeURIComponent(idCerere)}/mesaje/citite`,
+    { method: "POST" },
+    INDISPONIBIL,
+  );
+
+  if (eroare) return { eroare };
+
+  revalidatePath("/credite");
+  revalidatePath("/dashboard");
+  return {};
+}
+
+
+/**
+ * Clientul isi retrage cererea.
+ *
+ * Nu e doar curatenie de ecran: inchiderea completeaza `finalizat_la` in
+ * backend, deci porneste retentia documentelor. Fara ea, un dosar abandonat isi
+ * tinea adeverinta in bucket la nesfarsit.
+ */
+export async function anuleazaCerere(idCerere: string): Promise<RezultatActiune> {
+  const { eroare } = await apelBackend(
+    `/api/v1/credite/cereri/${encodeURIComponent(idCerere)}/anuleaza`,
+    { method: "POST" },
+    INDISPONIBIL,
+  );
+
+  if (eroare) return { eroare };
+
+  revalidatePath("/credite");
+  revalidatePath("/dashboard");
+  return {};
+}
+
 export async function incarcaAdeverinta(
   idCerere: string,
   formular: FormData,

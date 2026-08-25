@@ -3,15 +3,29 @@
 ## Diagrama, tradusa in cod
 
 ```
-POST /api/v1/agents/chat
+POST /api/v1/assistant/messages
   |
   v
-Orchestrator                      app/agents/orchestrator.py
-  |-- deleaga_financiar()      -> Agent Financial Advisor   (implementat)
-  |-- deleaga_actiuni()        -> Agent Actiuni             (indisponibil)
-  |-- deleaga_intrebari_banca()-> Agent RAG Q&A             (indisponibil)
-  '-- deleaga_documente()      -> Agent Cititor Doc/Bon     (indisponibil)
+Orchestrator                      app/orchestration/orchestrator.py
+  |  intentie -> risc -> tool-uri eligibile -> context -> agent -> validare
+  |
+  |-- financial_advisor        -> solduri, cashflow, CREDITE   (implementat)
+  |-- transaction_intelligence -> tipare de cheltuieli         (implementat)
+  |-- document_intelligence    -> RAG peste galaxy-bank-knowledge (implementat)
+  |-- engagement               -> formulare pe ton potrivit    (implementat)
+  '-- compliance_kyc           -> asista un flux KYC decis deja (implementat)
 ```
+
+**Atentie la doua orchestratoare in paralel.** Ruta veche
+`POST /api/v1/agents/chat` (`app/agents/orchestrator.py` + `baza.py` +
+`registru.py` + `financiar.py`) nu mai e chemata de frontend — acesta foloseste
+exclusiv `/assistant`. E cod mort in afara de `registru.construieste_analiza`,
+folosit inca de `routes/alerte.py`. REGULI.md #2 spune ce urmeaza: se
+consolideaza pe unul singur.
+
+Diagrama de mai sus a descris pana in 2026-08-25 o lume in care RAG Q&A si
+Cititorul de documente erau „indisponibile". Amandoi exista si ruleaza —
+`knowledge_chunks` are peste 200 de fragmente indexate.
 
 Delegarea se face **agent-ca-tool**: fiecare specialist e expus orchestratorului ca un tool
 cu schema proprie. Cand e chemat, ruleaza propria bucla de tool use si intoarce un rezultat.
@@ -169,6 +183,82 @@ Doua observatii din testele pe `gpt-5-mini`, deja reflectate in instructiuni: ti
 ce NU poate afla, si tinde sa ceara clarificari in loc sa foloseasca valorile implicite ale
 tool-urilor. Daca schimbi modelul, reciteste instructiunile din `orchestrator.py` si
 `financiar.py` — sunt scrise impotriva acestor doua obiceiuri.
+
+## Pipeline AI de credite (`app/credit/ai/`)
+
+Separat de layer-ul de agenti de mai sus — nu ruleaza in `orchestrator.py` si nu vorbeste cu
+utilizatorul. E un pipeline in patru etape care ruleaza **pe langa** motorul determinist de
+scoring din `app/credit/` (reguli.py, scorecard.py), niciodata in locul lui.
+
+**Principiul care nu se incalca: strict consultativ.** Nicio etapa nu scrie in
+`credit_cereri.status/scor/dti/venit_folosit` si nu insereaza in `credit_verificari_venit` —
+scorul ramane reproductibil, ca inainte. Rezultatele merg in trei tabele proprii
+(`credit_ai_rulari`, `credit_ai_etape`, `credit_ai_semnale`, migratia 0018), citite doar de
+zona de administrare.
+
+| Etapa | Model? | Ce face |
+|---|---|---|
+| `documente` | da | citeste adeverinta cu un model, in paralel cu regex-ul din `adeverinta.py`; cand difera, diferenta e ea insasi un semnal |
+| `coerenta` | **nu** | pur, determinist, testat ca `reguli.py` — coroboreaza declarat/tranzactii/document/istoricul de documente; document reutilizat intre cereri, venit umflat, angajator nepotrivit, incasari "pregatitoare" chiar inainte de cerere |
+| `brief` | da | sinteza pentru analistul din zona gri (status `analiza_manuala`): riscuri, atenuari, intrebari de pus, o recomandare cu incredere — niciodata o decizie |
+| `explicatie` | da | rescrie `explicatie_determinista` mai cald pentru client, fara sa adauge fapte; singura care ruleaza **sincron**, in `credit_service.evalueaza()` (hook `explica=`), nu prin `CreditAiPipeline` |
+
+Etapele 1-3 sunt orchestrate de `CreditAiPipeline.ruleaza()` (`app/credit/ai/pipeline.py`),
+declansat ca task de fundal (`BackgroundTasks`) dupa `evalueaza`/`incarca_document`/
+`confirma_document`, plus catch-up lazy la deschiderea dosarului — niciodata pe drumul critic
+al unui raspuns. O rulare reusita se refoloseste cat timp datele de intrare nu s-au schimbat
+(`intrare_hash`, sha256); butonul "Ruleaza din nou" din dashboard sare peste refolosire.
+
+O etapa care esueaza (Foundry cazut, JSON invalid) se marcheaza `esuat` si pipeline-ul
+continua cu urmatoarea — niciodata nu darama fluxul de credit. `coerenta` n-are nevoie de
+model, deci tot produce semnale chiar si atunci.
+
+Verificat live (2026-08-24): deployment-ul `gpt-5-mini` din Foundry accepta
+`response_format={"type": "json_schema", "strict": true}` (`StructuredChatProvider.complete_json`,
+`providers/foundry.py`) — folosit doar de etapele `documente` si `brief`; `explicatie` ramane pe
+`ChatProvider.complete()` obisnuit, fiindca produce text, nu campuri.
+
+Vizibil in dashboard: panoul din `/admin/credite/{id}` (semnale, ce a citit modelul, brief),
+badge-uri in lista de cereri, si `/admin/credite/ai` (rulari/esecuri pe etapa, cost estimat,
+rata de acord AI vs. decizia finala a omului — view-ul SQL `credit_ai_acord`).
+
+## Creditele in asistent (`app/tools/credit_tools.py`)
+
+Pana in 2026-08-25 asistentul nu stia nimic despre creditare: niciun tool,
+niciun intent, niciunul din cei cinci agenti. „De ce mi-a fost respinsa
+cererea?" cadea pe intentia `unknown`, ajungea la `document_intelligence` si
+primea un raspuns din baza de cunostinte despre produsul Galaxy Flex Personal —
+corect in general, dar despre altcineva.
+
+Cinci tool-uri, toate `READ_ONLY`/`COMPUTE` si `LOW`, atasate lui
+`financial_advisor` (creditele *sunt* situatia financiara a omului; un al
+saselea agent ar fi taiat in doua exact contextul de care are nevoie ca sa
+raspunda la „imi permit rata asta?"):
+
+| Tool | Ce intoarce |
+|---|---|
+| `get_credit_applications` | cererile clientului, cu starea si ce urmeaza |
+| `get_credit_decision` | scor, DTI, motivele scrise de motor |
+| `get_active_credits` | creditele in derulare, cu sold |
+| `get_next_installment` | urmatoarea rata neplatita, pe fiecare credit |
+| `simulate_credit` | rata, DAE si costul, **prin `app/credit/amortizare`** |
+
+`simulate_credit` e cel care conteaza: cifra vine din acelasi motor ca fluxul
+real de creditare, deci rata pe care o spune asistentul e chiar rata pe care ar
+primi-o. Un numar produs de model ar fi o promisiune pe care banca n-o poate
+onora — aceeasi disciplina ca la pipeline-ul AI de credite: modelul formuleaza,
+motorul calculeaza.
+
+`prohibited` din `FINANCIAL_ADVISOR` primeste trei interdictii noi: sa nu spuna
+daca o cerere va fi aprobata, sa nu promita o suma sau o dobanda pe care motorul
+nu le-a calculat, si sa nu contrazica decizia unui analist.
+
+**Intentia `credit_question`** (`orchestration/intent.py`) sta inaintea lui
+`document_question`, altfel „comision"/„termeni" ar fura intrebarile de credit
+catre RAG. Dar radacina simpla „credit" **nu** e in lista: „e o oferta buna la
+credit ipotecar?" e o intrebare despre produs, la care raspunde baza de
+cunostinte. Intra doar formularile personale sau actionabile („creditul meu",
+„cererea mea", „ce rata am", „respins"). Exista un test care apara distinctia.
 
 ## Ce urmeaza
 

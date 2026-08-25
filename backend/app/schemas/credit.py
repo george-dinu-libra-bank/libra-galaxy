@@ -9,8 +9,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.schemas.credit_ai import DosarAiResponse, SemnaleRezumatResponse
 
 
 class RataResponse(BaseModel):
@@ -74,6 +77,12 @@ class CerereResponse(BaseModel):
     dae: Decimal | None = None
     explicatie: str | None = None
     oferta_expira_la: datetime | None = None
+    # Sursa bulinei — dar directia depinde de cine intreaba: pe rutele clientului
+    # inseamna mesaje de la banca pe care el nu le-a deschis, pe cele de
+    # administrare inseamna mesaje ale clientului pe care nu le-a deschis banca.
+    # Doua coloane in `credit_mesaje` (`citit_de_client_la`, `citit_de_analist_la`),
+    # un singur camp in contract: fiecare parte vede „cate am eu de citit".
+    mesaje_necitite: int = 0
 
 
 class MotivResponse(BaseModel):
@@ -170,11 +179,35 @@ class RambursareResponse(BaseModel):
     sold_cont: Decimal
 
 
-class DecizieManualaRequest(BaseModel):
-    """Decizia unui om peste o cerere din zona gri."""
+ActiuneAnalist = Literal[
+    "aproba", "respinge", "cere_documente", "notifica", "retrage_oferta"
+]
 
-    aproba: bool
+# Actiunile al caror singur efect vizibil pentru client e textul scris de
+# analist. Fara mesaj n-ar afla nici ce lipseste, nici ce nu e in regula.
+# `retrage_oferta` e aici din alt motiv: acolo mesajul nu explica ce sa faca, ci
+# de ce i-a disparut ceva ce avea deja.
+ACTIUNI_CU_MESAJ_OBLIGATORIU = ("cere_documente", "notifica", "retrage_oferta")
+
+
+class DecizieManualaRequest(BaseModel):
+    """Ce face analistul cu un dosar aflat in lucru.
+
+    Cinci iesiri, nu doua: doua inchid discutia (`aproba`/`respinge`), doua o tin
+    deschisa — `cere_documente` muta mingea la client, `notifica` doar il
+    anunta, fara sa schimbe starea dosarului. A cincea, `retrage_oferta`, e
+    singura care lucreaza peste un dosar deja ofertat si il aduce inapoi in
+    analiza.
+    """
+
+    actiune: ActiuneAnalist
     nota: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def _mesajul_e_obligatoriu_unde_trebuie(self) -> "DecizieManualaRequest":
+        if self.actiune in ACTIUNI_CU_MESAJ_OBLIGATORIU and not (self.nota or "").strip():
+            raise ValueError("Scrie un mesaj pentru client.")
+        return self
 
 
 class CerereAdminResponse(CerereResponse):
@@ -191,6 +224,9 @@ class CerereAdminResponse(CerereResponse):
     # coloana `motive` tine si una si alta (vezi _finalizeaza). Un scor fara ele
     # e un numar pe care analistul nu are cum sa il judece.
     motive: list[dict] = Field(default_factory=list)
+    # Numarul de semnale AI din ultima rulare (pipeline consultativ, app/credit/ai/).
+    # None cand pipeline-ul n-a rulat inca pentru cererea asta.
+    semnale: SemnaleRezumatResponse | None = None
 
 
 # -----------------------------------------------------------------------------
@@ -235,12 +271,35 @@ class VerificareResponse(BaseModel):
     creat_la: str
 
 
+class MesajResponse(BaseModel):
+    """Un mesaj din firul unei cereri.
+
+    `id_document` e completat cand mesajul insoteste un fisier incarcat —
+    interfata il foloseste ca sa lege bula de document.
+    """
+
+    id: str
+    autor: str
+    text: str
+    id_document: str | None = None
+    creat_la: datetime
+    citit_de_client_la: datetime | None = None
+
+
+class MesajRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+
+
 class DosarResponse(BaseModel):
     """Tot ce are nevoie un analist ca sa decida, intr-un singur raspuns."""
 
     cerere: CerereAdminResponse
     verificari: list[VerificareResponse]
     documente: list[DocumentResponse]
+    mesaje: list[MesajResponse] = Field(default_factory=list)
+    # None cand pipeline-ul AI n-a rulat inca (Foundry cazut, sau catch-up-ul
+    # lazy nu s-a declansat inca) — strict consultativ, niciodata blocant.
+    ai: DosarAiResponse | None = None
 
 
 class CreditAdminResponse(CreditResponse):

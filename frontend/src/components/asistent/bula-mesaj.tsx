@@ -1,7 +1,43 @@
+import Link from "next/link";
+import { Fragment } from "react";
 import { ArrowRight, FileDown, Landmark, Mic, Users } from "lucide-react";
 import { cn, formateazaIban } from "@/lib/utils";
 import type { ActiuneRapida, FisierGenerat, NivelIncredere } from "@/lib/data/asistent";
 import { GRADIENTE_STIL_CARD } from "@/lib/stil-card";
+
+/**
+ * Caile interne din raspuns devin linkuri pe care se poate apasa.
+ *
+ * Bula randa `{text}` ca text simplu, deci cand asistentul pregateste o cerere
+ * de credit si raspunde cu "/credite/cerere?suma=30000&..." omul vedea niste
+ * caractere, nu ceva de apasat — linkul „nu exista", desi pagina era acolo.
+ *
+ * Doar cai care incep cu `/`, niciodata adrese externe si niciodata
+ * `dangerouslySetInnerHTML`: continutul vine de la un model, deci se randeaza
+ * ca text si se inlocuiesc doar bucatile care se potrivesc exact cu un traseu
+ * din aplicatie. Nimic din ce spune modelul nu poate deveni HTML.
+ */
+// Numai sectiunile care exista chiar in aplicatie, nu orice bucata care incepe
+// cu `/`. Altfel „Rata 1/36" din raspuns devenea un link catre /36.
+const CALE_INTERNA =
+  /(\/(?:credite|dashboard|istoric|transfer|carduri|grupuri|setari|asistent|beneficiari|admin)(?:\/[a-z0-9\-]+)*(?:\?[a-zA-Z0-9%+=&._-]*)?)/g;
+
+function cuLinkuri(text: string) {
+  return text.split(CALE_INTERNA).map((bucata, indice) => {
+    if (indice % 2 === 1) {
+      return (
+        <Link
+          key={indice}
+          href={bucata}
+          className="font-semibold underline underline-offset-2 hover:opacity-80"
+        >
+          {bucata}
+        </Link>
+      );
+    }
+    return <Fragment key={indice}>{bucata}</Fragment>;
+  });
+}
 
 function ora(data: string) {
   return new Date(data).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" });
@@ -47,7 +83,9 @@ export function BulaMesaj({
           alMeu ? "rounded-br-md bg-primary-600 text-white" : "rounded-bl-md bg-muted text-ink",
         )}
       >
-        <p className="whitespace-pre-wrap break-words text-[15px] leading-[22px]">{text}</p>
+        <p className="whitespace-pre-wrap break-words text-[15px] leading-[22px]">
+          {cuLinkuri(text)}
+        </p>
 
         <div
           className={cn(

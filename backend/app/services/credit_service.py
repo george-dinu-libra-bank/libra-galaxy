@@ -15,8 +15,11 @@ Serviciul nu decide nimic singur — pune cap la cap piesele din `app/credit/`
 
 from __future__ import annotations
 
+import asyncio
 import calendar
 import logging
+
+from anyio import to_thread
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -27,6 +30,7 @@ from uuid import UUID, uuid4
 from app.core.errors import ResourceNotFoundError, ValidationError
 from app.credit import amortizare, reguli, scorecard
 from app.credit.adeverinta import citeste_adeverinta
+from app.credit.ai.contracte import DatePipelineCredit
 from app.credit.venit import VenitConstatat, detecteaza_venit
 from app.infrastructure.document_text import text_din_document
 from app.ml.caracteristici import normalizeaza
@@ -34,6 +38,10 @@ from app.ml.neregularitati import DetectorNeregularitati
 from app.repositories.credit_repository import CreditRepository
 
 logger = logging.getLogger(__name__)
+
+# Desparte textul mesajului de marcajul cu id-ul cererii din notificare.
+# Interfata taie marcajul inainte de afisare (clopotel-notificari.tsx).
+SEPARATOR_MARCAJ = chr(10) * 2
 
 PRODUS_IMPLICIT = "galaxy-flex-personal"
 ZILE_VALABILITATE_OFERTA = 7
@@ -45,12 +53,26 @@ INCREDERE_ADEVERINTA = 0.6
 ZILE_ISTORIC_COMPORTAMENT = 180
 
 STATUSURI_CERERE = (
-    "ciorna", "in_analiza", "oferta", "analiza_manuala",
+    "ciorna", "in_analiza", "oferta", "analiza_manuala", "asteapta_documente",
     "respinsa", "acceptata", "anulata", "expirata",
 )
 # Stari din care o cerere nu mai iese. Din momentul in care ajunge intr-una,
 # incepe sa curga retentia documentelor.
 STATUSURI_FINALE = ("respinsa", "acceptata", "anulata", "expirata")
+
+# De unde isi poate retrage clientul cererea. 'oferta' lipseste intentionat:
+# acolo are ceva de semnat, iar ignorarea duce singura la 'expirata'.
+STATUSURI_ANULABILE = ("ciorna", "in_analiza", "analiza_manuala", "asteapta_documente")
+
+# Dosarele deschise, pe care un analist le poate atinge. 'analiza_manuala' =
+# asteapta banca; 'asteapta_documente' = asteapta clientul. Analistul poate
+# decide din amandoua: daca actele cerute nu mai vin, dosarul trebuie sa se
+# poata inchide.
+STATUSURI_IN_LUCRU = ("analiza_manuala", "asteapta_documente")
+
+# Unde firul mai poate primi mesaje. Include 'oferta': acolo clientul are cel
+# mai des intrebari, iar un raspuns nu schimba nimic din angajament.
+STATUSURI_CU_FIR = STATUSURI_IN_LUCRU + ("oferta", "in_analiza")
 
 # Cat mai traieste fisierul dupa ce dosarul s-a inchis. Randul din
 # credit_documente ramane pentru totdeauna, cu ce s-a citit si cine a confirmat;
@@ -143,8 +165,9 @@ class CreditService:
     ) -> None:
         self._depozit = depozit
         self._detector = detector or DetectorNeregularitati()
+        # Callable(decizie: Decizie, text_determinist: str) -> str | None.
         # Injectat ca sa poata fi inlocuit la test si ca serviciul sa nu depinda
-        # de disponibilitatea unui model de limbaj.
+        # de disponibilitatea unui model de limbaj — vezi app/credit/ai/etape/explicatie.py.
         self._explica = explica
 
     # -- simulare -----------------------------------------------------------
@@ -215,12 +238,19 @@ class CreditService:
 
     # -- evaluare -----------------------------------------------------------
 
-    async def evalueaza(self, id_cerere: UUID, user_id: UUID) -> Decizie:
+    async def evalueaza(
+        self, id_cerere: UUID, user_id: UUID, *, decizia_ramane_la_om: bool = False
+    ) -> Decizie:
         """Ruleaza tot lantul: verificari de venit, criterii hard, scorecard.
 
         Se poate reevalua o cerere ramasa in 'ciorna' sau 'in_analiza'. O cerere
         care are deja oferta sau a fost acceptata nu se mai reevalueaza: oferta e
         un angajament, nu o parere.
+
+        `decizia_ramane_la_om` opreste emiterea automata a ofertei: scorul se
+        recalculeaza si se vede, dar cererea ramane in coada analistului. Se
+        foloseste cand reevaluarea a fost declansata de un om care a completat o
+        intrare (vezi `confirma_document`), nu de client.
         """
         cerere = await self._cerere_proprie(id_cerere, user_id)
         if cerere["status"] not in ("ciorna", "in_analiza"):
@@ -254,6 +284,8 @@ class CreditService:
         dti = reguli.grad_indatorare(venit, obligatii, rata_lunara) if venit > 0 else None
 
         if motive:
+            # Respingerea pe criterii hard nu e discretionara, deci ramane
+            # respingere si cand reevaluarea vine de la un analist.
             return await self._finalizeaza(
                 cerere, Decizie(
                     decizie="respins", scor=None, dti=dti,
@@ -302,15 +334,29 @@ class CreditService:
             if aprobat else None,
             cere_document=venit_doar_declarat and verdict == "analiza_manuala",
         )
-        return await self._finalizeaza(cerere, decizie, venit, obligatii)
+        return await self._finalizeaza(
+            cerere, decizie, venit, obligatii, decizia_ramane_la_om=decizia_ramane_la_om
+        )
 
     async def _finalizeaza(
-        self, cerere: dict, decizie: Decizie, venit: Decimal, obligatii: Decimal
+        self, cerere: dict, decizie: Decizie, venit: Decimal, obligatii: Decimal,
+        *, decizia_ramane_la_om: bool = False,
     ) -> Decizie:
-        decizie = _cu_explicatie(decizie, self._explica)
+        """Scrie rezultatul evaluarii pe cerere.
+
+        Cand `decizia_ramane_la_om`, un verdict de "aprobat" se opreste in
+        'analiza_manuala' si NU se scriu campurile de oferta. O oferta e un
+        angajament fata de client — nu poate exista pe jumatate, cu rata
+        completata dar fara ca cineva sa fi decis-o.
+        """
+        decizie = await _cu_explicatie(decizie, self._explica)
         status = {"aprobat": "oferta", "analiza_manuala": "analiza_manuala", "respins": "respinsa"}[
             decizie.decizie
         ]
+
+        opreste_oferta = decizia_ramane_la_om and status == "oferta"
+        if opreste_oferta:
+            status = "analiza_manuala"
 
         await self._depozit.actualizeaza_cerere(UUID(cerere["id"]), {
             "status": status,
@@ -320,15 +366,27 @@ class CreditService:
             "scor": decizie.scor,
             "motive": decizie.motive or decizie.factori,
             "explicatie": decizie.explicatie,
-            "rata_lunara": str(decizie.rata_lunara) if decizie.rata_lunara else None,
-            "dae": str(decizie.dae) if decizie.dae else None,
-            "oferta_expira_la": decizie.oferta_expira_la.isoformat() if decizie.oferta_expira_la else None,
+            "rata_lunara": None if opreste_oferta else (
+                str(decizie.rata_lunara) if decizie.rata_lunara else None
+            ),
+            "dae": None if opreste_oferta else (str(decizie.dae) if decizie.dae else None),
+            "oferta_expira_la": None if opreste_oferta else (
+                decizie.oferta_expira_la.isoformat() if decizie.oferta_expira_la else None
+            ),
         })
 
         await self._depozit.eveniment({
             "id_cerere": cerere["id"], "tip": f"decizie_{decizie.decizie}", "actor": "sistem",
             "detalii": {"scor": decizie.scor, "dti": str(decizie.dti) if decizie.dti else None},
         })
+
+        if opreste_oferta:
+            # Fara urma asta nu s-ar mai vedea peste sase luni ca motorul
+            # spusese "aprobat" si ca oferta a asteptat un om.
+            await self._depozit.eveniment({
+                "id_cerere": cerere["id"], "tip": "decizie_lasata_la_analist", "actor": "sistem",
+                "detalii": {"verdict_motor": decizie.decizie, "scor": decizie.scor},
+            })
         return decizie
 
     # -- verificarile de venit ---------------------------------------------
@@ -431,23 +489,38 @@ class CreditService:
 
     # -- analiza manuala ----------------------------------------------------
 
+    async def _cu_necitite_analist(self, cereri: list[dict]) -> list[dict]:
+        """Adauga pe fiecare cerere cate mesaje ale clientului n-a citit banca.
+
+        O singura interogare pentru toata lista, ca la contorul clientului —
+        altfel coada analistului ar face cate una per dosar.
+        """
+        if not cereri:
+            return cereri
+        contor = await self._depozit.numara_necitite_analist(
+            [UUID(str(c["id"])) for c in cereri]
+        )
+        return [{**c, "mesaje_necitite": contor.get(str(c["id"]), 0)} for c in cereri]
+
     async def cereri_in_analiza(self) -> list[dict]:
         # Coada e citita des si numai de administratori, deci e locul potrivit ca
         # sa se declanseze curatarea documentelor expirate: nu exista cron in
         # proiect, iar operatiunea trebuie sa porneasca din ceva ce se intampla
         # oricum. Nu poate darama citirea — vezi `_curata_documente_expirate`.
         await self._curata_documente_expirate()
-        return await self._depozit.cereri_in_analiza()
+        return await self._cu_necitite_analist(await self._depozit.cereri_in_analiza())
 
     async def cereri_toate(self, status: str | None = None) -> list[dict]:
         if status and status not in STATUSURI_CERERE:
             raise OperatiuneRefuzata(f"Statusul '{status}' nu exista.")
-        return await self._depozit.cereri_toate(status)
+        return await self._cu_necitite_analist(
+            await self._expira_ofertele_trecute(await self._depozit.cereri_toate(status))
+        )
 
     async def credite_toate(self) -> list[dict]:
         return await self._depozit.credite_toate()
 
-    async def dosar(self, id_cerere: UUID) -> dict:
+    async def dosar(self, id_cerere: UUID, *, marcheaza_citit: bool = False) -> dict:
         """Tot ce trebuie sa vada un analist despre o cerere, intr-un singur apel.
 
         Verificarile si documentele vin impreuna cu cererea fiindca fara ele
@@ -458,6 +531,13 @@ class CreditService:
         if not cerere:
             raise CreditNegasit("Cererea nu exista.")
 
+        # Deschiderea dosarului stinge contorul analistului: firul vine in acest
+        # raspuns, deci in clipa asta chiar l-a vazut. Nu se face la orice
+        # citire — listarile cheama `dosar()` fara steag, si acolo n-a citit
+        # nimeni nimic.
+        if marcheaza_citit:
+            await self._depozit.marcheaza_mesaje_citite_analist(id_cerere)
+
         documente = await self._depozit.documente(id_cerere)
         return {
             "cerere": cerere,
@@ -465,7 +545,44 @@ class CreditService:
             "documente": [
                 {**document, "url": await self._url_document(document)} for document in documente
             ],
+            # Firul vine in acelasi apel ca restul dosarului, ca verificarile si
+            # documentele: analistul citeste tot dintr-o data.
+            "mesaje": await self._depozit.mesaje(id_cerere),
         }
+
+    async def date_pentru_pipeline(self, id_cerere: UUID) -> DatePipelineCredit:
+        """Tot ce are nevoie pipeline-ul AI (app/credit/ai/pipeline.py), adunat o
+        singura data — etapele nu mai fac interogari proprii, raman pure sau
+        primesc doar providerul de model.
+
+        Nu verifica proprietatea cererii: apelat exclusiv din context de
+        administrator/fundal (CreditAiPipeline), niciodata direct din ruta
+        clientului.
+        """
+        cerere = await self._depozit.cerere(id_cerere)
+        if not cerere:
+            raise CreditNegasit("Cererea nu exista.")
+        user_id = UUID(str(cerere["id_user"]))
+
+        verificari, documente, randuri = await asyncio.gather(
+            self._depozit.verificari(id_cerere),
+            self._depozit.documente(id_cerere),
+            self._depozit.tranzactii_pentru_venit(user_id),
+        )
+        plati = normalizeaza(randuri, user_id)
+        venit_constatat = detecteaza_venit(plati)
+
+        documente_reutilizate: list[dict] = []
+        for document in documente:
+            hash_fisier = document.get("hash_fisier")
+            if not hash_fisier:
+                continue
+            documente_reutilizate.extend(await self._depozit.documente_cu_hash(hash_fisier, id_cerere))
+
+        return DatePipelineCredit(
+            cerere=cerere, documente=documente, documente_reutilizate=documente_reutilizate,
+            verificari=verificari, venit_constatat=venit_constatat, plati=plati,
+        )
 
     async def _url_document(self, document: dict) -> str | None:
         """Link temporar, doar cat timp fisierul mai exista."""
@@ -483,16 +600,18 @@ class CreditService:
         ca a fost la limita, si cine a decis altfel — altfel auditul nu poate
         distinge o aprobare automata de una omeneasca.
 
-        Administratorul nu poate atinge o cerere care nu e in analiza manuala:
-        nu are ce cauta peste un refuz pe criterii hard (acolo decizia nu e
-        discretionara) si nici peste o oferta deja emisa.
+        Administratorul nu poate atinge o cerere inchisa sau deja ofertata: nu
+        are ce cauta peste un refuz pe criterii hard (acolo decizia nu e
+        discretionara) si nici peste o oferta emisa. Poate decide insa si peste
+        un dosar care asteapta acte — daca actele nu mai vin, dosarul trebuie sa
+        se poata inchide.
         """
         cerere = await self._depozit.cerere(id_cerere)
         if not cerere:
             raise CreditNegasit("Cererea nu exista.")
-        if cerere["status"] != "analiza_manuala":
+        if cerere["status"] not in STATUSURI_IN_LUCRU:
             raise OperatiuneRefuzata(
-                f"Doar o cerere in analiza manuala poate fi decisa de un administrator; "
+                f"Doar o cerere aflata in lucru poate fi decisa de un administrator; "
                 f"asta e in starea '{cerere['status']}'."
             )
 
@@ -522,6 +641,22 @@ class CreditService:
 
         actualizata = await self._depozit.actualizeaza_cerere(id_cerere, campuri)
 
+        # Decizia intra si in fir, si in notificari. Pana acum motivul se scria
+        # doar in `cerere.explicatie`, iar ecranul clientului nu randeaza deloc
+        # cererile respinse — deci o respingere nu ajungea niciodata la om: se
+        # uita in aplicatie si nu gasea nimic, ca si cum n-ar fi depus nimic.
+        await self._depozit.adauga_mesaj({
+            "id_cerere": str(id_cerere), "autor": "analist",
+            "id_autor": str(id_admin),
+            "text": campuri["explicatie"],
+        })
+        await self._depozit.notifica(
+            UUID(str(cerere["id_user"])),
+            "Ai o oferta de credit" if aproba else "Cererea de credit nu a fost aprobata",
+            f"{campuri['explicatie']}" + SEPARATOR_MARCAJ + f"[cerere:{id_cerere}]",
+            "info" if aproba else "atentionare",
+        )
+
         await self._depozit.eveniment({
             "id_cerere": str(id_cerere),
             "tip": "decizie_manuala_aprobat" if aproba else "decizie_manuala_respins",
@@ -530,6 +665,256 @@ class CreditService:
             "detalii": {"nota": motivare or None, "scor_automat": cerere.get("scor")},
         })
         return actualizata
+
+    async def retrage_oferta(
+        self, id_cerere: UUID, id_admin: UUID, motiv: str
+    ) -> tuple[dict, dict]:
+        """Aduce inapoi in analiza un dosar pentru care s-a emis deja o oferta.
+
+        Singura cale prin care o oferta poate disparea din partea bancii. Pana
+        acum nu exista niciuna, iar gaura se vedea in alta parte: `confirma_document`
+        trecea pe langa starea 'oferta' si o stergea tacit. O oferta e un
+        angajament fata de un om — cand chiar trebuie retrasa (date noi, suspiciune
+        de frauda), retragerea trebuie sa fie o actiune cu nume, cu autor si cu
+        motiv, nu un efect secundar.
+
+        Clientul afla: mesajul intra in fir si pleaca o notificare. Altfel ar
+        deschide aplicatia si ar gasi oferta disparuta, fara nicio explicatie.
+        """
+        cerere = await self._depozit.cerere(id_cerere)
+        if not cerere:
+            raise CreditNegasit("Cererea nu exista.")
+        if cerere["status"] != "oferta":
+            raise OperatiuneRefuzata(
+                f"Doar o cerere cu oferta emisa poate fi retrasa; "
+                f"asta e in starea '{cerere['status']}'."
+            )
+
+        text = (motiv or "").strip()
+        if not text:
+            raise OperatiuneRefuzata("Scrie motivul pentru care retragi oferta.")
+
+        # Campurile ofertei se golesc, nu doar statusul: lasate acolo, interfata
+        # ar continua sa arate o rata si o data de expirare pentru ceva ce nu mai
+        # exista, iar RPC-ul de acceptare are propriile verificari pe ele.
+        actualizata = await self._depozit.actualizeaza_cerere(id_cerere, {
+            "status": "analiza_manuala",
+            "rata_lunara": None,
+            "dae": None,
+            "oferta_expira_la": None,
+        })
+
+        scris = await self._depozit.adauga_mesaj({
+            "id_cerere": str(id_cerere), "autor": "analist",
+            "id_autor": str(id_admin), "text": text,
+        })
+
+        await self._depozit.notifica(
+            UUID(str(cerere["id_user"])),
+            "Oferta de credit a fost retrasa",
+            f"{text}" + SEPARATOR_MARCAJ + f"[cerere:{id_cerere}]",
+            "atentionare",
+        )
+
+        await self._depozit.eveniment({
+            "id_cerere": str(id_cerere), "tip": "oferta_retrasa", "actor": "administrator",
+            "id_actor": str(id_admin),
+            "detalii": {"motiv": text, "rata_retrasa": str(cerere.get("rata_lunara"))},
+        })
+        return actualizata, scris
+
+    async def cere_documente(
+        self, id_cerere: UUID, id_admin: UUID, mesaj: str
+    ) -> tuple[dict, dict]:
+        """Trece mingea la client: are de incarcat ceva, si afla din mesaj ce.
+
+        Nu e o decizie si nu inchide nimic — dosarul ramane deschis, deci mai
+        primeste documente, iar retentia nu incepe sa curga (STATUSURI_FINALE).
+        Cand clientul incarca, `incarca_document` il aduce inapoi in coada
+        analistului, fara ca nimeni sa fie nevoit sa-si aminteasca de el.
+        """
+        return await self._scrie_mesaj(
+            id_cerere, id_admin, mesaj,
+            status_nou="asteapta_documente", tip_eveniment="documente_cerute",
+        )
+
+    async def notifica_client(
+        self, id_cerere: UUID, id_admin: UUID, mesaj: str
+    ) -> tuple[dict, dict]:
+        """Spune ceva clientului fara sa schimbe starea dosarului.
+
+        Pentru situatiile in care nu lipseste un act, dar ceva nu se leaga si
+        omul trebuie sa afle. Dosarul ramane exact unde era: un mesaj nu e o
+        decizie si nu muta responsabilitatea.
+        """
+        return await self._scrie_mesaj(
+            id_cerere, id_admin, mesaj, status_nou=None, tip_eveniment="client_notificat",
+        )
+
+    async def _scrie_mesaj(
+        self, id_cerere: UUID, id_admin: UUID, mesaj: str,
+        *, status_nou: str | None, tip_eveniment: str,
+    ) -> tuple[dict, dict]:
+        """Partea comuna a celor doua: valideaza starea, scrie mesajul, lasa urma.
+
+        Mesajul merge in firul dosarului (`credit_mesaje`), nu in `explicatie`:
+        a doua e rescrisa de motor la fiecare reevaluare, iar fluxul "cer acte
+        -> clientul incarca -> se reevalueaza" ar sterge exact mesajul care a
+        pornit totul.
+
+        Intoarce **si** cererea, **si** mesajul scris, fiindca apelantii au
+        nevoie de lucruri diferite: `/decizie` raspunde cu starea dosarului,
+        `/mesaje` raspunde cu bula noua din fir. Cat timp intorcea doar cererea,
+        a doua ruta construia `MesajResponse` din campuri inexistente si pica cu
+        500 dupa ce scrisese deja mesajul in baza — deci analistul retrimitea.
+        """
+        cerere = await self._depozit.cerere(id_cerere)
+        if not cerere:
+            raise CreditNegasit("Cererea nu exista.")
+
+        # Un mesaj simplu are voie si peste o oferta emisa; unul care schimba
+        # starea, nu. Clientul putea scrie in orice stare nefinala, inclusiv
+        # 'oferta', dar analistul putea raspunde doar din cele doua stari de
+        # lucru — deci cine intreba ceva despre oferta primita ramanea fara
+        # raspuns posibil. Un raspuns nu e o decizie si nu atinge oferta.
+        permise = STATUSURI_IN_LUCRU if status_nou is not None else STATUSURI_CU_FIR
+        if cerere["status"] not in permise:
+            raise OperatiuneRefuzata(
+                f"Nu se mai poate scrie pe o cerere aflata in starea "
+                f"'{cerere['status']}'."
+            )
+
+        text = (mesaj or "").strip()
+        if not text:
+            # Mesajul e singurul lucru pe care il vede clientul; unul gol l-ar
+            # lasa sa se intrebe ce trebuie sa faca.
+            raise OperatiuneRefuzata("Scrie un mesaj pentru client.")
+
+        scris = await self._depozit.adauga_mesaj({
+            "id_cerere": str(id_cerere), "autor": "analist",
+            "id_autor": str(id_admin), "text": text,
+        })
+
+        # Firul se vede doar daca omul intra in aplicatie. Notificarea il aduce
+        # inapoi — altfel un dosar care asteapta acte poate sta blocat saptamani
+        # fiindca nimeni nu i-a spus clientului ca s-a cerut ceva.
+        #
+        # 'atentionare' cand are ceva de facut, 'info' cand doar afla.
+        # Id-ul cererii merge in `mesaj`, dupa un marcaj: tabela `notificari` nu e
+        # a noastra (n-are migratie in repo), deci n-o largim cu o coloana. Cu
+        # marcajul, interfata poate duce clientul direct in firul potrivit.
+        await self._depozit.notifica(
+            UUID(str(cerere["id_user"])),
+            "Ai nevoie de documente pentru cererea de credit"
+            if status_nou == "asteapta_documente"
+            else "Mesaj nou despre cererea ta de credit",
+            f"{text}" + SEPARATOR_MARCAJ + f"[cerere:{id_cerere}]",
+            "atentionare" if status_nou == "asteapta_documente" else "info",
+        )
+
+        # Cererea se actualizeaza doar cand starea chiar se schimba. `notifica`
+        # nu muta nimic — un mesaj nu e o decizie.
+        actualizata = (
+            await self._depozit.actualizeaza_cerere(id_cerere, {"status": status_nou})
+            if status_nou is not None
+            else cerere
+        )
+
+        await self._depozit.eveniment({
+            "id_cerere": str(id_cerere), "tip": tip_eveniment, "actor": "administrator",
+            "id_actor": str(id_admin),
+            "detalii": {"mesaj": text, "status_anterior": cerere["status"]},
+        })
+        return actualizata, scris
+
+    # -- firul de discutie --------------------------------------------------
+
+    async def mesaje(self, id_cerere: UUID, user_id: UUID | None = None) -> list[dict]:
+        """Firul unei cereri.
+
+        Cu `user_id`, verifica proprietatea — drumul clientului. Fara, e citire
+        de administrator, iar accesul e oprit mai sus, in dependinta de ruta.
+        """
+        if user_id is not None:
+            await self._cerere_proprie(id_cerere, user_id)
+        elif not await self._depozit.cerere(id_cerere):
+            raise CreditNegasit("Cererea nu exista.")
+
+        return await self._depozit.mesaje(id_cerere)
+
+    async def marcheaza_firul_citit(self, id_cerere: UUID, user_id: UUID) -> None:
+        """Firul a fost deschis: mesajele bancii nu mai sunt necitite.
+
+        „Ale bancii" inseamna `autor = 'analist'`, nu „tot ce nu e al clientului":
+        mesajele `sistem` sunt generate de fapta lui (a incarcat un document),
+        deci numarate ca necitite i-ar aprinde bulina pentru ce a facut singur.
+        """
+        await self._cerere_proprie(id_cerere, user_id)
+        await self._depozit.marcheaza_mesaje_citite(id_cerere)
+
+    async def cereri_cu_necitite(self, user_id: UUID) -> list[dict]:
+        """Cererile utilizatorului, fiecare cu numarul de mesaje necitite.
+
+        Numararea se face intr-o singura interogare pentru toata lista — altfel
+        ecranul de credite ar face cate una per cerere.
+        """
+        cereri = await self._expira_ofertele_trecute(
+            await self._depozit.cereri_utilizator(user_id)
+        )
+        contor = await self._depozit.numara_necitite([UUID(c["id"]) for c in cereri])
+        return [{**cerere, "mesaje_necitite": contor.get(cerere["id"], 0)} for cerere in cereri]
+
+    async def anuleaza(self, id_cerere: UUID, user_id: UUID) -> dict:
+        """Clientul isi retrage cererea.
+
+        `anulata` era al doilea status fantoma: exista in constante, dar nu-l
+        scria nimeni, fiindca nu exista nicio ruta prin care sa fie cerut. Doua
+        urmari: o ciorna ramanea ciorna pentru totdeauna, si — mai important —
+        `finalizat_la` ramanea null, deci retentia documentelor nu pornea
+        niciodata pentru dosarele abandonate. Adeverinta cuiva care s-a razgandit
+        statea in bucket la nesfarsit.
+
+        O oferta nu se anuleaza de aici: acolo omul are ceva de semnat, iar
+        ignorarea ei duce singura la 'expirata'.
+        """
+        cerere = await self._cerere_proprie(id_cerere, user_id)
+        if cerere["status"] not in STATUSURI_ANULABILE:
+            raise OperatiuneRefuzata(
+                f"O cerere in starea '{cerere['status']}' nu mai poate fi retrasa."
+            )
+
+        actualizata = await self._depozit.actualizeaza_cerere(id_cerere, {
+            "status": "anulata",
+            "finalizat_la": datetime.now(timezone.utc).isoformat(),
+        })
+        await self._depozit.eveniment({
+            "id_cerere": str(id_cerere), "tip": "cerere_anulata", "actor": "client",
+            "id_actor": str(user_id),
+            "detalii": {"status_anterior": cerere["status"]},
+        })
+        return actualizata
+
+    async def scrie_mesaj_client(self, id_cerere: UUID, user_id: UUID, mesaj: str) -> dict:
+        """Raspunsul clientului in fir.
+
+        Exista tocmai ca sa aiba unde intreba cand nu intelege ce act i se cere —
+        pana acum singura lui actiune era sa incarce un fisier si sa spere ca e
+        cel bun.
+        """
+        cerere = await self._cerere_proprie(id_cerere, user_id)
+        if cerere["status"] in STATUSURI_FINALE:
+            raise OperatiuneRefuzata(
+                f"Cererea e in starea '{cerere['status']}'; discutia pe ea s-a incheiat."
+            )
+
+        text = (mesaj or "").strip()
+        if not text:
+            raise OperatiuneRefuzata("Scrie un mesaj.")
+
+        return await self._depozit.adauga_mesaj({
+            "id_cerere": str(id_cerere), "autor": "client",
+            "id_autor": str(user_id), "text": text,
+        })
 
     # -- documente ----------------------------------------------------------
 
@@ -565,7 +950,14 @@ class CreditService:
         cale = f"{user_id}/{id_cerere}/{uuid4().hex}.{extensie}"
         await self._depozit.urca_document(cale, continut, content_type)
 
-        date = citeste_adeverinta(text_din_document(continut, content_type))
+        # Pe un thread, nu pe event loop: `text_din_document` poate ajunge la
+        # Tesseract (PDF scanat sau poza), adica secunde de CPU in care tot
+        # backendul ar sta blocat pentru toata lumea, nu doar pentru cel care
+        # incarca. Restul repository-ului foloseste deja `to_thread.run_sync`;
+        # aici era singurul loc unde munca grea ramasese sincrona.
+        date = await to_thread.run_sync(
+            lambda: citeste_adeverinta(text_din_document(continut, content_type))
+        )
 
         document = await self._depozit.salveaza_document({
             "id_cerere": str(id_cerere),
@@ -595,6 +987,34 @@ class CreditService:
                 "incredere": date.incredere,
             },
         })
+
+        # Documentul intra si in fir, ca dosarul sa aiba o singura cronologie:
+        # "s-a cerut X -> a venit Y". Textul se genereaza din ce s-a citit, ca
+        # analistul sa vada rezultatul fara sa deschida documentul.
+        # `sistem`, nu `client`: textul e generat din ce a citit OCR-ul, iar sub
+        # semnatura clientului parea ca l-a scris el ("S-a citit un venit net de
+        # X RON"). Valoarea era permisa de baza si nefolosita de nimeni.
+        await self._depozit.adauga_mesaj({
+            "id_cerere": str(id_cerere), "autor": "sistem", "id_autor": str(user_id),
+            "id_document": str(document["id"]),
+            "text": (
+                f"Am incarcat adeverinta de venit. S-a citit un venit net de "
+                f"{date.venit_net} RON."
+                if date.venit_net is not None
+                else "Am incarcat adeverinta de venit. Suma nu s-a putut citi automat."
+            ),
+        })
+
+        # Dosarul care astepta acte se intoarce singur in coada analistului.
+        # Fara asta ar ramane in 'asteapta_documente' pana si-ar aminti cineva
+        # de el, desi mingea e din nou la banca.
+        if cerere["status"] == "asteapta_documente":
+            await self._depozit.actualizeaza_cerere(id_cerere, {"status": "analiza_manuala"})
+            await self._depozit.eveniment({
+                "id_cerere": str(id_cerere), "tip": "documente_primite", "actor": "sistem",
+                "detalii": {"id_document": str(document["id"])},
+            })
+
         return document
 
     async def documente(self, id_cerere: UUID, user_id: UUID) -> list[dict]:
@@ -615,6 +1035,11 @@ class CreditService:
         Dupa confirmare cererea se reevalueaza: venitul e o intrare a motorului
         de scoring, iar motorul trebuie sa ruleze din nou cu ea. Decizia ramane
         deterministica — analistul a completat un camp, nu a ales un rezultat.
+
+        **Reevaluarea nu emite oferta.** Chiar daca noul scor trece pragul de
+        aprobare, cererea ramane in 'analiza_manuala': confirmarea unui fapt nu
+        e o decizie, iar o oferta e un angajament fata de client. Analistul o
+        emite explicit, cu "Aproba". Vezi `decizia_ramane_la_om` din `evalueaza`.
         """
         document = await self._depozit.document(id_document)
         if not document:
@@ -629,6 +1054,18 @@ class CreditService:
         if cerere["status"] in STATUSURI_FINALE:
             raise OperatiuneRefuzata(
                 f"Cererea e in starea '{cerere['status']}'; decizia ei nu se mai schimba."
+            )
+        # `oferta` nu e in STATUSURI_FINALE, deci trecea pe langa garda de mai
+        # sus — iar confirmarea readuce cererea in 'in_analiza' si reevalueaza,
+        # adica **sterge tacit o oferta emisa**. Exact ce interzice `evalueaza`:
+        # oferta e un angajament, nu o parere. Daca datele chiar s-au schimbat,
+        # drumul e sa retragi intai oferta (`retrage_oferta`), explicit, ca
+        # dosarul sa aiba un eveniment care spune cine si de ce.
+        if cerere["status"] == "oferta":
+            raise OperatiuneRefuzata(
+                "Cererea are deja o oferta emisa. Retrage-o intai daca datele "
+                "s-au schimbat; o confirmare de document nu poate sterge un "
+                "angajament luat fata de client."
             )
 
         citit = (document.get("extras") or {}).get("venit_net")
@@ -663,10 +1100,71 @@ class CreditService:
         # o oferta emisa sa nu se schimbe sub picioarele clientului. Aici insa
         # datele de intrare chiar s-au schimbat, deci cererea se intoarce
         # explicit in analiza inainte de a rula din nou motorul.
+        #
+        # `decizia_ramane_la_om`: analistul a completat o intrare a motorului, nu
+        # a ales un rezultat. Scorul se recalculeaza si se vede imediat, dar
+        # oferta n-o emite confirmarea — o emite omul, apasand "Aproba".
         await self._depozit.actualizeaza_cerere(id_cerere, {"status": "in_analiza"})
-        await self.evalueaza(id_cerere, UUID(str(cerere["id_user"])))
+        await self.evalueaza(
+            id_cerere, UUID(str(cerere["id_user"])), decizia_ramane_la_om=True
+        )
 
         return await self.dosar(id_cerere)
+
+    async def _expira_ofertele_trecute(self, cereri: list[dict]) -> list[dict]:
+        """Trece pe 'expirata' ofertele carora le-a trecut termenul.
+
+        `expirata` era un status fantoma: exista in constante si in constrangerea
+        SQL, dar nu-l scria nimeni. `oferta_expira_la` se verifica doar in RPC-ul
+        de acceptare, care refuza — insa cererea ramanea in 'oferta' la infinit,
+        deci ecranul continua sa arate un buton „Semneaza" pentru ceva ce banca
+        nu mai onora, iar refuzul venea abia dupa apasare.
+
+        Lazy, ca `_curata_documente_expirate`: proiectul n-are cron, deci
+        tranzitia porneste din citirea care se intampla oricum. Lucreaza peste
+        randurile deja citite — niciun apel in plus pentru cazul obisnuit, in
+        care nimic n-a expirat.
+
+        Nu arunca: o listare de cereri n-are voie sa pice fiindca o actualizare
+        secundara n-a mers.
+        """
+        acum = datetime.now(timezone.utc)
+        rezultat: list[dict] = []
+
+        for cerere in cereri:
+            expira = cerere.get("oferta_expira_la")
+            if cerere.get("status") != "oferta" or not expira:
+                rezultat.append(cerere)
+                continue
+
+            try:
+                termen = datetime.fromisoformat(str(expira).replace("Z", "+00:00"))
+            except ValueError:
+                logger.warning("expirare oferta: data ilizibila pe cererea %s", cerere.get("id"))
+                rezultat.append(cerere)
+                continue
+
+            if termen.tzinfo is None:
+                termen = termen.replace(tzinfo=timezone.utc)
+            if termen > acum:
+                rezultat.append(cerere)
+                continue
+
+            try:
+                id_cerere = UUID(str(cerere["id"]))
+                actualizata = await self._depozit.actualizeaza_cerere(
+                    id_cerere, {"status": "expirata"}
+                )
+                await self._depozit.eveniment({
+                    "id_cerere": str(id_cerere), "tip": "oferta_expirata", "actor": "sistem",
+                    "detalii": {"expira_la": str(expira)},
+                })
+                rezultat.append({**cerere, **(actualizata or {"status": "expirata"})})
+            except Exception:
+                logger.exception("expirare oferta: cererea %s", cerere.get("id"))
+                rezultat.append(cerere)
+
+        return rezultat
 
     async def _curata_documente_expirate(self) -> int:
         """Sterge fisierele dosarelor inchise de peste ZILE_RETENTIE_DOCUMENTE.
@@ -935,8 +1433,13 @@ def _produs_domeniu(produs: dict) -> reguli.Produs:
     )
 
 
-def _cu_explicatie(decizie: Decizie, explica) -> Decizie:
-    """Textul pentru client. Modelul de limbaj e optional, textul nu e."""
+async def _cu_explicatie(decizie: Decizie, explica) -> Decizie:
+    """Textul pentru client. Modelul de limbaj e optional, textul nu e.
+
+    `explica(decizie, text_determinist)` e o corutina care primeste si textul
+    deja calculat: nu genereaza o explicatie de la zero, o rescrie mai cald — un
+    esec sau `None` lasa exact textul determinist, neschimbat.
+    """
     from dataclasses import replace
 
     from app.services.credit_explicatie import explicatie_determinista
@@ -946,7 +1449,7 @@ def _cu_explicatie(decizie: Decizie, explica) -> Decizie:
     )
     if explica is not None:
         try:
-            text = explica(decizie) or text
+            text = await explica(decizie, text) or text
         except Exception:
             logger.exception("explicatia prin model a esuat; raman pe textul determinist")
     return replace(decizie, explicatie=text)
