@@ -8,6 +8,7 @@ import {
   type CitireModel,
 } from "@/components/admin/document-adeverinta";
 import { FirDosar } from "@/components/admin/fir-dosar";
+import { JurnalCerere } from "@/components/admin/jurnal-cerere";
 import { PipelineAi } from "@/components/admin/pipeline-ai";
 import { cereAdmin } from "@/lib/admin";
 import { BackendError } from "@/lib/backend";
@@ -42,7 +43,7 @@ export default async function DosarCreditPage({
     throw exc;
   });
 
-  const { cerere, verificari, documente, mesaje, ai } = dosar;
+  const { cerere, verificari, documente, mesaje, evenimente, ai } = dosar;
   // 'analiza_manuala' = asteapta banca, 'asteapta_documente' = asteapta clientul.
   // Analistul poate lucra din amandoua: daca actele cerute nu mai vin, dosarul
   // trebuie sa se poata inchide.
@@ -87,6 +88,8 @@ export default async function DosarCreditPage({
       <Verificari verificari={verificari} />
 
       <PipelineAi idCerere={cerere.id} ai={ai} />
+
+      <JurnalCerere evenimente={evenimente} />
 
       {documente.length > 0 ? (
         documente.map((document) => (

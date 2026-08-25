@@ -811,3 +811,18 @@ def test_cele_doua_buline_sunt_independente(client, depozit: DepozitFals) -> Non
 
     cereri = client.get("/api/v1/credite/cereri").json()
     assert next(c for c in cereri if c["id"] == id_cerere)["mesaje_necitite"] == 1
+
+
+def test_jurnalul_cererii_ajunge_in_dosar(client, depozit: DepozitFals) -> None:
+    """`credit_evenimente` se scria din 16 locuri si nu-l citea nicio ruta."""
+    id_cerere = _cerere_evaluata(client)
+    _decizie(client, id_cerere, "notifica", "Verificam vechimea.")
+
+    dosar = client.get("/api/v1/admin/credite/cereri/" + id_cerere).json()
+
+    tipuri = [e["tip"] for e in dosar["evenimente"]]
+    assert "client_notificat" in tipuri
+    # Cronologic crescator: jurnalul se citeste ca o poveste, nu ca un feed.
+    momente = [e["creat_la"] for e in dosar["evenimente"]]
+    assert momente == sorted(momente)
+    assert all(e["actor"] for e in dosar["evenimente"])

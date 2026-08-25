@@ -548,6 +548,9 @@ class CreditService:
             # Firul vine in acelasi apel ca restul dosarului, ca verificarile si
             # documentele: analistul citeste tot dintr-o data.
             "mesaje": await self._depozit.mesaje(id_cerere),
+            # Jurnalul se aduna de mult si nu-l citea nimeni. Vine in acelasi
+            # apel ca restul dosarului: analistul citeste tot dintr-o data.
+            "evenimente": await self._depozit.evenimente(id_cerere),
         }
 
     async def date_pentru_pipeline(self, id_cerere: UUID) -> DatePipelineCredit:

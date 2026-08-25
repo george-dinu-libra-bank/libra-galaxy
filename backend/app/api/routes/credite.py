@@ -42,6 +42,7 @@ from app.schemas.credit import (
     DetaliuCreditResponse,
     DocumentResponse,
     DosarResponse,
+    EvenimentResponse,
     MesajRequest,
     MesajResponse,
     ProdusResponse,
@@ -573,6 +574,7 @@ def _dosar_response(date: dict, ai_dosar: dict | None) -> DosarResponse:
         verificari=[VerificareResponse(**_verificare_publica(v)) for v in date["verificari"]],
         documente=[DocumentResponse(**_document_public(d)) for d in date["documente"]],
         mesaje=[MesajResponse(**_mesaj_public(m)) for m in date.get("mesaje", [])],
+        evenimente=[EvenimentResponse(**e) for e in date.get("evenimente", [])],
         ai=DosarAiResponse(
             rulare=RulareAiResponse(**_rulare_publica(ai_dosar["rulare"])),
             etape=[EtapaAiResponse(**_etapa_publica(e)) for e in ai_dosar["etape"]],

@@ -320,11 +320,22 @@ export type MesajCerere = {
   creat_la: string;
 };
 
+/** O tranzitie din viata cererii. Se aduna de mult in `credit_evenimente`; pana
+ * acum n-o citea nicio ruta, deci nu o vedea nici clientul, nici analistul. */
+export type EvenimentCerere = {
+  id: string;
+  tip: string;
+  actor: string;
+  detalii: Record<string, unknown> | null;
+  creat_la: string;
+};
+
 export type DosarCredit = {
   cerere: CerereCredit;
   verificari: VerificareVenit[];
   documente: DocumentCerere[];
   mesaje: MesajCerere[];
+  evenimente: EvenimentCerere[];
   /** null cand pipeline-ul AI n-a rulat inca (Foundry cazut, sau catch-up-ul
    * lazy nu s-a declansat inca) — strict consultativ, niciodata blocant. */
   ai: DosarAi | null;

@@ -290,6 +290,16 @@ class MesajRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
 
 
+class EvenimentResponse(BaseModel):
+    """O tranzitie din viata cererii — cine, ce, cand."""
+
+    id: str
+    tip: str
+    actor: str
+    detalii: dict | None = None
+    creat_la: datetime
+
+
 class DosarResponse(BaseModel):
     """Tot ce are nevoie un analist ca sa decida, intr-un singur raspuns."""
 
@@ -297,6 +307,7 @@ class DosarResponse(BaseModel):
     verificari: list[VerificareResponse]
     documente: list[DocumentResponse]
     mesaje: list[MesajResponse] = Field(default_factory=list)
+    evenimente: list[EvenimentResponse] = Field(default_factory=list)
     # None cand pipeline-ul AI n-a rulat inca (Foundry cazut, sau catch-up-ul
     # lazy nu s-a declansat inca) — strict consultativ, niciodata blocant.
     ai: DosarAiResponse | None = None

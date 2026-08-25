@@ -585,6 +585,25 @@ class CreditRepository:
 
         return await to_thread.run_sync(interogare)
 
+    async def evenimente(self, id_cerere: UUID) -> list[dict]:
+        """Jurnalul unei cereri, cel mai vechi primul.
+
+        Se scria din 16 locuri si nu-l citea nimeni: nicio ruta nu-l expunea.
+        Cronologic crescator, fiindca se citeste ca o poveste, nu ca un feed.
+        """
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("credit_evenimente")
+                .select("id,tip,actor,detalii,creat_la")
+                .eq("id_cerere", str(id_cerere))
+                .order("creat_la", desc=False)
+                .limit(100)
+                .execute()
+            )
+            return raspuns.data or []
+
+        return await to_thread.run_sync(interogare)
+
     async def eveniment(self, campuri: dict[str, Any]) -> None:
         def interogare() -> None:
             self._client.table("credit_evenimente").insert(campuri).execute()
