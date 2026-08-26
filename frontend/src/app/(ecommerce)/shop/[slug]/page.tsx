@@ -5,8 +5,6 @@ import { ChevronLeft } from "lucide-react";
 import { CumparaDrawer } from "@/components/shop/cumpara-drawer";
 import { ProdusVizual } from "@/components/shop/produs-vizual";
 import { obtineProdus, PRODUSE } from "@/lib/data/produse";
-import { supabaseConfigurat } from "@/lib/supabase/configurat";
-import { createClient } from "@/lib/supabase/server";
 import { formateazaSuma } from "@/lib/utils";
 
 export function generateStaticParams() {
@@ -30,20 +28,8 @@ export default async function ProdusPage({ params }: { params: Promise<{ slug: s
 
   if (!produs) notFound();
 
-  // Magazinul e public, dar plata nu: cardul trebuie sa fie al cuiva logat in
-  // Libra. Stiind asta din server, checkout-ul cere autentificarea inainte sa
-  // ceara datele cardului, in loc sa o afle dupa ce le-a completat.
-  let autentificat = false;
-
-  if (supabaseConfigurat) {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    autentificat = user !== null;
-  }
-
+  // Pagina nu mai stie nimic despre sesiune: plata se face cu datele cardului, ca
+  // la orice comerciant, iar banca gaseste singura posesorul si il intreaba pe el.
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-5 py-6">
       <Link
@@ -64,7 +50,7 @@ export default async function ProdusPage({ params }: { params: Promise<{ slug: s
         <p className="text-[14.5px] leading-[21px] text-ink-soft">{produs.descriere}</p>
       </div>
 
-      <CumparaDrawer slug={produs.slug} autentificat={autentificat} />
+      <CumparaDrawer slug={produs.slug} />
     </main>
   );
 }

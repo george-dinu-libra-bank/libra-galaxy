@@ -102,6 +102,8 @@ Galaxy Flex Personal este creditul de nevoi personale. Vârsta eligibilă este 2
 
 Galaxy Mortgage acceptă solicitanți cu vârsta 21–65 ani la acordare, minimum 12 luni venituri eligibile și minimum 6 luni la angajatorul actual. Venitul net minim este 4.500 RON.
 
+Gradul de îndatorare maxim (rata lunară totală, inclusiv creditul solicitat, raportată la venitul net) este 40%, pentru toate produsele de credit. Banca verifică istoricul la Centrala Riscului de Credit (CRC) și la Centrala Incidentelor de Plăți (CIP); restanțe active, incidente nesoluționate sau insolvență personală în derulare fac solicitantul ineligibil. Se poate adăuga un co-debitor (soț/soție sau rudă de gradul I), ale cărui venituri și obligații se cumulează în analiză.
+
 ## Comisioane suplimentare
 
 - Retragere ATM Galaxy Bank: 0 RON.

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import {
   CheckCircle2,
   Clock,
@@ -66,22 +65,18 @@ const TITLURI: Record<Pas, string> = {
  * Drawer de cumparare: rezumatul produsului, formularul de card si asteptarea
  * confirmarii din aplicatia de banking.
  *
- * Formularul nu decide nimic: validarea reala (cardul e al tau, e activ, nu a
- * expirat, ai fonduri) se face in POST /api/payments. De acolo incolo, starea
- * platii vine prin Realtime — ecranul asculta o singura plata, dupa id.
+ * Nu cere nicio sesiune. Ca la orice comerciant, tot ce se da sunt datele
+ * cardului; banca gaseste posesorul si il intreaba pe el, oricine ar fi cel de
+ * la casa. Formularul nu decide nimic: validarea reala (cardul exista, e activ,
+ * n-a expirat, contul lui are bani) se face in POST /api/payments. De acolo
+ * incolo, starea platii vine prin Realtime, pe canalul acestei plati.
  *
  * Primeste doar slug-ul (nu produsul intreg): un obiect cu o componenta de
  * icoana nu poate trece ca prop dintr-o pagina server intr-un client
  * component, deci produsul se cauta aici, in client. Pretul trimis serverului
  * n-ar conta oricum — acolo se citeste tot din catalog, dupa acelasi slug.
  */
-export function CumparaDrawer({
-  slug,
-  autentificat,
-}: {
-  slug: string;
-  autentificat: boolean;
-}) {
+export function CumparaDrawer({ slug }: { slug: string }) {
   const produs = obtineProdus(slug);
 
   const [deschis, setDeschis] = useState(false);
@@ -190,7 +185,7 @@ export function CumparaDrawer({
           pas === "form"
             ? "Rezumatul comenzii și datele cardului."
             : pas === "asteptare"
-              ? "Așteptăm confirmarea din aplicația ta de banking."
+              ? "Așteptăm confirmarea posesorului cardului."
               : "Rezultatul plății."
         }
         className="h-[92vh]"
@@ -199,18 +194,9 @@ export function CumparaDrawer({
         cuInchidere={pas !== "asteptare"}
         footer={
           pas === "form" ? (
-            autentificat ? (
-              <Button className="w-full" loading={seValideaza} onClick={plateste}>
-                {seValideaza ? "Se validează cardul…" : `Plătește ${formateazaSuma(produs.pret)}`}
-              </Button>
-            ) : (
-              <Link
-                href={`/login?redirectTo=${encodeURIComponent(`/shop/${slug}`)}`}
-                className="flex h-[52px] w-full items-center justify-center rounded-field bg-primary-600 text-[15px] font-semibold text-white shadow-btn transition-colors duration-150 ease-soft hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
-              >
-                Autentifică-te în Galaxy Bank
-              </Link>
-            )
+            <Button className="w-full" loading={seValideaza} onClick={plateste}>
+              {seValideaza ? "Se validează cardul…" : `Plătește ${formateazaSuma(produs.pret)}`}
+            </Button>
           ) : pas === "asteptare" ? null : (
             <Button className="w-full" onClick={() => reseteaza(false)}>
               Închide
@@ -231,12 +217,12 @@ export function CumparaDrawer({
 
             <p className="mt-2 flex items-center gap-2 text-[14px] font-medium text-ink-soft">
               <Loader2 size={18} strokeWidth={1.75} className="animate-spin" aria-hidden />
-              Confirmă plata în aplicația ta de banking…
+              Se așteaptă confirmarea din aplicația Galaxy Bank…
             </p>
 
             <p className="max-w-xs text-[12.5px] leading-[18px] text-ink-faint">
-              Am trimis cererea pe contul tău Galaxy Bank. Deschide aplicația și apasă
-              „Confirmă”.
+              Am trimis cererea de autorizare posesorului cardului. Plata se face doar
+              după ce el apasă „Confirmă” în aplicație.
             </p>
           </div>
         ) : final ? (
@@ -257,7 +243,7 @@ export function CumparaDrawer({
               {pas === "aprobata"
                 ? `${produs.nume} — plata a fost confirmată cu succes.`
                 : pas === "respinsa"
-                  ? "Ai respins plata din aplicație. Nu s-a mișcat niciun ban."
+                  ? "Cererea a fost respinsă din aplicația de banking. Nu s-a mișcat niciun ban."
                   : pas === "expirata"
                     ? "Nimeni nu a confirmat la timp. Poți relua comanda."
                     : (motiv ?? "Plata nu a putut fi procesată.")}
@@ -277,12 +263,10 @@ export function CumparaDrawer({
 
             {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}
 
-            {autentificat ? null : (
-              <Banda ton="info">
-                Plata se face cu un card Galaxy Bank, așa că ai nevoie de o sesiune activă.
-                Autentifică-te și revino — comanda te așteaptă.
-              </Banda>
-            )}
+            <Banda ton="info">
+              Plata se face cu un card Galaxy Bank. Posesorul cardului primește cererea în
+              aplicație și o confirmă de acolo.
+            </Banda>
 
             <div className="flex flex-col gap-4">
               <Camp
@@ -291,7 +275,6 @@ export function CumparaDrawer({
                 inputMode="numeric"
                 autoComplete="off"
                 placeholder="1234 5678 9012 3456"
-                disabled={!autentificat}
                 value={date.numarCard}
                 onChange={(e) =>
                   setDate((d) => ({ ...d, numarCard: formateazaNumarCard(e.target.value) }))
@@ -302,7 +285,6 @@ export function CumparaDrawer({
                 eticheta="Nume pe card"
                 placeholder="ION POPESCU"
                 autoComplete="off"
-                disabled={!autentificat}
                 value={date.numeCard}
                 onChange={(e) =>
                   setDate((d) => ({ ...d, numeCard: e.target.value.toUpperCase() }))
@@ -315,7 +297,6 @@ export function CumparaDrawer({
                   inputMode="numeric"
                   autoComplete="off"
                   placeholder="12/28"
-                  disabled={!autentificat}
                   value={date.expirare}
                   onChange={(e) =>
                     setDate((d) => ({ ...d, expirare: formateazaExpirare(e.target.value) }))
@@ -328,7 +309,6 @@ export function CumparaDrawer({
                   inputMode="numeric"
                   autoComplete="off"
                   placeholder="123"
-                  disabled={!autentificat}
                   value={date.cvv}
                   onChange={(e) =>
                     setDate((d) => ({ ...d, cvv: e.target.value.replace(/\D/g, "").slice(0, 3) }))

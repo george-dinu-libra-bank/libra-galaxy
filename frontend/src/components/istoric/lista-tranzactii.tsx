@@ -102,7 +102,7 @@ function RandTranzactie({
 }) {
   const primita = tranzactie.tip === "primita";
   const Icoana = primita ? ArrowDownLeft : ArrowUpRight;
-  const nume = tranzactie.contraparte?.nume ?? "Cont Galaxy Bank";
+  const nume = tranzactie.numeContraparte;
 
   return (
     <button
@@ -167,7 +167,7 @@ function RandTranzactie({
 
 function DetaliuTranzactie({ tranzactie }: { tranzactie: TranzactieAfisata }) {
   const primita = tranzactie.tip === "primita";
-  const nume = tranzactie.contraparte?.nume ?? "Cont Galaxy Bank";
+  const nume = tranzactie.numeContraparte;
 
   return (
     <div className="flex flex-col gap-4">

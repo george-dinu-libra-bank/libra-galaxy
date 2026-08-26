@@ -89,8 +89,17 @@ export function BuletinCapture({
 
       if (generatieRef.current !== generatie) return; // poza a fost reluata intre timp
 
-      setProbleme(calitate.probleme);
-      if (!calitate.acceptabila) setIncercariEsuate((numar) => numar + 1);
+      // Daca OCR-ul a scos CNP-ul, poza e buna — dovedit, nu estimat. Orice
+      // avertisment de calitate devine atunci zgomot, si inca unul enervant:
+      // omul se uita la un buletin citit corect si i se spune ca poza nu e
+      // buna. Euristicile de expunere si claritate sunt o aproximare a
+      // intrebarii "se poate citi?", iar aici avem raspunsul adevarat.
+      const cititCuSucces = Boolean(rezultat.cnp);
+
+      setProbleme(cititCuSucces ? [] : calitate.probleme);
+      if (!cititCuSucces && !calitate.acceptabila) {
+        setIncercariEsuate((numar) => numar + 1);
+      }
 
       // Cand stim exact de ce e proasta poza, nu mai spunem si vagul "nu am
       // putut citi CNP-ul" — e acelasi lucru, spus mai prost.

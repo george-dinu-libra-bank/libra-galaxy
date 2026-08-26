@@ -1,6 +1,6 @@
 import pytest
 
-from app.orchestration.intent import classify_intent, starts_with_greeting
+from app.orchestration.intent import _normalize, classify_intent, starts_with_greeting
 from app.orchestration.routing import AgentRouter
 
 
@@ -129,6 +129,25 @@ def test_transfer_intent_wins_over_spending_analysis_stem():
     # tranzactie" ar cadea gresit pe spending_analysis in loc sa
     # declanseze scurtcircuitul determinist _handle_transfer_request.
     assert classify_intent("Vreau sa fac o tranzactie de 100 RON") == "transfer_intent"
+
+
+@pytest.mark.parametrize(
+    "radacina,forme_acoperite",
+    [
+        # Verificare directa a promisiunilor documentate in comentariile din
+        # intent.py — radacinile scurte exista special ca sa supravietuiasca
+        # unei conjugari noi. Testul de aici prinde exact clasa de bug gasita
+        # live de mai multe ori sesiunea asta (un tabel de fraze intregi/o
+        # radacina prea ingusta rateaza o forma noua), inaintea unui raport.
+        ("descarc", ("descarc", "descarca", "descarcare", "descarc-mi", "descărcare", "descărcat")),
+        ("tranzact", ("tranzactie", "tranzactii", "tranzactiilor", "tranzactionat", "tranzacționare")),
+        ("imprumut", ("imprumut", "imprumutul", "imprumuturi", "împrumutat", "împrumuturile")),
+        ("scadent", ("scadenta", "scadente", "scadentă", "scadenței")),
+    ],
+)
+def test_documented_roots_cover_the_inflections_promised_in_comments(radacina, forme_acoperite):
+    for forma in forme_acoperite:
+        assert radacina in _normalize(forma), f"radacina '{radacina}' nu acopera forma '{forma}'"
 
 
 def test_diacritics_do_not_change_classification():
