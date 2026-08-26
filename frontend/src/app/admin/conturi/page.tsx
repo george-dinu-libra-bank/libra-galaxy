@@ -2,15 +2,20 @@ import { Users } from "lucide-react";
 import { cereAdmin } from "@/lib/admin";
 import { obtineToateConturile } from "@/lib/data/admin-verificari";
 import { obtineStareConturiToti } from "@/lib/data/admin-tranzactii";
-import type { ProfilAdmin, StareConturi } from "@/lib/tipuri-admin";
+import type {
+  CerereInchidere,
+  CerereStergere,
+  ProfilAdmin,
+  StareConturi,
+} from "@/lib/tipuri-admin";
 import { BackendError } from "@/lib/backend";
 import { Banda } from "@/components/ui/banda";
 import { RestabilesteBiometrie } from "@/components/admin/restabileste-biometrie";
 import { BlocareCont } from "@/components/admin/blocare-cont";
 import { CereriStergere } from "@/components/admin/cereri-stergere";
 import { CereriInchidere } from "@/components/admin/cereri-inchidere";
-import { obtineCereriStergere, type CerereStergere } from "@/lib/data/admin-stergeri";
-import { obtineCereriInchidere, type CerereInchidere } from "@/lib/data/admin-inchideri";
+import { obtineCereriStergere } from "@/lib/data/admin-stergeri";
+import { obtineCereriInchidere } from "@/lib/data/admin-inchideri";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";

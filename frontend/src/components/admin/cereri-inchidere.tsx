@@ -11,10 +11,10 @@ import {
 } from "@/lib/actions/admin-inchideri";
 import {
   destinatiaImplicita,
-  motiveleBlocarii,
+  motiveleInchiderii,
   sePoateAproba,
   type CerereInchidere,
-} from "@/lib/data/admin-inchideri";
+} from "@/lib/tipuri-admin";
 import { etichetaStare } from "@/lib/stari-cerere";
 
 /**
@@ -61,7 +61,7 @@ function Cerere({ cerere }: { cerere: CerereInchidere }) {
   const [seLucreaza, startTransition] = useTransition();
 
   const stare = etichetaStare(cerere.status);
-  const blocaje = motiveleBlocarii(cerere);
+  const blocaje = motiveleInchiderii(cerere);
   const poate = sePoateAproba(cerere);
   const cont = cerere.cont;
   const areBani = cont ? Number(cont.sold) > 0 : false;

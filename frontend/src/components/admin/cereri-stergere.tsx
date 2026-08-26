@@ -8,10 +8,10 @@ import { Camp } from "@/components/ui/camp";
 import { etichetaStare } from "@/lib/stari-cerere";
 import { decideCerereStergere, stergeClientul } from "@/lib/actions/admin-stergeri";
 import {
-  motiveleBlocarii,
+  motiveleStergerii,
   sePoateSterge,
   type CerereStergere,
-} from "@/lib/data/admin-stergeri";
+} from "@/lib/tipuri-admin";
 
 /**
  * Cererile de inchidere a contului, pentru analist.
@@ -53,7 +53,7 @@ function Cerere({ cerere }: { cerere: CerereStergere }) {
   const [seLucreaza, startTransition] = useTransition();
 
   const status = etichetaStare(cerere.status);
-  const blocaje = motiveleBlocarii(cerere);
+  const blocaje = motiveleStergerii(cerere);
   const poate = sePoateSterge(cerere);
 
   function ruleaza(actiune: () => Promise<{ eroare?: string }>) {
