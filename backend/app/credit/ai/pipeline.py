@@ -130,11 +130,23 @@ class CreditAiPipeline:
         self, id_rulare: UUID, date: DatePipelineCredit
     ) -> tuple[ExtractieDocument | None, float]:
         text = _text_document(date.documente)
-        if self._provider is None or text is None:
+
+        # Ordinea conteaza pentru diagnostic: „citit_din_tabel" e o decizie, nu
+        # o lipsa, si trebuie sa se vada ca atare in pagina de observabilitate.
+        if _citit_din_tabel(date.documente):
+            motiv = "citit_din_tabel"
+        elif self._provider is None:
+            motiv = "fara_provider"
+        elif text is None:
+            motiv = "fara_document"
+        else:
+            motiv = None
+
+        if motiv is not None:
             await self._depozit.salveaza_etapa(id_rulare, {
                 "etapa": "documente", "status": "sarit",
                 "versiune_prompt": prompturi.VERSIUNE_DOCUMENTE,
-                "cod_eroare": "fara_provider" if self._provider is None else "fara_document",
+                "cod_eroare": motiv,
             })
             return None, 0.0
 
@@ -255,16 +267,35 @@ def _ms_de_la(inceput: float) -> int:
     return int((time.perf_counter() - inceput) * 1000)
 
 
-def _text_document(documente: list[dict]) -> str | None:
-    """Textul brut al ultimei adeverinte inca prezente — deja salvat la
-    incarcare (`extras.text`), nu se reciteste fisierul din storage."""
+def _ultima_adeverinta(documente: list[dict]) -> dict | None:
+    """Ultima adeverinta inca prezenta (nestearsa de retentie)."""
     for document in sorted(documente, key=lambda d: str(d.get("creat_la", "")), reverse=True):
-        if document.get("sters_la"):
-            continue
-        text = (document.get("extras") or {}).get("text")
-        if text:
-            return text
+        if not document.get("sters_la"):
+            return document
     return None
+
+
+def _text_document(documente: list[dict]) -> str | None:
+    """Textul brut al ultimei adeverinte — deja salvat la incarcare
+    (`extras.text`), nu se reciteste fisierul din storage."""
+    document = _ultima_adeverinta(documente)
+    if document is None:
+        return None
+    return (document.get("extras") or {}).get("text") or None
+
+
+def _citit_din_tabel(documente: list[dict]) -> bool:
+    """Documentul a fost citit pe coloana, de Azure Document Intelligence.
+
+    Cand e asa, nu mai are rost sa citeasca si modelul acelasi document: antetul
+    „Venit Net (RON)" spune direct care coloana e a netului, iar o parafraza de
+    model peste aceeasi cifra nu adauga nimic — doar tokeni, latenta, si un al
+    doilea panou identic in fata analistului.
+    """
+    document = _ultima_adeverinta(documente)
+    if document is None:
+        return False
+    return (document.get("extras") or {}).get("sursa") == "tabel"
 
 
 def _motive_si_factori(cerere: dict) -> tuple[list[dict], list[dict]]:

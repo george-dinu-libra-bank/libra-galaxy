@@ -121,10 +121,17 @@ export function DocumentAdeverinta({
         )}
 
         {/*
-          A doua citire, a modelului. Sta langa prima, nu in locul ei: cand cele
-          doua difera, diferenta e informatia — nu ceva de ascuns prin alegerea
-          uneia. Regex-ul e reproductibil; modelul descurca formularele tipizate,
-          unde eticheta si cifra nu stau una langa alta.
+          A doua citire, a modelului — cand exista. Sta langa prima, nu in locul
+          ei: cand cele doua difera, diferenta e informatia, nu ceva de ascuns
+          prin alegerea uneia.
+
+          Nu apare intotdeauna, si asta e intentionat. Cand adeverinta e un tabel
+          si Azure Document Intelligence a citit direct coloana „Venit Net",
+          pipeline-ul sare peste etapa de model (vezi credit/ai/pipeline.py,
+          `_citit_din_tabel`): antetul spune deja care coloana e a netului, deci
+          o a doua parere pe aceeasi cifra nu adauga nimic in afara de un panou
+          identic. Modelul ramane acolo unde inca ajuta — pe adeverintele scrise
+          curgator, unde prima citire e o potrivire de vecinatate.
         */}
         {citireModel ? (
           <div className="mt-3 border-t border-line pt-3">

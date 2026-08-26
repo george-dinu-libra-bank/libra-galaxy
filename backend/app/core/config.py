@@ -79,6 +79,21 @@ class Settings(BaseSettings):
     speech_region: str = Field(default="", alias="AZURE_SPEECH_REGION")
     speech_voice_name: str = Field(default="ro-RO-AlinaNeural", alias="AZURE_SPEECH_VOICE_NAME")
 
+    # Azure AI Document Intelligence — OCR-ul pe adeverintele de venit, a treia
+    # resursa Azure separata (dupa Foundry si Speech). Cat timp lipsesc cheile,
+    # citirea cade pe Tesseract din container (infrastructure/document_text.py).
+    di_endpoint: str = Field(default="", alias="AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT")
+    di_key: str = Field(default="", alias="AZURE_DOCUMENT_INTELLIGENCE_KEY")
+    # "prebuilt-layout", nu "prebuilt-read". Read da doar text plat, iar pe o
+    # adeverinta in tabel textul plat e o capcana: randul
+    #   "Media Neta   15.000,00   8.774,50   0,00"
+    # nu spune care coloana e a netului, iar parserul ia primul numar de dupa
+    # eticheta — adica brutul. Layout intoarce celulele cu rowIndex/columnIndex,
+    # deci coloana "Venit Net" se citeste, nu se ghiceste.
+    # Costa 10 $/1000 pagini fata de 1,50 $ — un cent pe adeverinta, pentru o
+    # cifra pe care se acorda un credit.
+    di_model: str = Field(default="prebuilt-layout", alias="AZURE_DOCUMENT_INTELLIGENCE_MODEL")
+
     # Atasamente in chat (PDF/poze) — bucket privat in Supabase Storage.
     attachments_bucket: str = Field(default="asistent-atasamente", alias="LIBRA_ATTACHMENTS_BUCKET")
     max_attachment_bytes: int = Field(default=10 * 1024 * 1024, alias="LIBRA_MAX_ATTACHMENT_BYTES")
@@ -172,6 +187,10 @@ class Settings(BaseSettings):
     @property
     def speech_configured(self) -> bool:
         return bool(self.speech_key and (self.speech_endpoint or self.speech_region))
+
+    @property
+    def document_intelligence_configured(self) -> bool:
+        return bool(self.di_endpoint and self.di_key)
 
     @property
     def supabase_configured(self) -> bool:
