@@ -7,6 +7,8 @@ import { BackendError } from "@/lib/backend";
 import { Banda } from "@/components/ui/banda";
 import { RestabilesteBiometrie } from "@/components/admin/restabileste-biometrie";
 import { BlocareCont } from "@/components/admin/blocare-cont";
+import { CereriStergere } from "@/components/admin/cereri-stergere";
+import { obtineCereriStergere, type CerereStergere } from "@/lib/data/admin-stergeri";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -27,11 +29,15 @@ export default async function ConturiPage() {
   // Starea conturilor vine separat si nu blocheaza lista: daca ruta cade,
   // lista se vede oricum, doar fara butoanele de blocare.
   let stariConturi: StareConturi[] = [];
+  // Cererile de inchidere nu pot darama lista de conturi: daca ruta cade,
+  // restul paginii se vede la fel.
+  let cereriStergere: CerereStergere[] = [];
 
   try {
-    [conturi, stariConturi] = await Promise.all([
+    [conturi, stariConturi, cereriStergere] = await Promise.all([
       obtineToateConturile(admin.token),
       obtineStareConturiToti(admin.token).catch(() => []),
+      obtineCereriStergere(admin.token).catch(() => []),
     ]);
   } catch (exc) {
     eroare =
@@ -74,6 +80,8 @@ export default async function ConturiPage() {
           ))}
         </div>
       ) : null}
+
+      <CereriStergere cereri={cereriStergere} />
     </div>
   );
 }

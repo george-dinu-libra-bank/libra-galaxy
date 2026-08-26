@@ -163,7 +163,7 @@ class AnalizaService:
                 "directie": "iesire"
                 if str(rand.get("id_user_send")) == str(user_id)
                 else "intrare",
-                # Suprascrierea confirmata de utilizator (0036) are prioritate;
+                # Suprascrierea confirmata de utilizator (0040) are prioritate;
                 # altfel determinist (tools/categorii_tranzactii.py), niciodata
                 # ghicit de model.
                 "categorie": suprascrieri.get(str(rand["id"])) or categorizeaza(rand.get("descriere"), None),

@@ -287,3 +287,124 @@ class AnalizaRepository:
 
         randuri = await to_thread.run_sync(interogare)
         return randuri[0] if randuri else None
+
+    # -- cereri de inchidere a contului -------------------------------------
+
+    async def cereri_stergere(self, doar_deschise: bool = False) -> list[dict]:
+        """Coada analistului, cu numele clientului si ce mai are la banca.
+
+        Soldurile si creditele se aduc odata cu cererea, nu la deschiderea
+        fiecarui rand: analistul are nevoie de ele ca sa stie daca poate apasa
+        „Sterge", iar o citire per rand ar face lista de N ori mai lenta fara sa
+        arate nimic in plus.
+        """
+
+        def interogare() -> list[dict]:
+            constructor = (
+                self._client.table("cereri_stergere_cont")
+                .select("id,id_utilizator,motiv,status,creat_la,decis_la,motiv_refuz")
+                .order("creat_la", desc=False)
+            )
+            if doar_deschise:
+                constructor = constructor.eq("status", "in_asteptare")
+            return constructor.execute().data or []
+
+        cereri = await to_thread.run_sync(interogare)
+        if not cereri:
+            return []
+
+        id_uri = list({c["id_utilizator"] for c in cereri})
+
+        def context() -> tuple[dict, dict, dict]:
+            profile = (
+                self._client.table("profiles")
+                .select("id,nume,email")
+                .in_("id", id_uri)
+                .execute()
+                .data
+                or []
+            )
+            conturi = (
+                self._client.table("conturi_bancare")
+                .select("id_user,nume,sold,valuta,blocat_administrativ")
+                .in_("id_user", id_uri)
+                .execute()
+                .data
+                or []
+            )
+            credite = (
+                self._client.table("credite")
+                .select("id_user,status")
+                .in_("id_user", id_uri)
+                .in_("status", ["activ", "restant"])
+                .execute()
+                .data
+                or []
+            )
+            return (
+                {p["id"]: p for p in profile},
+                conturi,
+                credite,
+            )
+
+        pe_id, conturi, credite = await to_thread.run_sync(context)
+
+        for cerere in cereri:
+            id_user = cerere["id_utilizator"]
+            profil = pe_id.get(id_user) or {}
+            ale_lui = [c for c in conturi if c["id_user"] == id_user]
+
+            cerere["nume"] = profil.get("nume")
+            cerere["email"] = profil.get("email")
+            cerere["conturi"] = [
+                {
+                    "nume": c.get("nume"),
+                    "sold": str(c.get("sold") or 0),
+                    "valuta": c.get("valuta"),
+                    "blocat": bool(c.get("blocat_administrativ")),
+                }
+                for c in ale_lui
+            ]
+            cerere["credite_in_derulare"] = sum(1 for c in credite if c["id_user"] == id_user)
+
+        return cereri
+
+    async def decide_stergere(
+        self, id_cerere: UUID, id_admin: UUID, aproba: bool, motiv: str | None
+    ) -> dict:
+        def interogare() -> dict:
+            return self._client.rpc(
+                "decide_stergere_cont",
+                {
+                    "p_id_cerere": str(id_cerere),
+                    "p_id_admin": str(id_admin),
+                    "p_aproba": aproba,
+                    "p_motiv": motiv,
+                },
+            ).execute().data
+
+        return await to_thread.run_sync(interogare)
+
+    async def sterge_client(self, id_cerere: UUID, id_admin: UUID) -> dict:
+        """Poarta pe solduri sta in RPC, nu aici — vezi 0038_sterge_client.sql."""
+
+        def interogare() -> dict:
+            return self._client.rpc(
+                "sterge_client",
+                {"p_id_cerere": str(id_cerere), "p_id_admin": str(id_admin)},
+            ).execute().data
+
+        return await to_thread.run_sync(interogare)
+
+    async def sterge_utilizator_auth(self, id_user: str) -> None:
+        """Randul din `auth.users`, dupa ce profilul a disparut prin RPC.
+
+        Se face separat fiindca SQL-ul nostru n-are ce cauta in schema `auth`.
+        Daca pica, profilul e deja sters si datele bancare la fel — ramane doar
+        un cont de autentificare orfan, care nu mai poate ajunge nicaieri.
+        """
+
+        def interogare() -> None:
+            self._client.auth.admin.delete_user(id_user)
+
+        await to_thread.run_sync(interogare)

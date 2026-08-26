@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
@@ -80,6 +81,18 @@ MARGINI_NUME = " :.-|\t,;"
 
 VECHIME = re.compile(r"vechime[^0-9]{0,40}?(\d{1,3})\s*(ani|an|luni|luna)")
 
+# "3 ani si 4 luni" — forma din tabelele de adeverinta, unde eticheta sta in
+# celula de alaturi, nu in acelasi sir. Partea cu lunile e optionala; fara ea
+# se pierdeau pana la 11 luni de vechime la fiecare citire ("3 ani" -> 36, desi
+# scria 3 ani si 4 luni).
+ANI_SI_LUNI = re.compile(
+    r"(\d{1,3})\s*(?:ani|an)\b(?:\D{0,6}?(\d{1,2})\s*(?:luni|luna)\b)?"
+)
+DOAR_LUNI = re.compile(r"(\d{1,3})\s*(?:luni|luna)\b")
+
+# Peste 60 de ani de vechime inseamna ca s-a citit gresit un numar.
+VECHIME_MAXIMA_LUNI = 720
+
 # Cat de departe de cuvantul-cheie mai are sens sa fie suma, in caractere.
 # "Salariul net lunar realizat in ultimele 6 luni este de 4.850,00 lei" are ~45.
 DISTANTA_MAXIMA = 60
@@ -94,6 +107,16 @@ class DateAdeverinta:
     vechime_luni: int | None
     incredere: float
     text_brut: str
+    # Cum s-a ajuns la cifra, nu doar cat de sigura e:
+    #   "tabel" — coloana „Venit Net" dintr-un tabel citit de Azure. Nu s-a
+    #             ghicit nimic: antetul spune ce e fiecare coloana.
+    #   "text"  — potrivire de vecinatate intr-un text (cuvantul "net" si suma
+    #             de langa el). Merge, dar e o presupunere.
+    # Se scrie in `credit_documente.extras` si decide daca mai are rost sa
+    # citeasca si modelul acelasi document (vezi credit/ai/pipeline.py).
+    # Un camp explicit, nu un prag pe `incredere`: pragul ar fi un numar magic
+    # pe care nimeni nu si-l mai aminteste peste sase luni.
+    sursa: str = "text"
 
     @property
     def utilizabila(self) -> bool:
@@ -337,16 +360,142 @@ def _cauta_angajator(linii: list[tuple[str, str]]) -> str | None:
     return None
 
 
+def luni_din_text(text: str) -> int | None:
+    """Vechimea in luni dintr-o bucata ca "3 ani si 4 luni" sau "40 luni".
+
+    Publica fiindca o foloseste si citirea din tabel, unde eticheta "vechime"
+    sta in celula de alaturi si nu poate fi ceruta in acelasi sir.
+    """
+    normalizat = _fara_diacritice(text.casefold())
+
+    ani = ANI_SI_LUNI.search(normalizat)
+    if ani:
+        luni = int(ani.group(1)) * 12 + int(ani.group(2) or 0)
+    else:
+        doar_luni = DOAR_LUNI.search(normalizat)
+        if not doar_luni:
+            return None
+        luni = int(doar_luni.group(1))
+
+    return luni if 0 < luni <= VECHIME_MAXIMA_LUNI else None
+
+
 def _cauta_vechime(linii: list[tuple[str, str]]) -> int | None:
     for _, linie in linii:
         potrivire = VECHIME.search(linie)
         if not potrivire:
             continue
-        cantitate, unitate = int(potrivire.group(1)), potrivire.group(2)
-        luni = cantitate * 12 if unitate.startswith("an") else cantitate
-        # Peste 60 de ani de vechime inseamna ca s-a citit gresit un numar.
-        if 0 < luni <= 720:
+        luni = luni_din_text(linie[potrivire.start(1) :])
+        if luni is not None:
             return luni
+    return None
+
+
+def _antet_de_net(rand: tuple[str, ...]) -> int | None:
+    """Indicele coloanei „venit net" dintr-un rand de antet.
+
+    Se cere si prezenta unui cuvant interzis in celelalte celule? Nu: e destul
+    ca ACEASTA celula sa spuna "net" si sa nu spuna "brut". Un antet
+    „Venit Net (RON)" e limpede; unul „Total brut si net" nu, si atunci nu se
+    alege nimic — regula casei, mai bine gol decat gresit.
+    """
+    for indice, celula in enumerate(rand):
+        normalizata = _fara_diacritice(celula.casefold())
+        if "net" not in normalizata:
+            continue
+        if any(interzis in normalizata for interzis in CUVINTE_INTERZISE):
+            continue
+        return indice
+    return None
+
+
+Tabel = Sequence[Sequence[str]]
+
+# Etichetele de pe prima coloana a unui tabel cheie-valoare, in ordinea in care
+# se cauta. Ordinea conteaza: "denumire societate" trebuie sa bata "angajator",
+# altfel randul "Cont IBAN Angajator" ar castiga si am lua IBAN-ul drept nume.
+ETICHETE_ANGAJATOR_TABEL = (
+    "denumire societate", "denumire angajator", "denumire",
+    "societate", "unitatea", "angajator",
+)
+ETICHETE_VECHIME_TABEL = ("vechime",)
+
+
+def _valoare_dupa_eticheta(tabele: Sequence[Tabel], etichete: Sequence[str]) -> str | None:
+    """Valoarea dintr-un tabel cheie-valoare — eticheta pe prima coloana.
+
+    Jumatate din adeverinta e scrisa asa: „Denumire Societate | SC ACME SRL".
+    Ca text plat, perechea se pierde intre celelalte randuri, iar `_cauta_angajator`
+    ajungea sa citeasca antetul tabelului („Camp Date OCR") drept nume de firma.
+    Cu celulele in fata, potrivirea e exacta.
+
+    Se parcurg etichetele in ordinea lor, nu randurile: prioritatea e a etichetei
+    celei mai specifice, oriunde ar fi ea in document.
+    """
+    for eticheta in etichete:
+        for tabel in tabele:
+            for rand in tabel:
+                if len(rand) < 2:
+                    continue
+                if eticheta in _fara_diacritice(rand[0].casefold()):
+                    valoare = rand[1].strip(MARGINI_NUME)
+                    if valoare:
+                        return valoare
+    return None
+
+
+def angajator_din_tabele(tabele: Sequence[Tabel]) -> str | None:
+    return _valoare_dupa_eticheta(tabele, ETICHETE_ANGAJATOR_TABEL)
+
+
+def vechime_din_tabele(tabele: Sequence[Tabel]) -> int | None:
+    valoare = _valoare_dupa_eticheta(tabele, ETICHETE_VECHIME_TABEL)
+    return luni_din_text(valoare) if valoare else None
+
+
+def venit_din_tabele(tabele: Sequence[Tabel]) -> Decimal | None:
+    """Venitul net dintr-un tabel de adeverinta, citit pe coloana.
+
+    Aici se rezolva capcana care a dus la scrierea acestei functii: un rand ca
+
+        Media Neta | 15.000,00 | 8.774,50 | 0,00 | —
+
+    citit ca text plat da brutul, fiindca dupa eticheta "Neta" primul numar e al
+    coloanei gresite. Cu antetul in fata — „Luna | Venit Brut | Venit Net | ..." —
+    nu mai e nimic de ghicit: se citeste coloana care spune "net".
+
+    Randul preferat e cel de medie, cand exista: o adeverinta pe 6 luni are
+    salarii care variaza (bonusuri, ore suplimentare), iar banca se uita la
+    medie, nu la ultima luna. Fara rand de medie, se face media coloanei —
+    acelasi lucru, calculat de noi.
+    """
+    for tabel in tabele:
+        if len(tabel) < 2:
+            continue
+
+        coloana = _antet_de_net(tuple(tabel[0]))
+        if coloana is None:
+            continue
+
+        valori: list[Decimal] = []
+        for rand in tabel[1:]:
+            if coloana >= len(rand):
+                continue
+            valoare = _numar(rand[coloana])
+            if valoare is None:
+                continue
+
+            eticheta = _fara_diacritice(" ".join(rand[:coloana]).casefold())
+            if "medi" in eticheta:
+                return valoare
+            valori.append(valoare)
+
+        if valori:
+            # Media, rotunjita ca o suma de bani. `sum(...) / len(...)` pe
+            # Decimal poate scoate zeci de zecimale, iar cifra asta ajunge in
+            # dosar si sub ochii analistului.
+            return (sum(valori) / len(valori)).quantize(Decimal("0.01"))
+
     return None
 
 

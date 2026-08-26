@@ -7,7 +7,7 @@ CAMPURI = "id_tranzactie,categorie"
 
 
 class CategorieManualaRepository:
-    """Suprascrieri de categorie confirmate de utilizator (migratia 0036) —
+    """Suprascrieri de categorie confirmate de utilizator (migratia 0040) —
     separat de categorizeaza() (tools/categorii_tranzactii.py), care ramane
     implicitul determinist cand nu exista nicio suprascriere."""
 

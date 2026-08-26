@@ -201,7 +201,7 @@ async def test_perioadele_cerute_sunt_plafonate() -> None:
 async def test_categoria_manuala_suprascrie_categorizeaza_in_cheltuieli_pe_categorie() -> None:
     """Raportat live: un transfer catre un comerciant necunoscut cade pe
     "altele", desi utilizatorul a confirmat explicit din asistent ca e
-    "restaurant" — suprascrierea (0036) trebuie sa aiba prioritate."""
+    "restaurant" — suprascrierea (0040) trebuie sa aiba prioritate."""
     tranzactie = _tranzactie(0, 100.0, iesire=True, descriere="Comerciant necunoscut XYZ")
     service = AnalizaService(
         TranzactiiFalse([tranzactie]),

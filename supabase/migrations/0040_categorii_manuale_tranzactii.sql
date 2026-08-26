@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0036 — categorie manuala pentru o tranzactie, cand utilizatorul confirma
+-- 0040 — categorie manuala pentru o tranzactie, cand utilizatorul confirma
 --
 -- Categoria unei tranzactii e azi mereu determinista (tools/categorii_tranzactii.py,
 -- din descriere/contraparte) — bun implicit, dar unele plati (ex. un transfer

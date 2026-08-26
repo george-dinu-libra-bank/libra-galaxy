@@ -1,16 +1,13 @@
 import io
 import logging
-import re
-from collections import Counter
 
 import numpy as np
 import pytesseract
 from PIL import Image, ImageOps
 
-logger = logging.getLogger(__name__)
+from app.infrastructure.cnp import candidati_din_text, cel_mai_frecvent
 
-# CNP romanesc: prima cifra 1-8 (sex+secol), urmata de 12 cifre.
-CNP_REGEX = re.compile(r"[1-8]\d{12}")
+logger = logging.getLogger(__name__)
 
 # Moduri de segmentare Tesseract incercate pe rand: buletinul are text
 # imprastiat (poza, etichete, cifre), nu un bloc uniform, deci un singur PSM
@@ -60,16 +57,6 @@ def _variante_preprocesare(imagine: Image.Image) -> list[Image.Image]:
     return variante
 
 
-def _candidati_din_text(text: str) -> list[str]:
-    """Cauta pe fiecare linie, dupa ce ii scoatem spatiile interne — Tesseract
-    baga uneori spatii in mijlocul unui numar, dar rareori rupe randul."""
-    candidati = []
-    for linie in text.splitlines():
-        linie_compacta = re.sub(r"[^0-9]", "", linie)
-        candidati.extend(CNP_REGEX.findall(linie_compacta))
-    return candidati
-
-
 def extrage_cnp(imagine_bytes: bytes) -> tuple[str | None, float]:
     """
     Citeste textul de pe poza buletinului prin Tesseract si extrage CNP-ul.
@@ -99,16 +86,9 @@ def extrage_cnp(imagine_bytes: bytes) -> tuple[str | None, float]:
             except Exception:
                 logger.exception("extrage_cnp: tesseract a esuat pentru psm=%s", psm)
                 continue
-            toate_potrivirile.extend(_candidati_din_text(text))
+            toate_potrivirile.extend(candidati_din_text(text))
 
-    if not toate_potrivirile:
-        return None, 0.0
-
-    numaratoare = Counter(toate_potrivirile)
-    cnp_castigator, frecventa = numaratoare.most_common(1)[0]
-    incredere = min(1.0, frecventa / max(incercari, 1))
-
-    return cnp_castigator, incredere
+    return cel_mai_frecvent(toate_potrivirile, incercari)
 
 
 def extrage_text(imagine_bytes: bytes) -> str:
