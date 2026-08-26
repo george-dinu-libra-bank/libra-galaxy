@@ -156,7 +156,7 @@ function PasCont({
             <button
               type="button"
               onClick={() => laAlegere(cont.id)}
-              className="flex w-full items-center gap-3 rounded-field border border-line bg-surface px-4 py-3 text-left transition-colors hover:border-primary-300 hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+              className="flex w-full items-center gap-3 rounded-field border border-line bg-surface px-4 py-3 text-left transition-colors hover:border-primary-400 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
             >
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[15px] font-medium text-ink">
@@ -285,12 +285,12 @@ function PasValuta({
                 onClick={() => laAlegere(valuta)}
                 aria-pressed={ales}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-field border px-4 py-3 text-left transition-colors",
+                  "flex w-full items-center gap-3 rounded-field border bg-surface px-4 py-3 text-left transition-colors",
                   "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25",
                   "disabled:cursor-not-allowed disabled:opacity-50",
-                  ales
-                    ? "border-primary-500 bg-primary-50"
-                    : "border-line bg-surface hover:border-primary-300 hover:bg-primary-50",
+                  // Contur, nu fundal deschis: bg-primary-50 pe tema intunecata facea
+                  // textul (text-ink, deschis la culoare) invizibil pe fundal deschis.
+                  ales ? "border-white/70" : "border-line hover:border-primary-400",
                 )}
               >
                 <span className="min-w-0 flex-1">

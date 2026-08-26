@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { converteste, type Curs, type Valuta } from "@/lib/valute";
+import type { Valuta } from "@/lib/valute";
 
 export type ContBancar = {
   id: string;
@@ -48,25 +48,4 @@ export async function obtineConturiUtilizator(): Promise<ContBancar[]> {
     blocatDeBanca: (cont.blocat_administrativ as boolean) ?? false,
     creatLa: cont.creat_la as string,
   }));
-}
-
-/**
- * Totalul din toate conturile, exprimat in RON.
- *
- * De cand conturile pot fi in valute diferite (0013_schimb_valutar.sql), o
- * simpla adunare a soldurilor ar da o cifra fara sens — 100 EUR plus 100 RON nu
- * fac 200 din nimic. Fiecare cont se aduce intai la RON, la cursul BNR.
- *
- * Un cont a carui valuta n-are curs (BNR inca n-a raspuns niciodata) se lasa
- * afara din total: mai bine o cifra mai mica si corecta decat una inventata.
- */
-export function totalSold(conturi: ContBancar[], cursuri: Curs[]) {
-  // Soldurile sunt numeric(14,2); adunarea in bani evita resturile din virgula
-  // mobila (0.1 + 0.2 = 0.30000000000000004).
-  const bani = conturi.reduce((total, cont) => {
-    const inLei = converteste(cont.sold, cont.valuta, "RON", cursuri);
-    return inLei === null ? total : total + Math.round(inLei * 100);
-  }, 0);
-
-  return bani / 100;
 }

@@ -25,6 +25,26 @@ class CashflowResponse(BaseModel):
     media_lunara_cheltuieli: float
 
 
+class CategorieCheltuiala(BaseModel):
+    categorie: str
+    total: float
+
+
+class CheltuieliPeCategorieResponse(BaseModel):
+    luna: str  # YYYY-MM
+    valuta: str = "RON"
+    categorii: list[CategorieCheltuiala]
+
+
+class TranzactieCategorizata(BaseModel):
+    data: str
+    suma: float
+    valuta: str
+    descriere: str | None
+    directie: str
+    categorie: str
+
+
 class AlertaResponse(BaseModel):
     id_tranzactie: str
     data: str

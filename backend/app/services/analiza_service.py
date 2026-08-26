@@ -13,12 +13,20 @@ from app.ml.neregularitati import DetectorNeregularitati, Neregularitate
 from app.repositories.card_repository import CardRepository
 from app.repositories.cont_repository import ContRepository
 from app.repositories.tranzactie_repository import TranzactieRepository
-from app.schemas.analiza import CashflowResponse, LunaCashflow, SoldSumar
+from app.schemas.analiza import (
+    CashflowResponse,
+    CategorieCheltuiala,
+    CheltuieliPeCategorieResponse,
+    LunaCashflow,
+    SoldSumar,
+)
 from app.tools.categorii_tranzactii import categorizeaza
 
 MAX_LUNI = 12
 MAX_ZILE = 365
-MAX_TRANZACTII_LISTATE = 25
+# 200, nu 25: /categorii/[categorie] (dashboard) are nevoie de toate
+# tranzactiile lunii curente, nu doar un rezumat scurt ca la chat-ul asistentului.
+MAX_TRANZACTII_LISTATE = 200
 
 
 def _inceput_de_luna(moment: datetime) -> datetime:
@@ -102,6 +110,33 @@ class AnalizaService:
         ]
         medie = round(sum(l.cheltuieli for l in rezultat) / len(rezultat), 2) if rezultat else 0.0
         return CashflowResponse(valuta=valuta, luni=rezultat, media_lunara_cheltuieli=medie)
+
+    async def cheltuieli_pe_categorie_luna_curenta(
+        self, user_id: UUID, valuta: str = "RON"
+    ) -> CheltuieliPeCategorieResponse:
+        """Cheltuielile lunii calendaristice curente, pe categorie — pentru
+        widgetul de dashboard (stil George/BCR). Categoria vine din acelasi
+        categorizeaza() determinist ca la tranzactii_recente(), niciodata
+        ghicit de un model (CLAUDE.md #25)."""
+        acum = datetime.now(timezone.utc)
+        inceput = _inceput_de_luna(acum)
+        randuri = await self._tranzactii.intre(user_id, inceput, acum, self._limita)
+
+        totaluri: dict[str, float] = defaultdict(float)
+        for rand in randuri:
+            if rand.get("valuta") != valuta:
+                continue
+            if str(rand.get("id_user_send")) != str(user_id):
+                continue  # doar cheltuielile (bani iesiti), nu incasarile
+            categorie = categorizeaza(rand.get("descriere"), None)
+            totaluri[categorie] += float(rand["suma"])
+
+        categorii = sorted(
+            (CategorieCheltuiala(categorie=c, total=round(t, 2)) for c, t in totaluri.items()),
+            key=lambda c: c.total,
+            reverse=True,
+        )
+        return CheltuieliPeCategorieResponse(luna=inceput.strftime("%Y-%m"), valuta=valuta, categorii=categorii)
 
     async def tranzactii_recente(
         self, user_id: UUID, zile: int = 30, limita: int = 10

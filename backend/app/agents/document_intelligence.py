@@ -17,6 +17,7 @@ from app.agents.base import (
     build_system_prompt,
     build_user_message,
 )
+
 from app.agents.specs import DOCUMENT_INTELLIGENCE
 from app.context.builder import AssembledContext
 from app.core.security import Principal

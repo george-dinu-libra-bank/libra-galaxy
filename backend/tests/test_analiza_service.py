@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.services.analiza_service import AnalizaService
+from app.services.analiza_service import MAX_TRANZACTII_LISTATE, AnalizaService
 
 EU = uuid4()
 ALTUL = uuid4()
@@ -34,12 +34,12 @@ class ConturiFalse(CarduriFalse):
     pass
 
 
-def _tranzactie(zile: int, suma: float, iesire: bool, valuta: str = "RON") -> dict:
+def _tranzactie(zile: int, suma: float, iesire: bool, valuta: str = "RON", descriere: str = "test") -> dict:
     return {
         "id": str(uuid4()),
         "suma": suma,
         "valuta": valuta,
-        "descriere": "test",
+        "descriere": descriere,
         "creat_la": (ACUM - timedelta(days=zile)).isoformat(),
         "id_user_send": str(EU) if iesire else str(ALTUL),
         "id_user_recieve": str(ALTUL) if iesire else str(EU),
@@ -112,8 +112,68 @@ async def test_cashflow_separa_intrarile_de_iesiri_si_valutele() -> None:
 
 
 @pytest.mark.anyio
+async def test_cheltuieli_pe_categorie_agrega_si_sorteaza_descrescator() -> None:
+    service = AnalizaService(
+        TranzactiiFalse(
+            [
+                _tranzactie(0, 30.0, iesire=True, descriere="Restaurant Bistro"),
+                _tranzactie(0, 20.0, iesire=True, descriere="Cafenea Starbucks"),
+                _tranzactie(0, 100.0, iesire=True, descriere="Kaufland cumparaturi"),
+            ]
+        ),
+        CarduriFalse([]),
+    )
+
+    raspuns = await service.cheltuieli_pe_categorie_luna_curenta(EU)
+
+    assert raspuns.categorii[0].categorie == "cumparaturi"
+    assert raspuns.categorii[0].total == 100.0
+    assert raspuns.categorii[1].categorie == "restaurant"
+    assert raspuns.categorii[1].total == 50.0  # 30 + 20, aceeasi categorie
+
+
+@pytest.mark.anyio
+async def test_cheltuieli_pe_categorie_exclude_incasarile() -> None:
+    service = AnalizaService(
+        TranzactiiFalse([_tranzactie(0, 500.0, iesire=False, descriere="Salariu")]),
+        CarduriFalse([]),
+    )
+
+    raspuns = await service.cheltuieli_pe_categorie_luna_curenta(EU)
+
+    assert raspuns.categorii == []
+
+
+@pytest.mark.anyio
+async def test_cheltuieli_pe_categorie_exclude_alta_valuta() -> None:
+    service = AnalizaService(
+        TranzactiiFalse([_tranzactie(0, 100.0, iesire=True, valuta="EUR", descriere="Restaurant Paris")]),
+        CarduriFalse([]),
+    )
+
+    raspuns = await service.cheltuieli_pe_categorie_luna_curenta(EU, valuta="RON")
+
+    assert raspuns.categorii == []
+
+
+@pytest.mark.anyio
+async def test_cheltuieli_pe_categorie_exclude_lunile_anterioare() -> None:
+    # 400 de zile in urma e mereu intr-o alta luna calendaristica, indiferent
+    # de ziua in care ruleaza testul.
+    service = AnalizaService(
+        TranzactiiFalse([_tranzactie(400, 100.0, iesire=True, descriere="Kaufland veche")]),
+        CarduriFalse([]),
+    )
+
+    raspuns = await service.cheltuieli_pe_categorie_luna_curenta(EU)
+
+    assert raspuns.categorii == []
+    assert raspuns.luna == ACUM.strftime("%Y-%m")
+
+
+@pytest.mark.anyio
 async def test_perioadele_cerute_sunt_plafonate() -> None:
     service = AnalizaService(TranzactiiFalse([]), CarduriFalse([]))
 
     assert len((await service.cashflow_lunar(EU, luni=999)).luni) <= 12
-    assert len(await service.tranzactii_recente(EU, zile=99999, limita=999)) <= 25
+    assert len(await service.tranzactii_recente(EU, zile=99999, limita=999)) <= MAX_TRANZACTII_LISTATE
