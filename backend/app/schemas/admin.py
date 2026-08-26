@@ -1,6 +1,8 @@
+from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ContSemnalatResponse(BaseModel):
@@ -106,3 +108,33 @@ class StareConturiResponse(BaseModel):
     id_utilizator: str
     total: int
     blocate: int
+
+
+class ContClientResponse(BaseModel):
+    nume: str | None = None
+    sold: str
+    valuta: str | None = None
+    blocat: bool = False
+
+
+class CerereStergereAdminResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: UUID
+    id_utilizator: UUID
+    nume: str | None = None
+    email: str | None = None
+    motiv: str | None = None
+    status: str
+    creat_la: datetime
+    decis_la: datetime | None = None
+    motiv_refuz: str | None = None
+    conturi: list[ContClientResponse] = []
+    credite_in_derulare: int = 0
+
+
+class DecizieStergereRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    aproba: bool
+    motiv: str | None = Field(default=None, max_length=500)

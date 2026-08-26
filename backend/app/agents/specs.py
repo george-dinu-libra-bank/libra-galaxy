@@ -111,6 +111,8 @@ CREDIT_ADVISOR = AgentSpec(
         "explica motivele unei decizii asa cum le-a scris motorul determinist",
         "citeste creditele in derulare si urmatoarea rata din tool-uri",
         "calculeaza rata si costul prin tool-ul de simulare, niciodata din cap",
+        "cand tool-ul de pregatire a cererii raspunde 'ready', spune rata estimata si "
+        "trimite omul la formular — nu mai cere nimic in plus",
     ),
     prohibited=(
         # Creditarea are un motor determinist si un analist uman in zona gri.
@@ -122,18 +124,39 @@ CREDIT_ADVISOR = AgentSpec(
         "sa deduca rate sau credite din descrierile tranzactiilor",
         "sa depuna el cererea sau sa spuna ca a depus-o — pregateste formularul, atat",
         "sa bifeze sau sa presupuna acordul pentru Biroul de Credit in locul omului",
+        # Observat pe viu: cu lista de acte din baza de cunostinte in context,
+        # modelul cerea CNP, serie de buletin, adresa, telefon si email — date pe
+        # care banca le are deja de la inregistrare, si pe care formularul nici
+        # nu le intreaba. Omul care cere un credit primea un chestionar de ghiseu.
+        "sa ceara CNP, serie sau numar de act de identitate, adresa, telefon sau email — "
+        "banca le are deja din profilul clientului",
+        "sa ceara acorduri sau documente ca o conditie ca sa pregateasca formularul — "
+        "acordurile se dau in formular, de catre om, nu in conversatie",
+        "sa ceara alte date decat cele pe care tool-ul le-a cerut explicit prin 'missing'",
     ),
     tool_names=frozenset({
         "get_credit_applications", "get_credit_decision",
         "get_active_credits", "get_next_installment", "simulate_credit",
         "prepare_credit_application",
+        # Si brosura, nu doar dosarul: de cand `credit_intent` vine aici (vezi
+        # `intents` mai jos), agentul asta e singurul care raspunde despre
+        # credite. Fara cautarea in cunostinte ar sti in ce stare e cererea
+        # omului, dar n-ar sti ce dobanda are produsul.
+        "search_bank_knowledge",
     }),
     # MEDIUM, nu LOW: `prepare_credit_application` pregateste o mutatie. Plafonul
     # trebuie sa o cuprinda, altfel executorul o filtreaza tacit si agentul pare
     # ca „nu stie" sa completeze formularul.
     risk_ceiling=RiskLevel.MEDIUM,
-    prompt_version="credit-v2-formular",
-    intents=("credit_question",),
+    prompt_version="credit-v3-formular-si-brosura",
+    # `credit_intent` ("vreau un credit de 30000 pe 48 de luni") NU era declarat
+    # pe niciun agent, deci AgentRouter.select() il ducea la DEFAULT_AGENT_ID =
+    # document_intelligence — agentul brosurii, care n-are niciun tool de
+    # credite. Toate frazele de actiune din credit_advisor::_VREA_CERERE cadeau
+    # exact acolo, si formularul nu se completa niciodata. Link-ul determinist
+    # catre /credite/cerere se ataseaza in orchestrator dupa raspuns, indiferent
+    # de agent, deci nu se pierde nimic mutandu-l aici.
+    intents=("credit_question", "credit_intent"),
 )
 
 ALL_AGENT_SPECS: tuple[AgentSpec, ...] = (

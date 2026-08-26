@@ -39,7 +39,12 @@ def build_knowledge_tools(retrieval_service: RetrievalService) -> list[ToolDefin
             name="search_bank_knowledge",
             description="Cauta in baza de cunostinte a bancii (politici, produse, proceduri, FAQ).",
             callback=search_bank_knowledge,
-            allowed_agents=frozenset({"document_intelligence"}),
+            # Si `credit_advisor`: de cand `credit_intent` se ruteaza acolo
+            # (specs.py), el primeste si intrebarile despre conditiile
+            # produsului, nu doar despre dosarul omului. Fara randul asta
+            # executorul i-ar filtra tacit tool-ul, si agentul ar parea ca „nu
+            # stie" ce dobanda are creditul.
+            allowed_agents=frozenset({"document_intelligence", "credit_advisor"}),
             required_permissions=frozenset({PERMISSION_ASSISTANT_USE}),
             side_effect=SideEffect.READ_ONLY,
             risk_level=RiskLevel.LOW,

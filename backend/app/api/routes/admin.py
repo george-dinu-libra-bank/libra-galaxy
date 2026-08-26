@@ -28,6 +28,8 @@ from app.repositories.admin_repository import AdminRepository, AnalizaRepository
 from app.schemas.admin import (
     AnalizaRequest,
     AnalizaResponse,
+    CerereStergereAdminResponse,
+    DecizieStergereRequest,
     ContSemnalatResponse,
     IstoricAnalizaResponse,
     StareConturiResponse,
@@ -303,3 +305,69 @@ async def stare_conturi(
         StareConturiResponse(id_utilizator=uid, total=s["total"], blocate=s["blocate"])
         for uid, s in pe_om.items()
     ]
+
+
+# ---------------------------------------------------------------------------
+# Cereri de inchidere a contului
+# ---------------------------------------------------------------------------
+
+
+@router.get("/cereri-stergere", response_model=list[CerereStergereAdminResponse])
+async def cereri_stergere(
+    doar_deschise: bool = Query(default=False),
+    administrator: UserContext = Depends(cere_administrator),
+    client: Client = Depends(get_admin_supabase),
+) -> list[CerereStergereAdminResponse]:
+    """Coada de cereri, cu tot ce ii trebuie analistului ca sa decida.
+
+    Soldurile si creditele vin odata cu lista, nu la deschiderea fiecarui rand:
+    fara ele, analistul ar apasa „Sterge" si abia RPC-ul i-ar spune de ce nu se
+    poate.
+    """
+    depozit = AdminRepository(client)
+    return [
+        CerereStergereAdminResponse(**cerere)
+        for cerere in await depozit.cereri_stergere(doar_deschise)
+    ]
+
+
+@router.post("/cereri-stergere/{id_cerere}/decizie", response_model=CerereStergereAdminResponse)
+async def decide_stergere(
+    id_cerere: UUID,
+    cerere: DecizieStergereRequest,
+    administrator: UserContext = Depends(cere_administrator),
+    client: Client = Depends(get_admin_supabase),
+) -> CerereStergereAdminResponse:
+    """Aproba sau respinge. La aprobare, RPC-ul consolideaza intai conturile.
+
+    Decizia scrie si notificarea catre client — nu ramane o schimbare de status
+    pe care omul o descopera intrand din intamplare in Setari.
+    """
+    depozit = AdminRepository(client)
+    rezultat = await depozit.decide_stergere(
+        id_cerere, UUID(administrator.user_id), cerere.aproba, cerere.motiv
+    )
+    return CerereStergereAdminResponse(**rezultat)
+
+
+@router.post("/cereri-stergere/{id_cerere}/sterge", status_code=204)
+async def sterge_client(
+    id_cerere: UUID,
+    administrator: UserContext = Depends(cere_administrator),
+    client: Client = Depends(get_admin_supabase),
+) -> Response:
+    """Stergerea efectiva, dupa o cerere aprobata.
+
+    Poarta pe solduri sta in `public.sterge_client` (0038), nu aici: un buton
+    dezactivat in interfata e o sugestie, o exceptie din RPC e o regula. Ruta
+    doar transmite si sterge apoi utilizatorul din `auth`, unde SQL-ul nostru
+    n-are acces.
+    """
+    depozit = AdminRepository(client)
+    rezultat = await depozit.sterge_client(id_cerere, UUID(administrator.user_id))
+
+    id_user = (rezultat or {}).get("id_utilizator")
+    if id_user:
+        await depozit.sterge_utilizator_auth(str(id_user))
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

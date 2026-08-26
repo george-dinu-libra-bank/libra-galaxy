@@ -182,10 +182,12 @@ def test_router_defaults_unknown_to_document_intelligence():
     assert router.select("something_never_declared") == "document_intelligence"
 
 
-def test_router_defaults_credit_intent_to_document_intelligence():
-    # credit_intent nu e inregistrat pe niciun AgentSpec (la fel ca
-    # export_request/transfer_intent) — dar spre deosebire de acelea, NU se
-    # scurtcircuiteaza in orchestrator.py, ci chiar ajunge la agent prin
-    # fallback-ul implicit, ca RAG-ul din document_intelligence sa raspunda
-    # la partea informativa (conditii de eligibilitate).
-    assert AgentRouter().select("credit_intent") == "document_intelligence"
+def test_credit_intent_ajunge_la_agentul_de_creditare():
+    """Aici a stat bug-ul, si testul il consfintea.
+
+    `credit_intent` ("vreau un credit de 30000 pe 48 de luni") nu era declarat pe
+    niciun AgentSpec, deci cadea pe DEFAULT_AGENT_ID = document_intelligence —
+    agentul brosurii, care n-are niciun tool de credite. Toate frazele de actiune
+    ajungeau acolo si formularul nu se completa niciodata."""
+    assert AgentRouter().select("credit_intent") == "credit_advisor"
+    assert AgentRouter().select("credit_question") == "credit_advisor"
