@@ -24,8 +24,14 @@ from app.providers.base import ChatMessage, ChatProvider
 from app.tools.base import SelectedTool, ToolResult
 
 _NO_MATCH_TEXT_RO = (
-    "Îmi pare rău, nu pot răspunde la această întrebare. Te rog reformuleaz-o sau "
-    "contactează echipa de suport pentru ajutor."
+    "Pot răspunde doar la întrebări legate de domeniul bancar — conturi, carduri, tranzacții, "
+    "credite, transferuri sau produsele Galaxy Bank. Reformulează întrebarea sau contactează "
+    "echipa de suport dacă ai nevoie de altceva."
+)
+_NO_MATCH_TEXT_EN = (
+    "I can only help with banking-related questions — accounts, cards, transactions, credit, "
+    "transfers, or Galaxy Bank's products. Rephrase your question or contact support if you "
+    "need something else."
 )
 
 _SCORE_HIGH_THRESHOLD = 0.65
@@ -68,7 +74,8 @@ class DocumentIntelligenceAgent:
         hits = self._hits(tool_results)
 
         if not hits and not attachments:
-            return AgentAnswer(text=_NO_MATCH_TEXT_RO, citations=[])
+            text = _NO_MATCH_TEXT_RO if principal.locale == "ro" else _NO_MATCH_TEXT_EN
+            return AgentAnswer(text=text, citations=[])
 
         citations = [
             {"document_id": hit["document_id"], "section": hit.get("section"), "score": hit["score"]}
@@ -83,7 +90,14 @@ class DocumentIntelligenceAgent:
 
         system_prompt = build_system_prompt(self.spec, context) + (
             f"\n\n{grounding_rule} Daca informatia nu e acolo, spune simplu ca nu e documentata — "
-            f"fara sa mentionezi ce titlu de sectiune sau ce document ai gasit in schimb."
+            f"fara sa mentionezi ce titlu de sectiune sau ce document ai gasit in schimb.\n"
+            f"INAINTE de toate: daca intrebarea utilizatorului nu are nicio legatura cu domeniul "
+            f"bancar (Galaxy Bank, conturi, carduri, tranzactii, credite, transferuri, produse "
+            f"bancare) — de exemplu o gluma, o curiozitate generala, orice subiect fara legatura cu "
+            f"banii sau banca — raspunzi simplu ca poti ajuta doar cu intrebari despre domeniul "
+            f"bancar. Asta se aplica INDIFERENT de fragmentele regasite mai sus: un fragment poate "
+            f"contine cuvinte in comun cu intrebarea (ex. 'bani') fara sa fie relevant pentru ce s-a "
+            f"cerut de fapt — nu forta un raspuns dintr-un fragment doar pentru ca a fost regasit."
         )
         completion = await chat_provider.complete(
             [ChatMessage(role="system", content=system_prompt), build_user_message(user_text, attachments)]
