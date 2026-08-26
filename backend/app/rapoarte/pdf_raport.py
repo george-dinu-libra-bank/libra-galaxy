@@ -8,6 +8,8 @@ Culorile vin din DESIGN.md, ca raportul sa semene cu aplicatia din care iese.
 """
 
 import io
+import logging
+import pathlib
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
@@ -26,6 +28,65 @@ from reportlab.platypus import (
 
 from app.services.raport_service import ETICHETE_TIP, Raport
 
+logger = logging.getLogger(__name__)
+
+# -----------------------------------------------------------------------------
+# Fontul
+#
+# Helvetica, fontul implicit din reportlab, e codat Latin-1 si nu contine s si t
+# cu virgula (È™, È›) sau a cu caciula (Äƒ). Textul static de aici putea fi scris fara
+# diacritice, dar sinteza vine de la un model de limbaj si le foloseste — iar
+# reportlab desena patrate negre in locul lor, chiar in paragraful pe care un om
+# il citeste primul.
+#
+# DejaVu acopera complet romana si vine cu imaginea Debian a containerului. Daca
+# lipseste (backend rulat direct pe Windows), cadem inapoi pe Helvetica: raportul
+# iese fara diacritice, dar iese — un PDF lipsa ar fi mai rau decat unul urat.
+# -----------------------------------------------------------------------------
+
+FONT_NORMAL = "Helvetica"
+FONT_BOLD = "Helvetica-Bold"
+
+_CAI_FONT = (
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    ("C:/Windows/Fonts/DejaVuSans.ttf", "C:/Windows/Fonts/DejaVuSans-Bold.ttf"),
+    # Arial exista pe orice Windows si acopera romana.
+    ("C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/arialbd.ttf"),
+)
+
+
+def _inregistreaza_fontul() -> None:
+    """Cauta un font cu diacritice si il inregistreaza o singura data."""
+    global FONT_NORMAL, FONT_BOLD
+
+    if FONT_NORMAL != "Helvetica":
+        return  # deja gasit
+
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    for cale_normal, cale_bold in _CAI_FONT:
+        if not (pathlib.Path(cale_normal).exists() and pathlib.Path(cale_bold).exists()):
+            continue
+        try:
+            pdfmetrics.registerFont(TTFont("RaportRO", cale_normal))
+            pdfmetrics.registerFont(TTFont("RaportRO-Bold", cale_bold))
+            pdfmetrics.registerFontFamily(
+                "RaportRO", normal="RaportRO", bold="RaportRO-Bold"
+            )
+        except Exception:
+            logger.exception("fontul %s nu a putut fi inregistrat", cale_normal)
+            continue
+
+        FONT_NORMAL, FONT_BOLD = "RaportRO", "RaportRO-Bold"
+        return
+
+    logger.warning(
+        "niciun font cu diacritice gasit; raportul PDF iese cu Helvetica, "
+        "deci fara diacritice romanesti"
+    )
+
 # DESIGN.md, sectiunea 2.
 PRIMARY_600 = colors.HexColor("#2F6FED")
 PRIMARY_50 = colors.HexColor("#EEF4FF")
@@ -42,37 +103,38 @@ MAX_RANDURI = 60
 
 
 def _stiluri() -> dict[str, ParagraphStyle]:
+    _inregistreaza_fontul()
     baza = getSampleStyleSheet()
     return {
         "titlu": ParagraphStyle(
-            "titlu", parent=baza["Title"], fontSize=20, leading=25,
+            "titlu", parent=baza["Title"], fontName=FONT_NORMAL, fontSize=20, leading=25,
             textColor=INK, alignment=TA_LEFT, spaceAfter=2,
         ),
         "subtitlu": ParagraphStyle(
-            "subtitlu", parent=baza["Normal"], fontSize=10, leading=14, textColor=INK_FAINT,
+            "subtitlu", parent=baza["Normal"], fontName=FONT_NORMAL, fontSize=10, leading=14, textColor=INK_FAINT,
         ),
         "sectiune": ParagraphStyle(
-            "sectiune", parent=baza["Heading2"], fontSize=12, leading=16,
+            "sectiune", parent=baza["Heading2"], fontName=FONT_NORMAL, fontSize=12, leading=16,
             textColor=INK, spaceBefore=14, spaceAfter=6,
         ),
         "corp": ParagraphStyle(
-            "corp", parent=baza["Normal"], fontSize=9.5, leading=13.5, textColor=INK_SOFT,
+            "corp", parent=baza["Normal"], fontName=FONT_NORMAL, fontSize=9.5, leading=13.5, textColor=INK_SOFT,
         ),
         "celula": ParagraphStyle(
-            "celula", parent=baza["Normal"], fontSize=8, leading=11, textColor=INK_SOFT,
+            "celula", parent=baza["Normal"], fontName=FONT_NORMAL, fontSize=8, leading=11, textColor=INK_SOFT,
         ),
         "nota": ParagraphStyle(
-            "nota", parent=baza["Normal"], fontSize=8.5, leading=12, textColor=INK_FAINT,
+            "nota", parent=baza["Normal"], fontName=FONT_NORMAL, fontSize=8.5, leading=12, textColor=INK_FAINT,
         ),
     }
 
 
 def _antet(raport: Raport, st: dict) -> list:
     return [
-        Paragraph("Raport de analiza a tranzactiilor", st["titlu"]),
+        Paragraph("Raport de analiză a tranzacțiilor", st["titlu"]),
         Paragraph(
             f"Generat la {raport.generat_la.strftime('%d.%m.%Y, %H:%M')} UTC · "
-            f"perioada analizata: ultimele {raport.zile} de zile",
+            f"perioada analizată: ultimele {raport.zile} de zile",
             st["subtitlu"],
         ),
         Spacer(1, 8 * mm),
@@ -84,12 +146,13 @@ def _tabel_identitate(raport: Raport, st: dict) -> Table:
         ["Titular", raport.nume],
         ["Email", raport.email],
         ["IBAN", raport.iban],
-        ["Tranzactii analizate", str(raport.total_tranzactii)],
+        ["Tranzacții analizate", str(raport.total_tranzactii)],
     ]
     tabel = Table(randuri, colWidths=[45 * mm, 120 * mm])
     tabel.setStyle(
         TableStyle(
             [
+                ("FONTNAME", (0, 0), (-1, -1), FONT_NORMAL),
                 ("FONTSIZE", (0, 0), (-1, -1), 9),
                 ("TEXTCOLOR", (0, 0), (0, -1), INK_FAINT),
                 ("TEXTCOLOR", (1, 0), (1, -1), INK),
@@ -104,7 +167,7 @@ def _tabel_identitate(raport: Raport, st: dict) -> Table:
 
 
 def _tabel_rezumat(raport: Raport, st: dict) -> Table:
-    randuri = [["Tip semnalare", "Numar"]]
+    randuri = [["Tip semnalare", "Număr"]]
     for tip, cate in sorted(raport.pe_tip.items(), key=lambda x: -x[1]):
         randuri.append([ETICHETE_TIP.get(tip, tip), str(cate)])
     randuri.append(["Total", str(len(raport.constatari))])
@@ -113,10 +176,11 @@ def _tabel_rezumat(raport: Raport, st: dict) -> Table:
     tabel.setStyle(
         TableStyle(
             [
+                ("FONTNAME", (0, 0), (-1, -1), FONT_NORMAL),
                 ("BACKGROUND", (0, 0), (-1, 0), PRIMARY_50),
                 ("TEXTCOLOR", (0, 0), (-1, 0), PRIMARY_600),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+                ("FONTNAME", (0, -1), (-1, -1), FONT_BOLD),
                 ("FONTSIZE", (0, 0), (-1, -1), 9),
                 ("ALIGN", (1, 0), (1, -1), "RIGHT"),
                 ("TEXTCOLOR", (0, 1), (-1, -1), INK_SOFT),
@@ -130,9 +194,11 @@ def _tabel_rezumat(raport: Raport, st: dict) -> Table:
 
 
 def _culoare_scor(scor: float) -> colors.Color:
-    if scor >= 10:
+    # Praguri pe severitatea 1-100 (BENZI_SEVERITATE din ml/neregularitati.py),
+    # nu pe scorul brut de altadata.
+    if scor >= 70:
         return DANGER
-    if scor >= 5:
+    if scor >= 45:
         return WARNING
     return INK_SOFT
 
@@ -140,9 +206,10 @@ def _culoare_scor(scor: float) -> colors.Color:
 def _tabel_constatari(raport: Raport, st: dict) -> Table:
     randuri = [["Data", "Comerciant", "Suma", "Tip", "Scor", "Explicatie"]]
     stiluri = [
+        ("FONTNAME", (0, 0), (-1, -1), FONT_NORMAL),
         ("BACKGROUND", (0, 0), (-1, 0), PRIMARY_50),
         ("TEXTCOLOR", (0, 0), (-1, 0), PRIMARY_600),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
         ("ALIGN", (2, 1), (2, -1), "RIGHT"),
         ("ALIGN", (4, 1), (4, -1), "RIGHT"),
@@ -165,7 +232,7 @@ def _tabel_constatari(raport: Raport, st: dict) -> Table:
             ]
         )
         stiluri.append(("TEXTCOLOR", (4, i), (4, i), _culoare_scor(c.scor)))
-        stiluri.append(("FONTNAME", (4, i), (4, i), "Helvetica-Bold"))
+        stiluri.append(("FONTNAME", (4, i), (4, i), FONT_BOLD))
 
     tabel = Table(
         randuri,
@@ -174,6 +241,105 @@ def _tabel_constatari(raport: Raport, st: dict) -> Table:
     )
     tabel.setStyle(TableStyle(stiluri))
     return tabel
+
+
+def _cum_s_a_calculat(st: dict) -> list:
+    """Cum se naste scorul, in cuvinte, pentru cine citeste raportul.
+
+    Pragurile sunt citite din modulul de detectie, nu scrise de mana aici: un
+    numar copiat ramane in urma cand cineva schimba regula, iar un raport care
+    isi descrie gresit propriul scor e mai rau decat unul care tace.
+    """
+    from app.ml.neregularitati import (
+        BENZI_SEVERITATE,
+        FEREASTRA_DUBLARE,
+        FEREASTRA_RAFALA,
+        PRAG_COMERCIANT_NOU_MULTIPLU,
+        PRAG_RAFALA,
+    )
+
+    def banda(tip: str) -> str:
+        jos, sus, _ = BENZI_SEVERITATE[tip]
+        return str(jos) if jos == sus else f"{jos}–{sus}"
+
+    randuri = [
+        [
+            "Plată dublată",
+            f"Două plăți identice la același comerciant în "
+            f"{int(FEREASTRA_DUBLARE.total_seconds() // 60)} de minute.",
+            banda("plata_dublata"),
+        ],
+        [
+            "Rafală de plăți",
+            f"Cel puțin {PRAG_RAFALA} plăți la același comerciant în "
+            f"{int(FEREASTRA_RAFALA.total_seconds() // 3600)} de ore.",
+            banda("rafala_de_plati"),
+        ],
+        [
+            "Sumă neobișnuită",
+            "Cât de departe e suma față de mediana plăților tale la acel "
+            "comerciant, măsurată în abateri absolute mediane.",
+            banda("suma_neobisnuita"),
+        ],
+        [
+            "Comerciant nou",
+            f"Prima plată la un comerciant, de cel puțin "
+            f"{PRAG_COMERCIANT_NOU_MULTIPLU:.0f} ori peste plata ta obișnuită.",
+            banda("comerciant_nou"),
+        ],
+        [
+            "Tipar neobișnuit",
+            "Semnalat de modelul statistic antrenat pe istoricul de plăți, "
+            "nu de o regulă scrisă de om.",
+            banda("tipar_neobisnuit"),
+        ],
+    ]
+
+    tabel = Table(
+        [["Tip", "Cum se stabilește", "Severitate"], *randuri],
+        colWidths=[33 * mm, 107 * mm, 25 * mm],
+    )
+    tabel.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), FONT_NORMAL),
+                ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("BACKGROUND", (0, 0), (-1, 0), PRIMARY_50),
+                ("TEXTCOLOR", (0, 0), (-1, 0), PRIMARY_600),
+                ("TEXTCOLOR", (0, 1), (-1, -1), INK_SOFT),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LINEBELOW", (0, 0), (-1, -1), 0.5, LINE),
+            ]
+        )
+    )
+
+    return [
+        Paragraph("Cum a fost calculată severitatea", st["sectiune"]),
+        Paragraph(
+            "Severitatea merge de la 1 la 100 și <b>nu este un procent și nici o "
+            "probabilitate de fraudă</b>. Sistemul nu a văzut niciodată o fraudă "
+            "confirmată din care să învețe, deci nu poate estima o astfel de șansă. "
+            "E o ordine de prioritate: cu cât numărul e mai mare, cu atât plata iese "
+            "mai mult din tiparul obișnuit al acestui cont — comparat cu el însuși, "
+            "nu cu alți clienți.",
+            st["corp"],
+        ),
+        Spacer(1, 3 * mm),
+        tabel,
+        Spacer(1, 3 * mm),
+        Paragraph(
+            "Fiecare tip are propriul interval, ales după cât de sigură e "
+            "constatarea: o dublare confirmată e o certitudine aritmetică și stă sus, "
+            "în timp ce un tipar semnalat doar de model rămâne jos, fiindcă e cea mai "
+            "slabă dovadă. În interiorul intervalului, poziția e dată de cât de mult "
+            "se abate plata de la obișnuit.",
+            st["nota"],
+        ),
+    ]
 
 
 def randeaza(raport: Raport) -> bytes:
@@ -195,23 +361,24 @@ def randeaza(raport: Raport) -> bytes:
     povestea.append(_tabel_identitate(raport, st))
 
     if raport.sinteza:
-        povestea.append(Paragraph("Sinteza", st["sectiune"]))
+        povestea.append(Paragraph("Sinteză", st["sectiune"]))
         povestea.append(Paragraph(raport.sinteza, st["corp"]))
         povestea.append(Spacer(1, 2 * mm))
         povestea.append(
             Paragraph(
-                "Sinteza de mai sus e generata automat. Faptele pe care se bazeaza sunt "
-                "in tabelul de constatari; in caz de nepotrivire, tabelul are dreptate.",
+                "Sinteza de mai sus e scrisă de un model de limbaj, pornind de la "
+                "constatările din tabel. Faptele pe care se bazează sunt în tabelul de "
+                "constatări; în caz de nepotrivire, tabelul are dreptate.",
                 st["nota"],
             )
         )
 
     if not raport.constatari:
-        povestea.append(Paragraph("Constatari", st["sectiune"]))
+        povestea.append(Paragraph("Constatări", st["sectiune"]))
         povestea.append(
             Paragraph(
-                "Nicio plata nu a iesit din tiparul obisnuit al acestui cont in perioada "
-                "analizata.",
+                "Nicio plată nu a ieșit din tiparul obișnuit al acestui cont în perioada "
+                "analizată.",
                 st["corp"],
             )
         )
@@ -219,27 +386,46 @@ def randeaza(raport: Raport) -> bytes:
         povestea.append(Paragraph("Rezumat", st["sectiune"]))
         povestea.append(_tabel_rezumat(raport, st))
         povestea.append(PageBreak())
-        povestea.append(Paragraph("Constatari, cea mai grava prima", st["sectiune"]))
+        povestea.append(Paragraph("Constatări, cea mai gravă prima", st["sectiune"]))
         povestea.append(_tabel_constatari(raport, st))
 
         if len(raport.constatari) > MAX_RANDURI:
             povestea.append(Spacer(1, 3 * mm))
             povestea.append(
                 Paragraph(
-                    f"Inca {len(raport.constatari) - MAX_RANDURI} constatari nu incap in "
-                    "tabel. Sunt toate in fisierul CSV.",
+                    f"Încă {len(raport.constatari) - MAX_RANDURI} constatări nu încap în "
+                    "tabel. Sunt toate în fișierul CSV.",
                     st["nota"],
                 )
             )
+
+    povestea.append(Spacer(1, 4 * mm))
+    povestea.extend(_cum_s_a_calculat(st))
 
     povestea.append(Spacer(1, 8 * mm))
     povestea.append(
         KeepTogether(
             Paragraph(
-                "<b>Constatarile sunt statistice, nu fraude dovedite.</b> Ele arata plati "
-                "care ies din tiparul obisnuit al contului si care merita verificate — "
-                "nu stabilesc ca s-a intamplat ceva ilegal. Orice masura asupra contului "
-                "se ia dupa verificare, nu pe baza acestui raport singur.",
+                "<b>Constatările sunt statistice, nu fraude dovedite.</b> Ele arată plăți "
+                "care ies din tiparul obișnuit al contului și care merită verificate — "
+                "nu stabilesc că s-a întâmplat ceva ilegal. Orice măsură asupra contului "
+                "se ia după verificare, nu pe baza acestui raport singur.",
+                st["nota"],
+            )
+        )
+    )
+
+    povestea.append(Spacer(1, 4 * mm))
+    povestea.append(
+        KeepTogether(
+            Paragraph(
+                "<b>Document generat automat.</b> Constatările din acest raport au fost "
+                "produse de reguli statistice și de un model de învățare automată, iar "
+                "sinteza de la început a fost scrisă de un model de limbaj. "
+                "Niciun operator uman nu a analizat contul înainte de generarea acestui "
+                "document și niciun conținut de aici nu reprezintă o decizie a băncii. "
+                "Verificarea de către o persoană și orice decizie care decurge din ea "
+                "sunt pași separați, ulteriori.",
                 st["nota"],
             )
         )

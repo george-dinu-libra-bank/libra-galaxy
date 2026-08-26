@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from anyio import to_thread
+from postgrest.exceptions import APIError
 from supabase import Client
 
 from app.core.errors import RetrievalError
+
+logger = logging.getLogger("libra.rag")
+
+# PGRST202 = "function not found in schema cache" — semnul ca migratia
+# 0033_rag_categorie_si_cautare_hibrida.sql (care extinde match_knowledge_chunks
+# cu p_query_text/p_categories) inca n-a fost rulata pe acest proiect Supabase.
+# Migratiile se aplica manual (nu exista acces direct la Postgres din backend),
+# deci poate exista un interval intre "codul e pe main" si "migratia a rulat" —
+# cautarea nu trebuie sa cada complet in acest interval, doar sa piarda
+# temporar filtrul de categorie si plasa de siguranta full-text.
+_FUNCTION_NOT_FOUND = "PGRST202"
 
 
 @dataclass(frozen=True)
@@ -106,23 +119,41 @@ class KnowledgeRepository:
         audience: str,
         top_k: int,
         min_score: float,
+        query_text: str | None = None,
+        categories: list[str] | None = None,
     ) -> list[KnowledgeChunkHit]:
-        def interogare():
-            return self._client.rpc(
-                "match_knowledge_chunks",
-                {
-                    "p_embedding_key": embedding_key,
-                    "p_query_embedding": query_embedding,
-                    "p_languages": languages,
-                    "p_document_types": document_types,
-                    "p_audience": audience,
-                    "p_match_count": top_k,
-                    "p_min_score": min_score,
-                },
-            ).execute()
+        payload = {
+            "p_embedding_key": embedding_key,
+            "p_query_embedding": query_embedding,
+            "p_languages": languages,
+            "p_document_types": document_types,
+            "p_audience": audience,
+            "p_match_count": top_k,
+            "p_min_score": min_score,
+            "p_query_text": query_text,
+            "p_categories": categories,
+        }
+        legacy_payload = {
+            key: value for key, value in payload.items() if key not in ("p_query_text", "p_categories")
+        }
+
+        def interogare(body: dict):
+            return self._client.rpc("match_knowledge_chunks", body).execute()
 
         try:
-            result = await to_thread.run_sync(interogare)
+            result = await to_thread.run_sync(interogare, payload)
+        except APIError as exc:
+            if exc.code != _FUNCTION_NOT_FOUND:
+                raise RetrievalError("Cautarea in baza de cunostinte a esuat.") from exc
+            logger.warning(
+                "match_knowledge_chunks fara p_query_text/p_categories — migratia "
+                "0033_rag_categorie_si_cautare_hibrida.sql inca nu a fost aplicata; "
+                "cautarea continua fara filtru de categorie si fara plasa de siguranta full-text."
+            )
+            try:
+                result = await to_thread.run_sync(interogare, legacy_payload)
+            except Exception as exc_legacy:
+                raise RetrievalError("Cautarea in baza de cunostinte a esuat.") from exc_legacy
         except Exception as exc:  # supabase-py surfaces network/RPC errors as generic exceptions
             raise RetrievalError("Cautarea in baza de cunostinte a esuat.") from exc
 

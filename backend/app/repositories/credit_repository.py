@@ -13,12 +13,15 @@ apel de retea ar bloca bucla de evenimente a lui FastAPI.
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
 from anyio import to_thread
 from supabase import Client
+
+logger = logging.getLogger(__name__)
 
 CAMPURI_PRODUS = (
     "id,slug,nume,dobanda_anuala,suma_min,suma_max,luni_min,luni_max,"
@@ -40,6 +43,11 @@ CAMPURI_RATA = (
 CAMPURI_DOCUMENT = (
     "id,id_cerere,id_user,tip,storage_path,content_type,marime_octeti,extras,"
     "status,hash_fisier,venit_confirmat,confirmat_de,confirmat_la,sters_la,creat_la"
+)
+
+CAMPURI_MESAJ = (
+    "id,id_cerere,autor,id_autor,text,id_document,creat_la,"
+    "citit_de_client_la,citit_de_analist_la"
 )
 
 BUCKET_DOCUMENTE = "credit-documente"
@@ -309,6 +317,161 @@ class CreditRepository:
 
         return await to_thread.run_sync(interogare)
 
+    # -- fir de discutie ----------------------------------------------------
+
+    async def mesaje(self, id_cerere: UUID) -> list[dict]:
+        """Firul intreg, in ordine cronologica.
+
+        Fara limita: un dosar de credit are cateva mesaje, nu mii, iar taierea
+        ar face ca tocmai inceputul discutiei — unde se cere ceva — sa dispara.
+        """
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("credit_mesaje")
+                .select(CAMPURI_MESAJ)
+                .eq("id_cerere", str(id_cerere))
+                .order("creat_la")
+                .execute()
+            )
+            return raspuns.data or []
+
+        return await to_thread.run_sync(interogare)
+
+    async def adauga_mesaj(self, campuri: dict[str, Any]) -> dict:
+        def interogare() -> dict:
+            raspuns = self._client.table("credit_mesaje").insert(campuri).execute()
+            return raspuns.data[0]
+
+        return await to_thread.run_sync(interogare)
+
+    async def marcheaza_mesaje_citite(self, id_cerere: UUID) -> None:
+        """Mesajele care nu-s ale clientului devin citite.
+
+        `is_("citit_de_client_la", "null")` face operatia idempotenta: a doua
+        deschidere a firului nu rescrie momentul primei citiri.
+        """
+        def interogare() -> None:
+            (
+                self._client.table("credit_mesaje")
+                .update({"citit_de_client_la": datetime.now(timezone.utc).isoformat()})
+                .eq("id_cerere", str(id_cerere))
+                .eq("autor", "analist")
+                .is_("citit_de_client_la", "null")
+                .execute()
+            )
+
+        await to_thread.run_sync(interogare)
+
+    async def numara_necitite_analist(self, id_cereri: list[UUID]) -> dict[str, int]:
+        """Cate mesaje ale clientilor n-a deschis inca banca, pe cerere.
+
+        Simetricul lui `numara_necitite`, dar pentru cealalta parte a firului.
+        Fara el, un dosar in care clientul a scris „nu inteleg ce vreti" statea
+        in coada pana se uita cineva din intamplare in el.
+        """
+        if not id_cereri:
+            return {}
+
+        def interogare() -> dict[str, int]:
+            raspuns = (
+                self._client.table("credit_mesaje")
+                .select("id_cerere")
+                .in_("id_cerere", [str(i) for i in id_cereri])
+                .eq("autor", "client")
+                .is_("citit_de_analist_la", "null")
+                .execute()
+            )
+            contor: dict[str, int] = {}
+            for rand in raspuns.data or []:
+                cheie = str(rand["id_cerere"])
+                contor[cheie] = contor.get(cheie, 0) + 1
+            return contor
+
+        return await to_thread.run_sync(interogare)
+
+    async def marcheaza_mesaje_citite_analist(self, id_cerere: UUID) -> None:
+        """Analistul a deschis dosarul: mesajele clientului nu mai sunt necitite."""
+        def interogare() -> None:
+            (
+                self._client.table("credit_mesaje")
+                .update({"citit_de_analist_la": datetime.now(timezone.utc).isoformat()})
+                .eq("id_cerere", str(id_cerere))
+                .eq("autor", "client")
+                .is_("citit_de_analist_la", "null")
+                .execute()
+            )
+
+        await to_thread.run_sync(interogare)
+
+    async def numara_necitite(self, id_cereri: list[UUID]) -> dict[str, int]:
+        """Cate mesaje necitite are fiecare cerere — pentru bulina.
+
+        O singura interogare pentru toata lista, nu una per cerere: ecranul de
+        credite si dashboardul o cer la fiecare afisare.
+        """
+        if not id_cereri:
+            return {}
+
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("credit_mesaje")
+                .select("id_cerere")
+                .in_("id_cerere", [str(i) for i in id_cereri])
+                .eq("autor", "analist")
+                .is_("citit_de_client_la", "null")
+                .execute()
+            )
+            return raspuns.data or []
+
+        randuri = await to_thread.run_sync(interogare)
+        contor: dict[str, int] = {}
+        for rand in randuri:
+            cheie = str(rand["id_cerere"])
+            contor[cheie] = contor.get(cheie, 0) + 1
+        return contor
+
+    async def notifica(self, id_utilizator: UUID, titlu: str, mesaj: str, tip: str) -> None:
+        """Un rand in `public.notificari`, pe care clientul il vede in clopotel.
+
+        Tabela e a altcuiva (nu are migratie in repo) si e proiectata pentru
+        citire directa din client: politicile RLS lasa fiecare om sa-si vada si
+        sa-si marcheze propriile randuri, dar nu exista politica de INSERT —
+        scrierea ramane a service_role-ului, adica a noastra.
+
+        Nu arunca niciodata: notificarea e un plus peste firul de discutie, care
+        e oricum vizibil in aplicatie. Un esec aici n-are voie sa rupa trimiterea
+        mesajului.
+        """
+        def interogare() -> None:
+            self._client.table("notificari").insert({
+                "id_utilizator": str(id_utilizator),
+                "titlu": titlu[:200],
+                "mesaj": mesaj[:4000],
+                "tip": tip,
+            }).execute()
+
+        try:
+            await to_thread.run_sync(interogare)
+        except Exception:
+            logger.exception("nu am putut scrie notificarea pentru %s", id_utilizator)
+
+    async def documente_cu_hash(self, hash_fisier: str, exclude_id_cerere: UUID) -> list[dict]:
+        """Documente cu acelasi continut (sha256), de la ALTA cerere — pentru
+        semnalul 'document_reutilizat' din pipeline-ul AI. Foloseste
+        `credit_documente_hash_idx` (0018), altfel ar fi un scan pe toata tabela
+        la fiecare deschidere de dosar."""
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("credit_documente")
+                .select("id,id_cerere,id_user,creat_la")
+                .eq("hash_fisier", hash_fisier)
+                .neq("id_cerere", str(exclude_id_cerere))
+                .execute()
+            )
+            return raspuns.data or []
+
+        return await to_thread.run_sync(interogare)
+
     async def actualizeaza_document(self, id_document: UUID, campuri: dict[str, Any]) -> dict:
         def interogare() -> dict:
             raspuns = (
@@ -416,6 +579,25 @@ class CreditRepository:
                 .select(CAMPURI_RATA)
                 .eq("id_credit", str(id_credit))
                 .order("numar_rata")
+                .execute()
+            )
+            return raspuns.data or []
+
+        return await to_thread.run_sync(interogare)
+
+    async def evenimente(self, id_cerere: UUID) -> list[dict]:
+        """Jurnalul unei cereri, cel mai vechi primul.
+
+        Se scria din 16 locuri si nu-l citea nimeni: nicio ruta nu-l expunea.
+        Cronologic crescator, fiindca se citeste ca o poveste, nu ca un feed.
+        """
+        def interogare() -> list[dict]:
+            raspuns = (
+                self._client.table("credit_evenimente")
+                .select("id,tip,actor,detalii,creat_la")
+                .eq("id_cerere", str(id_cerere))
+                .order("creat_la", desc=False)
+                .limit(100)
                 .execute()
             )
             return raspuns.data or []

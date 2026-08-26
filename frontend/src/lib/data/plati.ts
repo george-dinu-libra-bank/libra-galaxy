@@ -21,7 +21,10 @@ export async function obtinePlatiInAsteptare(): Promise<PlataInAsteptare[]> {
 
   const { data, error } = await supabase
     .from("payments")
-    .select("id, id_user, suma, valuta, comerciant, descriere, card_ultimele4, status, expira_la")
+    .select(
+      "id, id_user, suma, valuta, comerciant, descriere, card_ultimele4, status, expira_la, " +
+        "conturi_bancare(nume, valuta)",
+    )
     .eq("id_user", user.id)
     .eq("status", "PENDING_APPROVAL")
     .gt("expira_la", new Date().toISOString())
@@ -34,5 +37,8 @@ export async function obtinePlatiInAsteptare(): Promise<PlataInAsteptare[]> {
     return [];
   }
 
-  return (data ?? []).map((rand) => laPlataInAsteptare(rand as RandPlata));
+  // Prin `unknown`: cu o relatie inglobata in select, tipul dedus de
+  // supabase-js nu se mai suprapune direct peste RandPlata, desi forma
+  // datelor e cea asteptata.
+  return (data ?? []).map((rand) => laPlataInAsteptare(rand as unknown as RandPlata));
 }

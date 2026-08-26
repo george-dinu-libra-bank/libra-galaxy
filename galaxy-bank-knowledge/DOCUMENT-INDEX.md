@@ -5,7 +5,7 @@ categorie: intern
 subcategorie: index
 tip_document: index
 versiune: 1.0
-data_actualizare: 2026-08-19
+data_actualizare: 2026-08-25
 ---
 
 # Indexul documentației Galaxy Bank
@@ -46,6 +46,12 @@ data_actualizare: 2026-08-19
 | faq/generale.md | faq | generale | Întrebări frecvente | _source-of-truth.md |
 | faq/securitate.md | faq | securitate | Întrebări frecvente | _source-of-truth.md |
 | faq/transferuri.md | faq | transferuri | Întrebări frecvente | _source-of-truth.md |
+| grupuri/galaxy-bank-creare-si-administrare-grup.md | grupuri | grupuri-creare-administrare | Creatorul unui grup devine automat administrator inițial; crearea grupului nu deschide un cont comun și nu permite debitarea automată a contului personal al creatorului. | _source-of-truth.md |
+| grupuri/galaxy-bank-grupuri-si-permisiuni.md | grupuri | grupuri-si-permisiuni | Rolurile într-un grup sunt Administrator, Membru și Observator; administratorul nu poate vedea PIN-uri, parole, OTP sau numere complete de card ale altor membri doar prin rolul său. | _source-of-truth.md, grupuri/galaxy-bank-creare-si-administrare-grup.md |
+| grupuri/galaxy-bank-cheltuieli-partajate-si-decontari.md | grupuri | grupuri-cheltuieli-si-decontări | O cheltuială înregistrată în grup nu reprezintă, în sine, o plată bancară și nu transferă fonduri automat; decontarea unei datorii necesită autentificare și autorizare separată. | _source-of-truth.md, grupuri/galaxy-bank-grupuri-si-permisiuni.md, securitate/contestatie-tranzactie.md |
+| grupuri/galaxy-bank-grupuri-familie-si-utilizatori-minori.md | grupuri | grupuri-familie-si-minori | Adăugarea unui utilizator minor se face numai prin fluxul autorizat de Galaxy Bank, cu verificarea reprezentantului legal — niciodată pe baza unei simple afirmații în chat. | _source-of-truth.md, conformitate/identificarea-clientului.md, grupuri/galaxy-bank-grupuri-si-permisiuni.md |
+| grupuri/galaxy-bank-securitate-frauda-si-dispute-in-grupuri.md | grupuri | grupuri-frauda-si-dispute | Apartenența la un grup nu reduce cerințele de autentificare; Galaxy Bank nu solicită niciodată coduri OTP, parole sau PIN-uri prin chat, apel neconfirmat, e-mail sau rețele sociale. | _source-of-truth.md, securitate/frauda.md, securitate/contestatie-tranzactie.md |
+| grupuri/galaxy-bank-seifuri-si-obiective-de-grup.md | grupuri | grupuri-seifuri-si-obiective | Atingerea sumei-țintă a unui obiectiv de grup nu garantează automat o plată sau achiziție; administratorul nu poate iniția automat contribuții din contul personal al altui membru. | _source-of-truth.md, economii/obiective-economisire.md |
 | mobile-banking/autentificare.md | mobile-banking | autentificare | Accesul poate utiliza parola/PIN-ul aplicației și mecanisme suplimentare de verificare, în funcție de operațiune și dispozitiv. | _source-of-truth.md |
 | mobile-banking/biometrie.md | mobile-banking | biometrie | Dacă dispozitivul suportă biometrie, clientul poate utiliza amprenta sau recunoașterea facială pentru acces, conform funcțiilor disponibile ale dispozitivului. | _source-of-truth.md |
 | mobile-banking/dispozitiv-nou.md | mobile-banking | dispozitiv-nou | 1. Instalează aplicația Galaxy Bank din sursa oficială a dispozitivului. 2. Inițiază asocierea dispozitivului. 3. Autentifică-te prin metoda solicitată. 4. Confirmă dispozitivul... | _source-of-truth.md |

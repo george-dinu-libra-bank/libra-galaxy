@@ -44,7 +44,17 @@ class DocumentIntelligenceAgent:
     spec = DOCUMENT_INTELLIGENCE
 
     def select_tools(self, user_text: str, intent: str) -> list[SelectedTool]:
-        return [SelectedTool("search_bank_knowledge", {"query": user_text}, "raspuns bazat pe cunoastere, nu pe memorie")]
+        # Categoria = folderul din galaxy-bank-knowledge (migratia 0033).
+        # Ingustare aplicata doar unde intentia chiar garanteaza subiectul —
+        # credit_intent e singura care ajunge aici prin fallback-ul router-ului
+        # (routing.py::DEFAULT_AGENT_ID) fara sa fie o intrebare generica.
+        # document_question/knowledge_question/unknown raman fara filtru:
+        # pot fi despre orice categorie (ex. comisioane apar si la carduri,
+        # si la conturi, si la transferuri).
+        args = {"query": user_text}
+        if intent == "credit_intent":
+            args["categorie_hint"] = "credite"
+        return [SelectedTool("search_bank_knowledge", args, "raspuns bazat pe cunoastere, nu pe memorie")]
 
     async def respond(
         self,
@@ -72,7 +82,8 @@ class DocumentIntelligenceAgent:
             grounding_rule = "Nu exista fragmente din baza de cunostinte — raspunde EXCLUSIV din fisierul atasat de utilizator."
 
         system_prompt = build_system_prompt(self.spec, context) + (
-            f"\n\n{grounding_rule} Daca informatia nu e acolo, spune clar ca nu e documentata."
+            f"\n\n{grounding_rule} Daca informatia nu e acolo, spune simplu ca nu e documentata — "
+            f"fara sa mentionezi ce titlu de sectiune sau ce document ai gasit in schimb."
         )
         completion = await chat_provider.complete(
             [ChatMessage(role="system", content=system_prompt), build_user_message(user_text, attachments)]

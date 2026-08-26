@@ -11,6 +11,7 @@ class AccountRow:
     name: str
     iban: str
     balance: float
+    currency: str
     created_at: str
 
 
@@ -38,7 +39,7 @@ class BankingReadRepository:
     def list_accounts(self, user_id: str) -> list[AccountRow]:
         result = (
             self._client.table("conturi_bancare")
-            .select("id, nume, iban, sold, creat_la")
+            .select("id, nume, iban, sold, valuta, creat_la")
             .eq("id_user", user_id)
             .order("creat_la")
             .execute()
@@ -46,7 +47,10 @@ class BankingReadRepository:
         return [
             AccountRow(
                 id=row["id"], name=row["nume"], iban=row["iban"],
-                balance=float(row["sold"]), created_at=row["creat_la"],
+                # Implicit RON, la fel ca frontend/src/lib/data/conturi.ts:
+                # conturile mai vechi de 0013_schimb_valutar.sql pot avea valuta null.
+                balance=float(row["sold"]), currency=row.get("valuta") or "RON",
+                created_at=row["creat_la"],
             )
             for row in (result.data or [])
         ]

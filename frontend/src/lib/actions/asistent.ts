@@ -1,6 +1,6 @@
 "use server";
 
-import { apelBackend, type Citare, type FisierGenerat, type NivelIncredere } from "@/lib/data/asistent";
+import { apelBackend, type ActiuneRapida, type Citare, type FisierGenerat, type NivelIncredere } from "@/lib/data/asistent";
 
 export type RezultatMesaj = {
   conversatieId: string;
@@ -10,6 +10,7 @@ export type RezultatMesaj = {
   nivelIncredere: NivelIncredere;
   agentId: string;
   fisierGenerat?: FisierGenerat | null;
+  actiuneRapida?: ActiuneRapida | null;
   audioBase64?: string;
   eroare?: string;
 };
@@ -31,11 +32,13 @@ export async function stergeConversatie(conversatieId: string): Promise<{ eroare
   return eroare ? { eroare } : {};
 }
 
-/** Trimite un mesaj text catre asistent, cu atasamente optionale deja incarcate. */
+/** Trimite un mesaj text catre asistent, cu atasamente optionale deja incarcate.
+ *  Cu citesteCuVoce=true, raspunsul vine si ca audio (sinteza vocala, la alegerea utilizatorului). */
 export async function trimiteMesaj(
   conversatieId: string | null,
   text: string,
   atasamentIds: string[] = [],
+  citesteCuVoce: boolean = false,
 ): Promise<RezultatMesaj> {
   const trimis = text.trim();
   if (!trimis) {
@@ -53,10 +56,12 @@ export async function trimiteMesaj(
     confidence: NivelIncredere;
     agent_id: string;
     file: { url: string; filename: string; kind: string } | null;
+    quick_action: { kind: string; accounts: { id: string; name: string | null; iban: string; currency: string | null }[]; url: string } | null;
+    audio_base64: string | null;
   }>("/assistant/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ conversation_id: conversatieId, text: trimis, attachment_ids: atasamentIds }),
+    body: JSON.stringify({ conversation_id: conversatieId, text: trimis, attachment_ids: atasamentIds, tts: citesteCuVoce }),
   });
 
   if (eroare || !date) {
@@ -74,6 +79,14 @@ export async function trimiteMesaj(
     nivelIncredere: date.confidence,
     agentId: date.agent_id,
     fisierGenerat: date.file ? { url: date.file.url, nume: date.file.filename } : null,
+    actiuneRapida: date.quick_action
+      ? {
+          tip: date.quick_action.kind,
+          conturi: date.quick_action.accounts.map((cont) => ({ id: cont.id, nume: cont.name, iban: cont.iban, valuta: cont.currency })),
+          url: date.quick_action.url,
+        }
+      : null,
+    audioBase64: date.audio_base64 ?? undefined,
   };
 }
 

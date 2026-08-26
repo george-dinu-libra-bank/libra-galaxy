@@ -19,6 +19,7 @@ Structura separă informația despre bancă, produse, operațiuni, securitate, c
 - `valuta/` — schimb valutar, cursuri și multivalută.
 - `economii/` — economisire, depozite și obiective.
 - `credite/` — credite personale, ipotecare, card de credit, eligibilitate și rambursare anticipată.
+- `grupuri/` — creare și administrare de grupuri, permisiuni și roluri, cheltuieli partajate și decontări, grupuri de familie și utilizatori minori, securitate/fraudă/dispute în grupuri, seifuri și obiective de grup.
 - `mobile-banking/` — aplicația mobilă și accesul digital.
 - `securitate/` — fraudă, tranzacții suspecte, contestații și phishing.
 - `conformitate/` — KYC, AML, GDPR și identificarea clientului.

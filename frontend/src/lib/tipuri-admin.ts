@@ -66,6 +66,9 @@ export type ContSemnalat = {
   email: string;
   numar_semnalari: number;
   scor_maxim: number;
+  /** Cat de urgent merita contul o privire: cea mai grava constatare, plus
+   *  cate sunt si cati bani inseamna. Dupa asta se ordoneaza lista. */
+  gravitate: number;
   suma_totala: number;
   tipuri: string[];
 };
@@ -115,8 +118,11 @@ export function etichetaTip(tip: string): string {
  * sa spuna acelasi lucru despre acelasi scor.
  */
 export function tonScor(scor: number): "grav" | "atentie" | "usor" {
-  if (scor >= 10) return "grav";
-  if (scor >= 5) return "atentie";
+  // Severitate 1-100, nu scorul brut de altadata. Pragurile sunt aceleasi cu
+  // cele din raportul PDF (rapoarte/pdf_raport.py: _culoare_scor), ca aceeasi
+  // constatare sa nu apara portocalie pe ecran si rosie in document.
+  if (scor >= 70) return "grav";
+  if (scor >= 45) return "atentie";
   return "usor";
 }
 
@@ -131,10 +137,19 @@ export type StatusCerere =
   | "in_analiza"
   | "oferta"
   | "analiza_manuala"
+  | "asteapta_documente"
   | "respinsa"
   | "acceptata"
   | "anulata"
   | "expirata";
+
+/**
+ * Ce poate face analistul cu un dosar aflat in lucru.
+ *
+ * Doua inchid discutia, doua o tin deschisa: `cere_documente` muta mingea la
+ * client, `notifica` doar il anunta fara sa schimbe starea dosarului.
+ */
+export type ActiuneAnalist = "aproba" | "respinge" | "cere_documente" | "notifica";
 
 /** Un factor al scorecard-ului, sau un motiv de respingere pe criterii hard. */
 export type MotivSauFactor = {
@@ -143,6 +158,13 @@ export type MotivSauFactor = {
   puncte?: number;
   maxim?: number;
   explicatie?: string;
+};
+
+/** Numarul de semnale AI din ultima rulare — pentru badge-ul din lista de cereri. */
+export type SemnaleRezumat = {
+  grave: number;
+  atentie: number;
+  informativ: number;
 };
 
 export type CerereCredit = {
@@ -161,6 +183,11 @@ export type CerereCredit = {
   venit_folosit: string | null;
   obligatii_folosite: string | null;
   motive: MotivSauFactor[];
+  /** null cand pipeline-ul AI consultativ n-a rulat inca pentru cererea asta. */
+  semnale: SemnaleRezumat | null;
+  /** Cate mesaje ale clientului n-a deschis inca banca. Pe rutele clientului
+   * acelasi camp inseamna invers — vezi CerereResponse din schemas/credit.py. */
+  mesaje_necitite: number;
 };
 
 export type VerificareVenit = {
@@ -196,10 +223,122 @@ export type DocumentCerere = {
   url: string | null;
 };
 
+// -----------------------------------------------------------------------------
+// Pipeline AI de credite — strict consultativ (app/credit/ai/, backend)
+// -----------------------------------------------------------------------------
+
+export type SeveritateSemnal = "grav" | "atentie" | "informativ";
+
+/** Parerea etapei de brief — niciodata o decizie, vezi credit_ai_rulari.recomandare. */
+export type Recomandare = "aproba" | "respinge" | "cere_document" | "fara_recomandare";
+
+/** Un lucru pe care analistul ar trebui sa-l vada, nu o decizie — vezi
+ * app/credit/ai/etape/coerenta.py. */
+export type SemnalAi = {
+  cod: string;
+  severitate: SeveritateSemnal;
+  titlu: string;
+  detaliu: Record<string, unknown>;
+  sursa: "coerenta" | "documente" | "brief";
+};
+
+export type EtapaAi = {
+  etapa: "documente" | "coerenta" | "brief" | "explicatie";
+  status: "reusit" | "esuat" | "sarit";
+  versiune_prompt: string | null;
+  deployment: string | null;
+  rezultat: Record<string, unknown>;
+  incredere: number | null;
+  latenta_ms: number | null;
+  cod_eroare: string | null;
+  creat_la: string;
+};
+
+export type RulareAi = {
+  id: string;
+  status: "in_curs" | "finalizat" | "esuat";
+  declansator: string;
+  versiune_pipeline: string;
+  recomandare: Recomandare | null;
+  incredere: number | null;
+  latenta_ms: number | null;
+  cost_estimat_usd: number | null;
+  creat_la: string;
+  finalizat_la: string | null;
+};
+
+/** Panoul din dosarul cererii — ultima rulare, etapele ei, semnalele ei. */
+export type DosarAi = {
+  rulare: RulareAi;
+  etape: EtapaAi[];
+  semnale: SemnalAi[];
+};
+
+export type RezumatZilnicEtapa = {
+  zi: string;
+  etapa: string;
+  reusite: number;
+  esuate: number;
+  sarite: number;
+  latenta_medie_ms: number | null;
+  latenta_p95_ms: number | null;
+  tokeni_intrare: number;
+  tokeni_iesire: number;
+};
+
+export type RataAcord = {
+  total_comparabile: number;
+  de_acord: number;
+  rata: number | null;
+};
+
+/** Documentatie executabila — acelasi obiect din app/credit/ai/contracte.py. */
+export type EtapaSpec = {
+  id: string;
+  scop: string;
+  responsabilitati: string[];
+  interzis: string[];
+  are_nevoie_de_model: boolean;
+  versiune_prompt: string | null;
+  /** Promptul trimis efectiv modelului, citit din prompturi.py. */
+  prompt_sistem: string | null;
+};
+
+export type ObservabilitateAi = {
+  rezumat_zilnic: RezumatZilnicEtapa[];
+  rata_acord: RataAcord;
+  cost_estimat_usd_30_zile: number;
+  etape: EtapaSpec[];
+};
+
+/** Un mesaj din firul dosarului — vezi migratia 0020. */
+export type MesajCerere = {
+  id: string;
+  autor: "client" | "analist" | "sistem";
+  text: string;
+  id_document: string | null;
+  creat_la: string;
+};
+
+/** O tranzitie din viata cererii. Se aduna de mult in `credit_evenimente`; pana
+ * acum n-o citea nicio ruta, deci nu o vedea nici clientul, nici analistul. */
+export type EvenimentCerere = {
+  id: string;
+  tip: string;
+  actor: string;
+  detalii: Record<string, unknown> | null;
+  creat_la: string;
+};
+
 export type DosarCredit = {
   cerere: CerereCredit;
   verificari: VerificareVenit[];
   documente: DocumentCerere[];
+  mesaje: MesajCerere[];
+  evenimente: EvenimentCerere[];
+  /** null cand pipeline-ul AI n-a rulat inca (Foundry cazut, sau catch-up-ul
+   * lazy nu s-a declansat inca) — strict consultativ, niciodata blocant. */
+  ai: DosarAi | null;
 };
 
 export type CreditAcordat = {
@@ -221,11 +360,27 @@ export const ETICHETE_STATUS: Record<StatusCerere, string> = {
   in_analiza: "În analiză",
   oferta: "Ofertă emisă",
   analiza_manuala: "Așteaptă decizie",
+  asteapta_documente: "Așteaptă acte",
   respinsa: "Respinsă",
   acceptata: "Acceptată",
   anulata: "Anulată",
   expirata: "Expirată",
 };
+
+/** Codurile din app/credit/ai/etape/coerenta.py, in cuvinte pentru analist. */
+export const ETICHETE_SEMNAL: Record<string, string> = {
+  document_reutilizat: "Document reutilizat la altă cerere",
+  venit_declarat_umflat: "Venit declarat peste ce arată încasările",
+  angajator_nepotrivit: "Angajator fără legătură cu platitorul",
+  document_vs_tranzactii: "Adeverința diferă de încasările din cont",
+  incasari_pregatitoare: "Încasare atipică, chiar înainte de cerere",
+  venit_neregulat: "Încasări neregulate de la o lună la alta",
+  document_ilizibil: "Document ilizibil pentru citire automată",
+};
+
+export function etichetaSemnal(cod: string): string {
+  return ETICHETE_SEMNAL[cod] ?? cod;
+}
 
 export const ETICHETE_SURSA: Record<VerificareVenit["sursa"], string> = {
   tranzactii: "Încasări în cont",
@@ -244,7 +399,7 @@ export const ETICHETE_SURSA: Record<VerificareVenit["sursa"], string> = {
 export function tonStatus(status: StatusCerere): "bun" | "rau" | "atentie" | "neutru" {
   if (status === "oferta" || status === "acceptata") return "bun";
   if (status === "respinsa") return "rau";
-  if (status === "analiza_manuala") return "atentie";
+  if (status === "analiza_manuala" || status === "asteapta_documente") return "atentie";
   return "neutru";
 }
 
@@ -256,3 +411,57 @@ export function lei(valoare: string | number | null | undefined): string {
     maximumFractionDigits: 2,
   });
 }
+
+/**
+ * Starea stratului de model din detectia de anomalii.
+ *
+ * Lipsa modelului e tacuta prin proiectare — detectia continua pe reguli
+ * statistice — asa ca panoul trebuie sa o spuna explicit. Altfel un
+ * administrator ia decizii pe o lista incompleta fara sa aiba de unde sti.
+ */
+export type StareDetectie = {
+  activ: boolean;
+  antrenat_la: string | null;
+  marime_kb: number | null;
+  explicatie: string;
+};
+
+// ---- Analiza unui cont ----------------------------------------------------
+
+export type Decizie = "acceptat" | "frauda" | "deblocat";
+
+export type RezultatAnaliza = {
+  decizie: Decizie;
+  observatie: string | null;
+  conturi_atinse: number;
+  notificare_trimisa: boolean;
+  creat_la: string;
+};
+
+export type IstoricAnaliza = {
+  id: string;
+  decizie: Decizie;
+  observatie: string | null;
+  gravitate: number | null;
+  numar_semnalari: number | null;
+  conturi_blocate: number;
+  creat_la: string;
+};
+
+export const ETICHETE_DECIZIE: Record<Decizie, string> = {
+  acceptat: "Verificat, fără probleme",
+  frauda: "Confirmat ca fraudă",
+  deblocat: "Deblocat",
+};
+
+export type StareCont = {
+  conturi_total: number;
+  conturi_blocate: number;
+  analize: IstoricAnaliza[];
+};
+
+export type StareConturi = {
+  id_utilizator: string;
+  total: number;
+  blocate: number;
+};

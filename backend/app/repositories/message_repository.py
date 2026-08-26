@@ -19,6 +19,7 @@ class Message:
     confidence: str | None = None
     channel: str = "text"
     created_at: str = ""
+    quick_action: dict | None = None
 
 
 class MessageRepository:
@@ -39,6 +40,7 @@ class MessageRepository:
         citations: list[dict] | None = None,
         confidence: str | None = None,
         channel: str = "text",
+        quick_action: dict | None = None,
     ) -> Message:
         next_sequence = await self._next_sequence(conversation_id)
 
@@ -55,6 +57,7 @@ class MessageRepository:
                         "citari": citations or [],
                         "nivel_incredere": confidence,
                         "canal": channel,
+                        "actiune_rapida": quick_action,
                     }
                 )
                 .execute()
@@ -141,4 +144,5 @@ class MessageRepository:
             confidence=row.get("nivel_incredere"),
             channel=row.get("canal", "text"),
             created_at=row.get("creat_la", ""),
+            quick_action=row.get("actiune_rapida"),
         )

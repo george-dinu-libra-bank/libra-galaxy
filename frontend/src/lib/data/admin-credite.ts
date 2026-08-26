@@ -3,6 +3,7 @@ import type {
   CerereCredit,
   CreditAcordat,
   DosarCredit,
+  ObservabilitateAi,
   StatusCerere,
 } from "@/lib/tipuri-admin";
 
@@ -36,4 +37,12 @@ export async function obtineDosarCredit(token: string, id: string): Promise<Dosa
 
 export async function obtineCrediteAcordate(token: string): Promise<CreditAcordat[]> {
   return backendFetch<CreditAcordat[]>("api/v1/admin/credite/acordate", token);
+}
+
+/**
+ * Rulari si esecuri pe etapa, cost estimat si rata de acord AI vs. decizia
+ * finala a omului — pagina de observabilitate (/admin/credite/ai).
+ */
+export async function obtineObservabilitateAi(token: string): Promise<ObservabilitateAi> {
+  return backendFetch<ObservabilitateAi>("api/v1/admin/credite/ai/rezumat", token);
 }

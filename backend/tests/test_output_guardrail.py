@@ -1,13 +1,29 @@
 from app.orchestration.output_guardrail import redact
 
 
-def test_iban_gets_masked():
+def test_iban_passes_through_unmasked():
+    # Decizie explicita (GUARDRAILS.md #12): IBAN-ul propriu nu mai e mascat,
+    # nici la sursa (banking_tools.py), nici aici — nu e un secret ca un CVV.
     text = "Contul tau are IBAN-ul RO49AAAA1B31007593840000, cu soldul de 100 RON."
+    assert redact(text) == text
+
+
+def test_card_number_gets_masked():
+    # Niciun tool nu intoarce azi un numar de card (GUARDRAILS.md #13) — testul
+    # verifica doar plasa de siguranta defensiva.
+    text = "Cardul tau are numarul 4111111111111111, verifica te rog."
     result = redact(text)
 
-    assert "RO49AAAA1B31007593840000" not in result
-    assert result.startswith("Contul tau are IBAN-ul RO49")
-    assert result.endswith("0000, cu soldul de 100 RON.")
+    assert "4111111111111111" not in result
+    assert result.endswith("1111, verifica te rog.")
+    assert "•" in result
+
+
+def test_grouped_card_number_gets_masked():
+    text = "Numarul cardului este 4111 1111 1111 1111."
+    result = redact(text)
+
+    assert "4111 1111 1111 1111" not in result
     assert "•" in result
 
 

@@ -20,13 +20,14 @@ const ROL_ADMIN = "admin";
  * Utilizatorul curent, daca e administrator. Altfel null.
  *
  * Se ruleaza numai pe server. Rolul se citeste din `public.user_roles` la
- * fiecare cerere, nu din token: un rol pus in JWT ar ramane valabil pana expira
+* fiecare cerere, nu din token: un rol pus in JWT ar ramane valabil pana expira
  * tokenul, inclusiv dupa ce i-a fost luat cuiva dreptul.
  *
  * Interogarea merge cu sesiunea utilizatorului, deci trece prin politica
  * "Enable users to view their own data only" de pe user_roles — fiecare isi
- * vede doar propriul rand. Aceeasi verificare exista si in backend, pe fiecare
- * ruta. Garda de aici tine ecranul ascuns; bariera reala e acolo.
+ * vede doar propriul rand. Aceeasi verificare exista si in backend
+ * (`cere_administrator`), pe fiecare ruta. Garda de aici tine ecranul ascuns;
+ * bariera reala e acolo.
  */
 export async function checkAdmin(): Promise<UtilizatorAdmin | null> {
   const supabase = await createClient();
@@ -42,22 +43,27 @@ export async function checkAdmin(): Promise<UtilizatorAdmin | null> {
 
   if (!user || !session?.access_token) return null;
 
-  // maybeSingle, nu single: cine nu e administrator n-are niciun rand in
-  // user_roles, iar `single()` trateaza asta ca eroare. checkAdmin se apeleaza
-  // si din /setari, pentru fiecare utilizator, deci varianta cu single umplea
-  // logurile cu "erori" pentru comportamentul normal.
+  // Filtrare pe rol + `limit(1)`, nu `maybeSingle()` si nu `single()`:
+  //  - `single()` trateaza lipsa randului ca eroare, iar checkAdmin se apeleaza
+  //    si din /setari pentru fiecare utilizator, deci umplea logurile cu
+  //    „erori" pentru comportamentul normal;
+  //  - `maybeSingle()` rezolva aia, dar arunca la DOUA randuri, iar tabela n-are
+  //    index unic pe (user_id, role). S-a intamplat: un rand duplicat a dat
+  //    afara din /admin un administrator adevarat. Backendul foloseste aceeasi
+  //    forma in `cere_administrator`.
   const { data, error } = await supabase
     .from("user_roles")
     .select("role")
     .eq("user_id", user.id)
-    .maybeSingle();
+    .eq("role", ROL_ADMIN)
+    .limit(1);
 
   if (error) {
     console.error(`Nu am putut citi rolul pentru id=${user.id}:`, error.message);
     return null;
   }
 
-  if (data?.role !== ROL_ADMIN) return null;
+  if (!data || data.length === 0) return null;
 
   return { id: user.id, email: user.email ?? "", token: session.access_token };
 }

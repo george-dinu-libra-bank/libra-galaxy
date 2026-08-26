@@ -39,6 +39,34 @@ class ChatProvider(Protocol):
     async def complete(self, messages: list[ChatMessage]) -> ChatCompletion: ...
 
 
+@dataclass(frozen=True)
+class StructuredCompletion:
+    """Ca ChatCompletion, dar `data` e deja JSON validat contra schemei cerute —
+    apelantul nu mai face `json.loads` si nu mai verifica singur campurile."""
+
+    data: dict
+    tokens_in: int
+    tokens_out: int
+    tokens_cached: int
+    deployment: str
+
+
+class StructuredChatProvider(Protocol):
+    """Iesire structurata, pentru cod care are nevoie de campuri, nu de proza —
+    pipeline-ul AI de credite (app/credit/ai/), niciodata agentii conversationali
+    din app/agents/, care raman pe ChatProvider simplu.
+
+    Verificat live (2026-08-24) ca deployment-ul `gpt-5-mini` din Foundry accepta
+    `response_format={"type": "json_schema", "strict": true}`: raspunde cu JSON
+    valid, fara sa se abata de la schema."""
+
+    deployment: str
+
+    async def complete_json(
+        self, messages: list[ChatMessage], schema_name: str, schema: dict
+    ) -> StructuredCompletion: ...
+
+
 class EmbeddingProvider(Protocol):
     deployment: str
 

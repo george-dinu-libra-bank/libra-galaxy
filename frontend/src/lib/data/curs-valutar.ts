@@ -13,13 +13,13 @@ import { VALUTE, type Curs, type Valuta } from "@/lib/valute";
  * Altfel oricine ar putea trimite „1 EUR = 100 RON" si si-ar tipari bani.
  */
 
-/** Cursurile de referinta BNR, actualizate in zilele lucratoare in jur de ora 13. */
-const URL_BNR = "https://www.bnr.ro/nbrfxrates.xml";
-
 /**
- * Rezerva, cand BNR nu raspunde: cursurile de referinta BCE, publicate zilnic.
- * Nu sunt identice cu cele BNR (difera in a treia zecimala), de aceea salvam si
- * sursa si o aratam in interfata — nu scriem „curs BNR" peste altceva.
+ * Cursurile de referinta BCE, publicate zilnic.
+ *
+ * BNR a fost sursa initiala, dar WAF-ul lui respinge constant cererile de aici
+ * (raspunde cu pagina de start in loc de XML) — fiecare incercare platea un
+ * timeout de pana la 8s degeaba, inainte sa cada pe rezerva asta oricum. Nu
+ * mai incercam BNR deloc, mergem direct pe sursa care chiar raspunde.
  */
 const URL_REZERVA = "https://api.frankfurter.dev/v1/latest";
 
@@ -29,69 +29,6 @@ const PROSPETIME_MS = 60 * 60 * 1000;
 type Cursuri = { cursuri: Map<string, number>; data: string | null; sursa: string };
 
 const STRAINE = VALUTE.filter((valuta) => valuta !== "RON");
-
-/**
- * Citeste XML-ul BNR fara parser: formatul e plat —
- * `<Rate currency="EUR">4.9755</Rate>`, uneori cu `multiplier="100"` la valutele
- * marunte. Un parser XML intreg ar fi o dependinta pentru cinci randuri.
- */
-function extrageDinBnr(xml: string): Cursuri {
-  const cursuri = new Map<string, number>();
-  const potrivireData = xml.match(/<Cube\s+date="(\d{4}-\d{2}-\d{2})"/);
-
-  const randuri = xml.matchAll(
-    /<Rate\s+currency="([A-Z]{3})"(?:\s+multiplier="(\d+)")?\s*>([\d.]+)<\/Rate>/g,
-  );
-
-  for (const [, valuta, multiplicator, valoare] of randuri) {
-    const numar = Number(valoare);
-    const impartitor = multiplicator ? Number(multiplicator) : 1;
-
-    if (!Number.isFinite(numar) || numar <= 0 || impartitor <= 0) continue;
-
-    // Normalizam la „RON pentru o unitate", ca tabela sa nu mai poarte
-    // multiplicatorul mai departe in fiecare conversie.
-    cursuri.set(valuta, numar / impartitor);
-  }
-
-  return { cursuri, data: potrivireData?.[1] ?? null, sursa: "BNR" };
-}
-
-async function aduDeLaBnr(): Promise<Cursuri | null> {
-  try {
-    const raspuns = await fetch(URL_BNR, {
-      // Prospetimea o decidem noi, dupa `actualizat_la` din tabela; cache-ul
-      // Next ar adauga inca un strat cu alta parere despre ea.
-      cache: "no-store",
-      headers: { Accept: "application/xml" },
-      signal: AbortSignal.timeout(8000),
-    });
-
-    if (!raspuns.ok) throw new Error(`BNR a raspuns ${raspuns.status}`);
-
-    const text = await raspuns.text();
-
-    // WAF-ul BNR raspunde uneori cu 200 si pagina de start (sau cu „Request
-    // Rejected"), in loc de XML. Fara verificarea asta am fi crezut ca a mers si
-    // am fi scris zero cursuri.
-    if (!text.includes("<Rate")) {
-      throw new Error("BNR a raspuns cu HTML, nu cu XML (probabil filtru anti-bot)");
-    }
-
-    const rezultat = extrageDinBnr(text);
-
-    if (STRAINE.every((valuta) => rezultat.cursuri.has(valuta))) return rezultat;
-
-    throw new Error("BNR nu a returnat toate valutele cerute");
-  } catch (eroare) {
-    // warn, nu error: BNR-ul care ne refuza e o situatie asteptata, cu rezerva
-    // pregatita imediat mai jos. Cu console.error, overlay-ul de dezvoltare din
-    // Next se ridica peste toata pagina si arata ca un ecran cazut, desi
-    // fallback-ul functioneaza si dashboard-ul s-ar randa normal.
-    console.warn("curs valutar: BNR indisponibil, incerc rezerva —", mesaj(eroare));
-    return null;
-  }
-}
 
 async function aduDeLaRezerva(): Promise<Cursuri | null> {
   try {
@@ -136,15 +73,15 @@ function mesaj(eroare: unknown): string {
 
 /**
  * Aduce cursurile si le scrie in tabela, daca cele din tabela au imbatranit.
- * Esecul nu arunca: daca nu raspunde nici BNR si nici rezerva, ramanem pe
- * ultimele cursuri stiute — mai bine un curs de ieri decat un ecran rupt.
+ * Esecul nu arunca: daca sursa de rezerva nu raspunde, ramanem pe ultimele
+ * cursuri stiute — mai bine un curs de ieri decat un ecran rupt.
  */
 async function improspateazaCursuri(celMaiVechi: string | null) {
   if (celMaiVechi && Date.now() - new Date(celMaiVechi).getTime() < PROSPETIME_MS) {
     return;
   }
 
-  const rezultat = (await aduDeLaBnr()) ?? (await aduDeLaRezerva());
+  const rezultat = await aduDeLaRezerva();
 
   if (!rezultat) return;
 
@@ -169,8 +106,9 @@ async function improspateazaCursuri(celMaiVechi: string | null) {
 /**
  * Cursurile pentru valutele acceptate, cel de RON inclus (mereu 1).
  *
- * Intai citim ce avem, si abia daca e vechi mergem la BNR — asa ecranul se
- * randeaza cu ce stim si nu asteapta o cerere externa la fiecare afisare.
+ * Intai citim ce avem, si abia daca e vechi mergem la sursa de rezerva — asa
+ * ecranul se randeaza cu ce stim si nu asteapta o cerere externa la fiecare
+ * afisare.
  */
 export async function obtineCursuri(): Promise<Curs[]> {
   const supabase = await createClient();
@@ -215,7 +153,7 @@ export async function obtineCursuri(): Promise<Curs[]> {
       valuta: rand.valuta as Valuta,
       curs: Number(rand.curs),
       dataCurs: rand.data_curs as string,
-      sursa: (rand.sursa as string) ?? "BNR",
+      sursa: (rand.sursa as string) ?? "BCE (Frankfurter)",
     }))
     .sort((a, b) => VALUTE.indexOf(a.valuta) - VALUTE.indexOf(b.valuta));
 }

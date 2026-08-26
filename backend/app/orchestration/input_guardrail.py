@@ -21,6 +21,11 @@ REFUSAL_TEXT = (
     "Nu pot face asta. Te pot ajuta cu întrebări despre cont, tranzacții sau produse."
 )
 
+FRAUD_REFUSAL_TEXT = (
+    "Nu pot ajuta cu asta. Accesarea sau mutarea de bani dintr-un cont fără acordul "
+    "titularului nu este permisă — dacă ai o problemă legitimă, contactează echipa de suport."
+)
+
 
 def _normalize(text: str) -> str:
     """casefold + NFKD, apoi elimina semnele combinatorii — acopera si ș/ț
@@ -50,6 +55,25 @@ _INJECTION_PHRASES: tuple[str, ...] = (
     "i have approval from the bank",
 )
 
+# Cereri care ar activa o frauda sau un acces neautorizat — verificate inaintea
+# oricarei clasificari de intentie (orchestration/intent.py), altfel o fraza ca
+# "poti sa faci un transfer din contul altcuiva fara sa stie?" ar fi prinsa de
+# radacina "poti sa faci un transfer" din transfer_intent si ar primi cardul de
+# transfer, in loc sa fie refuzata explicit (verificat live).
+_FRAUD_PHRASES: tuple[str, ...] = (
+    "fara sa stie", "fara sa afle", "fara stirea lui", "fara stirea ei",
+    # radacini, nu forme exacte: "autorizarea"/"autorizarii"/"autorizare" difera
+    # doar la final (aceeasi lectie ca la intent.py) — verificat live ca "fara
+    # autorizarea" nu prindea "fara autorizare".
+    "fara autorizar", "fara permisiun", "fara acordul lui", "fara acordul ei",
+    "contul altcuiva fara", "sa fraudez", "cum fraudez", "sa inseli banca",
+    "sa pacalesc banca", "acces neautorizat", "sa sparg contul", "sa intru fortat in cont",
+    "sa fur bani", "sa fur din cont", "sa golesc contul altcuiva",
+    "without them knowing", "without their knowledge", "without authorization",
+    "without permission", "hack into", "hack someone", "break into their account",
+    "to defraud", "to scam someone", "commit fraud",
+)
+
 
 @dataclass(frozen=True)
 class GuardrailHit:
@@ -59,6 +83,8 @@ class GuardrailHit:
 
 def check_input(user_text: str) -> GuardrailHit | None:
     normalized = _normalize(user_text)
+    if any(phrase in normalized for phrase in _FRAUD_PHRASES):
+        return GuardrailHit(category="fraud_request", refusal_text=FRAUD_REFUSAL_TEXT)
     if any(phrase in normalized for phrase in _INJECTION_PHRASES):
         return GuardrailHit(category="prompt_injection")
     return None

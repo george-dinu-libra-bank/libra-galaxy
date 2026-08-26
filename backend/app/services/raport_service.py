@@ -29,6 +29,64 @@ ETICHETE_TIP = {
 }
 
 
+
+# -----------------------------------------------------------------------------
+# Gravitatea unui cont
+#
+# Severitatea unei constatari raspunde la "cat de grava e ACEASTA plata".
+# Ordonarea conturilor raspunde la altceva: "pe cine ma uit primul". Sunt
+# intrebari diferite, si `max(severitate)` raspundea doar la prima.
+#
+# Consecinta, vazuta pe date reale: un cont cu o singura plata dublata de 1.400
+# de lei aparea inaintea unuia cu 19 semnalari insumand 100 de milioane, fiindca
+# dublarea confirmata are severitatea cea mai mare. Cea mai grava plata a lui era
+# mai putin grava, dar contul lui era clar mai urgent.
+#
+# Volumul si suma nu creeaza gravitate din nimic — un cont fara constatari
+# ramane in afara listei indiferent cati bani misca — dar o amplifica.
+# -----------------------------------------------------------------------------
+
+# Peste atatea semnalari, inca una nu mai schimba urgenta: e deja mult.
+SATURATIE_SEMNALARI = 20
+# Idem pentru bani. Scara e logaritmica: intre 1.000 si 10.000 de lei e aceeasi
+# distanta ca intre 1 si 10 milioane, fiindca asa se citeste un ordin de marime.
+SATURATIE_SUMA = 1_000_000.0
+
+# Cat cantareste fiecare intrebare. Cea mai grava constatare ramane cu ponderea
+# cea mai mare: ce s-a intamplat conteaza mai mult decat cat de des.
+PONDERE_SEVERITATE = 0.55
+PONDERE_NUMAR = 0.25
+PONDERE_SUMA = 0.20
+
+
+def gravitate_cont(constatari: list[Neregularitate]) -> int:
+    """Cat de urgent merita contul o privire, pe aceeasi scara 1-100."""
+    import math
+
+    if not constatari:
+        return 0
+
+    cea_mai_grava = max(c.scor for c in constatari)
+    suma = sum(c.suma for c in constatari)
+
+    parte_numar = min(len(constatari) / SATURATIE_SEMNALARI, 1.0) * 100
+    parte_suma = (
+        min(math.log10(1 + max(suma, 0.0)) / math.log10(1 + SATURATIE_SUMA), 1.0) * 100
+    )
+
+    return max(
+        1,
+        min(
+            100,
+            round(
+                PONDERE_SEVERITATE * cea_mai_grava
+                + PONDERE_NUMAR * parte_numar
+                + PONDERE_SUMA * parte_suma
+            ),
+        ),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class RezumatCont:
     """Un rand din lista administratorului."""
@@ -37,7 +95,11 @@ class RezumatCont:
     nume: str
     email: str
     numar_semnalari: int
+    # Cea mai grava constatare de pe cont — un fapt despre o singura plata.
     scor_maxim: float
+    # Cat de urgent merita contul o privire, tinand cont si de cate sunt si de
+    # cati bani. Dupa asta se ordoneaza lista.
+    gravitate: int
     suma_totala: float
     tipuri: list[str]
 
@@ -113,12 +175,13 @@ class RaportService:
                     email=profil.get("email", ""),
                     numar_semnalari=len(constatari),
                     scor_maxim=max(c.scor for c in constatari),
+                    gravitate=gravitate_cont(constatari),
                     suma_totala=round(sum(c.suma for c in constatari), 2),
                     tipuri=sorted({c.tip for c in constatari}),
                 )
             )
 
-        rezumate.sort(key=lambda r: r.scor_maxim, reverse=True)
+        rezumate.sort(key=lambda r: (r.gravitate, r.scor_maxim), reverse=True)
         return rezumate
 
     async def raport(self, user_id: UUID, zile: int = 180) -> Raport | None:

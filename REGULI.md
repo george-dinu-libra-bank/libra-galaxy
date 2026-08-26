@@ -42,6 +42,8 @@ Exemplu real: `app/core/config.py`+`errors.py`+`logging.py`+`security.py` (deja 
 - Înainte de o migrație pe cloud, ia un instantaneu al stării reale (vezi `0000_instantaneu_inainte_de_credite.sql`, generat din catalogul Postgres). Nu înlocuiește backupul automat Supabase, dar arată exact ce era acolo înainte.
 - După orice DDL, rulează `get_advisors` cu `type: "security"` — prinde tabele cu RLS activat fără politici și funcții `SECURITY DEFINER` expuse ca RPC pentru `anon`.
 
+- **Coliziunea de mai sus s-a întâmplat efectiv**, pe trei numere deodată: `cristi` avea `0018`-`0020` (pipeline AI, mesaje pe credit), iar `main` avea tot `0018`-`0020` (rol admin unificat, acțiune rapidă în asistent, schimb valutar, securitate cont, analize și notificări). Verificarea „ultimului număr liber" trebuie făcută pe `origin/main` proaspăt fetch-uit, nu pe branch-ul local. Rezolvarea: `git mv` pe ale tale, **înainte** de merge — atunci fișierele nici nu mai intră în conflict, fiindcă au nume diferite.
+
 ---
 
 ## 4. `.env` / `.env.example`
@@ -81,7 +83,17 @@ Nu se declară o schimbare terminată doar din citirea codului. Ordinea de verif
 
 ---
 
-## 8. Cum lucrăm împreună
+## 8. Frontend — gotcha-uri verificate live
+
+- **Next.js dev nu prinde modificările din `frontend/src` pe Windows cu bind mount**, nici cu `WATCHPACK_POLLING=true`: servește build-ul vechi din cache (se vede ca `GET /credite 200 in 73ms`). E nevoie de `docker compose restart frontend` după orice modificare de componentă. Backendul, cu `uvicorn --reload`, le prinde corect — de aceea diferența e ușor de ratat: repari ceva, backendul se comportă nou, frontendul vechi, și cauți bug-ul în locul greșit.
+- **`apelBackend` nu pune `Content-Type`** — intenționat, ca să meargă și pentru `FormData` la încărcarea documentelor, unde granița multipart o pune `fetch`. Orice POST cu JSON trebuie să treacă prin helperul `json()` din același fișier; fără el FastAPI răspunde 422, iar interfața arată „a apărut o eroare neașteptată" fără nimic în consolă.
+- **Un `{ date, eroare }` din care nu destructurezi `eroare` e o minciună tăcută**, nu o scurtătură. `lib/data/credite.ts` întorcea `date ?? []`, deci un backend căzut producea ecranul „nu ai niciun credit, simulează unul" — exact acolo unde omul are bani în joc — iar pe detaliu ajungea în `notFound()`, adică „creditul tău nu există". Zona de administrare făcea de mult lucrul corect (prinde `BackendError`, randează `<Banda ton="eroare">`); tiparul exista, doar că era aplicat pe jumătate de proiect.
+- **`maybeSingle()`/`single()` pe `user_roles` sunt o capcană**: tabela n-are index unic pe `(user_id, role)`, iar `maybeSingle()` aruncă la două rânduri. S-a întâmplat live — un rând duplicat a dat afară din `/admin` un administrator adevărat. Forma sigură, folosită acum și în backend (`cere_administrator`) și în frontend (`checkAdmin`): `.eq("role", ROL_ADMIN).limit(1)`, apoi se verifică dacă lista e goală.
+- **RLS de select și RLS de update pot să nu coincidă.** Politica de select pe `notificari` e `auth.uid() = id_utilizator OR este_administrator()`, iar cea de update doar rândurile proprii. Un administrator vedea în clopoțel notificările tuturor, dar „marchează toate ca citite" atingea 0 rânduri pentru cele străine și părea că butonul nu merge. Filtrul pe utilizator din cod **nu** e redundant față de RLS.
+
+---
+
+## 9. Cum lucrăm împreună
 
 - Eu (Claude) editez fișiere, rulez teste, fac build-uri Docker, verific live cu credențiale — toate astea sunt reversibile/locale.
 - **Git rămâne treaba ta** — nu rulez `git add`/`git commit`/`git push`. Rezolv conținutul fișierelor la conflict, apoi îți dau comenzile exacte de rulat.

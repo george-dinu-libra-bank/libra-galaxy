@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { BANCA_INTERNA, type BeneficiarTransfer } from "@/lib/data/transfer";
 import { ibanEsteValid } from "@/lib/iban";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { contEsteBlocat, MESAJ_CONT_BLOCAT } from "@/lib/cont-blocat";
 import { createClient } from "@/lib/supabase/server";
 
 export type RezultatCautareBeneficiar = { beneficiar?: BeneficiarTransfer; eroare?: string };
@@ -120,6 +121,10 @@ export async function trimiteTransfer(input: {
   if (!ibanEsteValid(iban)) return { eroare: "IBAN-ul beneficiarului este invalid." };
 
   const supabaseAdmin = createAdminClient();
+
+  // Contul blocat de un administrator nu poate trimite bani. Verificarea si
+  // limitele ei sunt explicate in lib/cont-blocat.ts.
+  if (await contEsteBlocat(user.id)) return { eroare: MESAJ_CONT_BLOCAT };
 
   const descriere = input.detalii.trim() || null;
 

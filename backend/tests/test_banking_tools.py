@@ -1,12 +1,8 @@
-import re
-
 import pytest
 
 from app.core.security import Principal
 from app.repositories.banking_read_repository import AccountRow
 from app.tools.banking_tools import build_banking_tools
-
-_FULL_IBAN = re.compile(r"^[A-Za-z]{2}\d{2}[A-Za-z0-9]{10,30}$")
 
 UTILIZATOR = Principal(user_id="u1", role="customer", permissions={"accounts:read"})
 
@@ -28,7 +24,7 @@ def _tool(nume):
             [
                 AccountRow(
                     id="a1", name="Cont curent", iban="RO49AAAA1B31007593840000",
-                    balance=100.0, created_at="2026-01-01T00:00:00+00:00",
+                    balance=100.0, currency="RON", created_at="2026-01-01T00:00:00+00:00",
                 )
             ]
         )
@@ -37,16 +33,16 @@ def _tool(nume):
 
 
 @pytest.mark.anyio
-async def test_get_accounts_never_returns_a_full_iban():
+async def test_get_accounts_returns_the_full_iban():
+    # Decizie explicita (GUARDRAILS.md #12): IBAN-ul propriu nu e un secret,
+    # e deja aratat complet in restul aplicatiei (detalii-cont-drawer.tsx).
     rezultat = await _tool("get_accounts").callback(UTILIZATOR, {})
 
-    for cont in rezultat["accounts"]:
-        assert not _FULL_IBAN.match(cont["iban"]), f"IBAN nemascat: {cont['iban']}"
-        assert "•" in cont["iban"]
+    assert rezultat["accounts"][0]["iban"] == "RO49AAAA1B31007593840000"
 
 
 @pytest.mark.anyio
-async def test_get_accounts_keeps_last_four_characters_visible():
+async def test_get_accounts_includes_currency():
     rezultat = await _tool("get_accounts").callback(UTILIZATOR, {})
 
-    assert rezultat["accounts"][0]["iban"].endswith("0000")
+    assert rezultat["accounts"][0]["currency"] == "RON"

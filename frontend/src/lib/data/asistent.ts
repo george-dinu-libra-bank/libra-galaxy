@@ -18,6 +18,19 @@ export type FisierGenerat = {
   nume: string;
 };
 
+export type ContActiuneRapida = {
+  id: string;
+  nume: string | null;
+  iban: string;
+  valuta: string | null;
+};
+
+export type ActiuneRapida = {
+  tip: string;
+  conturi: ContActiuneRapida[];
+  url: string;
+};
+
 export type MesajAsistent = {
   id: string;
   rol: "user" | "assistant";
@@ -27,6 +40,7 @@ export type MesajAsistent = {
   canal: "text" | "voce";
   creatLa: string;
   fisierGenerat: FisierGenerat | null;
+  actiuneRapida: ActiuneRapida | null;
 };
 
 export type ConversatieAsistent = {
@@ -58,6 +72,7 @@ export async function obtineMesaje(idConversatie: string): Promise<MesajAsistent
       channel: "text" | "voce";
       created_at: string;
       file: { url: string; filename: string; kind: string } | null;
+      quick_action: { kind: string; accounts: { id: string; name: string | null; iban: string; currency: string | null }[]; url: string } | null;
     }[]
   >(`/assistant/conversations/${idConversatie}/messages`);
 
@@ -70,5 +85,12 @@ export async function obtineMesaje(idConversatie: string): Promise<MesajAsistent
     canal: m.channel,
     creatLa: m.created_at,
     fisierGenerat: m.file ? { url: m.file.url, nume: m.file.filename } : null,
+    actiuneRapida: m.quick_action
+      ? {
+          tip: m.quick_action.kind,
+          conturi: m.quick_action.accounts.map((cont) => ({ id: cont.id, nume: cont.name, iban: cont.iban, valuta: cont.currency })),
+          url: m.quick_action.url,
+        }
+      : null,
   }));
 }

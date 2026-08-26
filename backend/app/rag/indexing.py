@@ -13,8 +13,6 @@ from dataclasses import dataclass
 from app.rag.chunking import Chunk, fixed_window_chunk, section_aware_chunk
 from app.rag.registry import KnowledgeDocument
 
-_SECTION_AWARE_TYPES = {"procedură", "produs", "faq", "referinta", "index", "politica"}
-
 
 @dataclass(frozen=True)
 class ReindexPlan:
@@ -24,10 +22,20 @@ class ReindexPlan:
 
 
 def chunk_document(document: KnowledgeDocument) -> list[Chunk]:
-    if document.document_type in _SECTION_AWARE_TYPES:
-        chunks = section_aware_chunk(document.document_id, document.version, document.content)
-        if chunks:
-            return chunks
+    """Alege strategia dupa forma reala a continutului — cate sectiuni `##`
+    are — nu dupa o lista fixa de tip_document. O lista fixa e fragila: un
+    tip nou (sau o singura diacritica lipsa, cum a fost cazul cu "politica"
+    vs "politică" — verificat live ca afecta toate cele 11 documente cu acel
+    tip) face tacut un document sa piarda chunking-ul pe sectiuni, fara nicio
+    eroare care sa semnaleze asta.
+
+    Sectiunile sunt de incredere doar cand exista o structura REALA (2+
+    sectiuni): cu 0 sau 1 titlu, section_aware_chunk ar intoarce oricum un
+    singur chunk care acopera tot documentul — nu mai bun decat fereastra
+    fixa, si fara avantajul de a imparti proza lunga in bucati digerabile."""
+    sectioned = section_aware_chunk(document.document_id, document.version, document.content)
+    if len(sectioned) > 1:
+        return sectioned
     return fixed_window_chunk(document.document_id, document.version, document.content)
 
 

@@ -51,6 +51,33 @@ NUMAR = re.compile(r"\d{1,3}(?:[.\s]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?")
 FORME_JURIDICE = re.compile(r"\b(s\.?c\.?|s\.?r\.?l\.?|s\.?a\.?|p\.?f\.?a\.?|srl)\b")
 ETICHETE_ANGAJATOR = ("angajator", "societatea", "unitatea", "denumire", "subscrisa")
 
+# Cuvintele care, aparute INAINTE de eticheta pe aceeasi linie, arata ca
+# "angajator" e parte dintr-un numar de inregistrare, nu o eticheta de nume.
+# Cazul real care a dus la asta: "Nr. Inregistrare Angajator: 1042 / 15.01.2026",
+# din care se citea numarul in loc de firma.
+CONTEXT_DE_NUMAR = re.compile(r"\b(nr|numar|numarul|inregistrare|cod|serie|data)\b")
+
+# Unde se taie candidatul. OCR-ul lipeste celulele unui tabel pe acelasi rand,
+# deci imediat dupa numele firmei poate urma alta eticheta. Alternativele mai
+# lungi stau primele: regexul incearca in ordine, iar "cu sediul" trebuie sa
+# bata "sediul".
+ETICHETE_URMATOARE = re.compile(
+    r"\b(cod\s+validare|cod\s+unic|c\.?u\.?i\.?|cif|nr\.?\s*reg|reg\.?\s*com"
+    r"|cu\s+sediul|sediul|adresa|reprezentat)\b",
+    re.IGNORECASE,
+)
+
+# Cuvinte generice ramase lipite de nume dupa ce se taie eticheta
+# ("Denumire Societate: SC ..." lasa "Societate SC ...").
+UMPLUTURA_NUME = ("societatea", "societate", "comerciala", "firma", "angajatorul", "angajator")
+
+# Peste atatea cifre, sirul e un numar de inregistrare sau o data, nu un nume.
+PROPORTIE_MAXIMA_CIFRE = 0.3
+MINIM_LITERE_NUME = 3
+
+# Caracterele de separare pe care le lasa OCR-ul in jurul unei celule de tabel.
+MARGINI_NUME = " :.-|\t,;"
+
 VECHIME = re.compile(r"vechime[^0-9]{0,40}?(\d{1,3})\s*(ani|an|luni|luna)")
 
 # Cat de departe de cuvantul-cheie mai are sens sa fie suma, in caractere.
@@ -219,23 +246,93 @@ def _cauta_venit(linii: list[tuple[str, str]]) -> tuple[Decimal | None, float]:
     return valoare, round(scor, 3)
 
 
+def _curata_nume(brut: str) -> str | None:
+    """Textul de dupa eticheta, redus la un nume de firma — sau None.
+
+    Aceeasi regula ca la venit: mai bine niciun nume decat unul gresit. Un sir
+    fara litere ("1042 / 15.01.2026") sau plin de cifre ("OCR-TEST-2026-LIB-8891")
+    nu e un nume, oricat de aproape ar sta de eticheta.
+    """
+    potrivire = ETICHETE_URMATOARE.search(brut)
+    nume = (brut[: potrivire.start()] if potrivire else brut).strip(MARGINI_NUME)
+
+    # Umplutura din fata, cat timp mai exista: "Denumire" ca eticheta lasa in
+    # urma "Societate", care nu face parte din nume.
+    schimbat = True
+    while schimbat and nume:
+        schimbat = False
+        normalizat = _fara_diacritice(nume).lower()
+        for cuvant in UMPLUTURA_NUME:
+            if normalizat.startswith(cuvant):
+                nume = nume[len(cuvant):].strip(MARGINI_NUME)
+                schimbat = True
+                break
+
+    if not nume:
+        return None
+
+    litere = sum(1 for caracter in nume if caracter.isalpha())
+    cifre = sum(1 for caracter in nume if caracter.isdigit())
+
+    if litere < MINIM_LITERE_NUME:
+        return None
+    if cifre / len(nume) > PROPORTIE_MAXIMA_CIFRE:
+        return None
+
+    return nume[:120]
+
+
 def _cauta_angajator(linii: list[tuple[str, str]]) -> str | None:
-    """Numele firmei, cautat intai dupa eticheta si abia apoi dupa forma juridica."""
+    """Numele firmei: candidati punctati, nu prima potrivire.
+
+    Varianta cu prima potrivire lua numarul de inregistrare de pe randul
+    "Nr. Inregistrare Angajator: 1042 / 15.01.2026", fiindca acela contine si el
+    cuvantul "angajator" si vine inaintea randului cu denumirea reala. Aici,
+    fiecare potrivire e cantarita — la fel ca sumele in `_cauta_venit`.
+    """
+    candidati: list[tuple[float, str]] = []
+
     for index, (original, linie) in enumerate(linii):
         for eticheta in ETICHETE_ANGAJATOR:
             pozitie = linie.find(eticheta)
             if pozitie == -1:
                 continue
-            rest = original[pozitie + len(eticheta):].lstrip(" :.-")
-            if rest:
-                return rest[:120]
-            # Eticheta singura pe rand: numele e pe randul urmator.
-            if index + 1 < len(linii):
-                return linii[index + 1][0][:120]
 
+            rest = original[pozitie + len(eticheta):]
+            nume, scor = _curata_nume(rest), 0.8
+
+            # Randul urmator se ia in seama NUMAI cand eticheta e singura pe
+            # rand. Daca dupa ea exista text, dar acela nu e un nume (un numar
+            # de inregistrare, de pilda), raspunsul corect e "nu stiu" — nu
+            # prima linie de dedesubt, care ar putea fi orice.
+            if nume is None and not rest.strip(MARGINI_NUME) and index + 1 < len(linii):
+                # Legatura dintre eticheta si randul urmator e presupusa, nu
+                # citita, deci se puncteaza mai jos.
+                nume, scor = _curata_nume(linii[index + 1][0]), 0.6
+
+            if nume is None:
+                continue
+
+            if CONTEXT_DE_NUMAR.search(linie[:pozitie]):
+                scor -= 0.5
+            if eticheta != "angajator":
+                # "denumire", "societatea", "unitatea" anunta un nume; "angajator"
+                # apare si in contexte administrative.
+                scor += 0.1
+            if FORME_JURIDICE.search(_fara_diacritice(nume).lower()):
+                scor += 0.3
+
+            candidati.append((scor, nume))
+
+    if candidati:
+        return max(candidati, key=lambda pereche: pereche[0])[1]
+
+    # Nicio eticheta utila: se cauta o linie care contine o forma juridica.
     for original, linie in linii:
         if FORME_JURIDICE.search(linie):
-            return original[:120]
+            nume = _curata_nume(original)
+            if nume is not None:
+                return nume
 
     return None
 

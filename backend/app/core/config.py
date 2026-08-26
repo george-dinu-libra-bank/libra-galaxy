@@ -130,28 +130,36 @@ class Settings(BaseSettings):
     )
 
     # Financial advisor-ul lui Cristi (agents/financiar.py) — bucla proprie de
-    # tool-calling peste azure-ai-inference, cu propriile praguri de siguranta.
+    # tool-calling peste azure-ai-inference (SDK diferit de providers/foundry.py),
+    # dar aceeasi resursa Foundry: endpoint, cheie, deployment de chat si
+    # reasoning_effort vin din campurile foundry_* de mai sus, o singura sursa
+    # de credentiale pentru tot ce vorbeste cu Azure (decizie explicita — nu mai
+    # exista AZURE_AI_ENDPOINT/AZURE_AI_API_KEY/AZURE_AI_CHAT_DEPLOYMENT separate).
     llm_provider: str = Field(default="azure", alias="LLM_PROVIDER")
-    azure_ai_endpoint: str = Field(default="", alias="AZURE_AI_ENDPOINT")
     # 'key' merge oriunde, inclusiv in container. 'identity' foloseste Entra
     # prin DefaultAzureCredential (az login local, sau managed identity in Azure).
+    # Ramane un camp separat: doar azure-ai-inference (SDK-ul de aici) suporta
+    # acest mod, providers/foundry.py foloseste mereu cheia.
     azure_ai_auth: str = Field(default="key", alias="AZURE_AI_AUTH")
-    azure_ai_api_key: str = Field(default="", alias="AZURE_AI_API_KEY")
-    azure_ai_chat_deployment: str = Field(default="gpt-5-mini", alias="AZURE_AI_CHAT_DEPLOYMENT")
-    azure_ai_embedding_deployment: str = Field(
-        default="text-embedding-3-small", alias="AZURE_AI_EMBEDDING_DEPLOYMENT"
-    )
     agent_max_tokens: int = Field(default=4000, alias="AGENT_MAX_TOKENS")
     # Un pas = un raspuns al modelului. Plasa de siguranta, nu tinta.
     agent_max_pasi: int = Field(default=10, alias="AGENT_MAX_PASI")
     # Cate tranzactii se citesc cel mult pentru o analiza (AnalizaService).
     analiza_limita_randuri: int = Field(default=1000, alias="ANALIZA_LIMITA_RANDURI")
 
+    # Pipeline-ul AI de credite (app/credit/ai/) — strict consultativ, vezi
+    # docs/AGENTS.md. Kill switch: daca e dezactivat, rutele de creditare merg
+    # exact ca inainte, fara nicio rulare de fundal si fara explicatie prin model.
+    credit_ai_enabled: bool = Field(default=True, alias="LIBRA_CREDIT_AI_ENABLED")
+    # Plafon pe cate semnale se scriu per rulare — o coeruptie neasteptata a
+    # tranzactiilor n-are voie sa genereze mii de randuri in credit_ai_semnale.
+    credit_ai_max_semnale: int = Field(default=20, alias="LIBRA_CREDIT_AI_MAX_SEMNALE")
+
     @property
     def agenti_activi(self) -> bool:
-        if not self.azure_ai_endpoint:
+        if not self.foundry_endpoint:
             return False
-        return self.azure_ai_auth.lower() == "identity" or bool(self.azure_ai_api_key)
+        return self.azure_ai_auth.lower() == "identity" or bool(self.foundry_api_key)
 
     @property
     def embedding_key(self) -> str:

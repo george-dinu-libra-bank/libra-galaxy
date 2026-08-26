@@ -14,6 +14,7 @@ from app.repositories.card_repository import CardRepository
 from app.repositories.cont_repository import ContRepository
 from app.repositories.tranzactie_repository import TranzactieRepository
 from app.schemas.analiza import CashflowResponse, LunaCashflow, SoldSumar
+from app.tools.categorii_tranzactii import categorizeaza
 
 MAX_LUNI = 12
 MAX_ZILE = 365
@@ -56,6 +57,17 @@ class AnalizaService:
             numar_carduri=len(carduri),
             carduri_blocate=sum(1 for c in carduri if c["is_blocked"]),
         )
+
+    async def obtine_conturi(self, user_id: UUID) -> list[dict]:
+        """Nume/IBAN complet/sold per cont, la fel ca tools/banking_tools.py:
+        get_accounts — IBAN-ul e contul propriu al utilizatorului, nu un secret
+        (GUARDRAILS.md #12). sold_sumar() de mai sus insumeaza fara detaliu per
+        cont, deci nu poate raspunde la 'care e IBAN-ul meu'."""
+        conturi = await self._conturi.ale_utilizatorului(user_id) if self._conturi else []
+        return [
+            {"nume": c["nume"], "iban": c["iban"], "sold": float(c["sold"])}
+            for c in conturi
+        ]
 
     async def cashflow_lunar(
         self, user_id: UUID, luni: int = 3, valuta: str = "RON"
@@ -109,6 +121,8 @@ class AnalizaService:
                 "directie": "iesire"
                 if str(rand.get("id_user_send")) == str(user_id)
                 else "intrare",
+                # Determinist (tools/categorii_tranzactii.py), niciodata ghicit de model.
+                "categorie": categorizeaza(rand.get("descriere"), None),
             }
             for rand in randuri[:limita]
         ]

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { contEsteBlocat, MESAJ_CONT_BLOCAT } from "@/lib/cont-blocat";
 
 export type RezultatGrupNou = { id?: number; nume?: string; token?: string; eroare?: string };
 export type RezultatIntrare = { id?: number; nume?: string; eroare?: string };
@@ -192,6 +193,11 @@ export async function depuneInGrup(input: {
   const suma = laBanut(input.suma);
 
   if (!Number.isFinite(suma) || suma <= 0) return { eroare: "Introdu o sumă validă." };
+
+  // Depunerea scoate bani din contul propriu, deci un cont blocat nu o poate
+  // face: altfel si-ar putea muta banii intr-un grup si i-ar scoate prin alt
+  // membru. Vezi lib/cont-blocat.ts pentru ce acopera verificarea si ce nu.
+  if (await contEsteBlocat(user.id)) return { eroare: MESAJ_CONT_BLOCAT };
 
   const { error } = await supabase.rpc("core_banking_groups", {
     p_id_group: input.idGrup,

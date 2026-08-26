@@ -26,6 +26,8 @@ export type RandPlata = {
   status: string;
   motiv?: string | null;
   expira_la: string | null;
+  /** Contul debitat, adus prin relatia payments.id_cont. Lipseste in Realtime. */
+  conturi_bancare?: { nume: string; valuta: string } | null;
 };
 
 /** O plata care asteapta confirmarea, asa cum o vede drawerul din aplicatie. */
@@ -37,6 +39,12 @@ export type PlataInAsteptare = {
   descriere: string | null;
   /** „•••• 4242" — ultimele patru cifre sunt denormalizate in public.payments. */
   cardMascat: string;
+  /**
+   * Contul din care se ia suma. De cand fiecare card apartine unui cont (0027),
+   * omul trebuie sa vada ce cont se goleste, nu doar ce card se foloseste:
+   * ultimele patru cifre nu mai spun de unde pleaca banii.
+   */
+  numeCont: string | null;
   expiraLa: string | null;
 };
 
@@ -48,6 +56,7 @@ export function laPlataInAsteptare(rand: RandPlata): PlataInAsteptare {
     comerciant: rand.comerciant,
     descriere: rand.descriere,
     cardMascat: `•••• ${rand.card_ultimele4}`,
+    numeCont: rand.conturi_bancare?.nume ?? null,
     expiraLa: rand.expira_la,
   };
 }

@@ -6,12 +6,19 @@ import { createClient } from "@/lib/supabase/server";
 
 export type RezultatCont = { eroare?: string };
 
-/** Cate conturi poate avea un om — destul pentru orice folosire reala. */
+/**
+ * Cate conturi poate avea un om — destul pentru orice folosire reala.
+ *
+ * Acelasi plafon e hardcodat si in `schimba_valuta_suma`
+ * (supabase/migrations/0019_schimb_valutar_suma.sql), care deschide conturi
+ * automat la schimb valutar. Cele doua se sincronizeaza manual: daca schimbi
+ * numarul aici, schimba-l si acolo.
+ */
 const MAX_CONTURI = 10;
 
 /**
  * Deschide un cont bancar nou, cu IBAN generat in baza de date
- * (public.genereaza_iban, 0007_conturi_bancare.sql).
+ * (public.genereaza_iban, tabela conturi_bancare (creata direct in Supabase, fara migrare in repo)).
  *
  * Tabela nu are politici de INSERT tocmai ca nimeni sa nu-si poata crea un rand
  * cu sold pus de mana, deci inserarea merge cu service_role — dar id_user vine

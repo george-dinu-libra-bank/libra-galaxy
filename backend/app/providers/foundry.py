@@ -22,11 +22,16 @@ AI_PROVIDER_ERROR — niciodata nu trece silentios pe alt model
 
 from __future__ import annotations
 
+import json
+import logging
+
 from openai import APIConnectionError, APIError, AsyncOpenAI
 
 from app.core.config import Settings
 from app.core.errors import AiProviderError, AiProviderUnavailableError
-from app.providers.base import ChatCompletion, ChatMessage, ImagePart
+from app.providers.base import ChatCompletion, ChatMessage, ImagePart, StructuredCompletion
+
+logger = logging.getLogger(__name__)
 
 
 def _to_openai_content(content):
@@ -72,6 +77,55 @@ class MicrosoftFoundryChatProvider:
 
         return ChatCompletion(
             text=response.choices[0].message.content or "",
+            tokens_in=usage.prompt_tokens if usage else 0,
+            tokens_out=usage.completion_tokens if usage else 0,
+            tokens_cached=cached,
+            deployment=self.deployment,
+        )
+
+    async def complete_json(
+        self, messages: list[ChatMessage], schema_name: str, schema: dict
+    ) -> StructuredCompletion:
+        """Ca `complete`, dar cere modelului sa respecte o schema JSON.
+
+        Folosit doar de pipeline-ul AI de credite (app/credit/ai/) — agentii
+        conversationali raman pe `complete()`, care intoarce proza. Verificat live
+        (2026-08-24, REGULI.md #7): acest deployment accepta `json_schema` +
+        `strict: true` si raspunde cu JSON valid.
+        """
+        try:
+            response = await self._client.chat.completions.create(
+                model=self.deployment,
+                messages=[
+                    {"role": message.role, "content": _to_openai_content(message.content)} for message in messages
+                ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": schema_name, "schema": schema, "strict": True},
+                },
+                max_completion_tokens=self._max_completion_tokens,
+                reasoning_effort=self._reasoning_effort,
+            )
+        except APIConnectionError as exc:
+            raise AiProviderUnavailableError("Microsoft Foundry este inaccesibil.") from exc
+        except APIError as exc:
+            raise AiProviderError("Microsoft Foundry a raspuns cu o eroare.") from exc
+
+        usage = response.usage
+        cached = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0) or 0
+        continut = response.choices[0].message.content or ""
+
+        try:
+            date = json.loads(continut)
+        except json.JSONDecodeError as exc:
+            # Nu ar trebui sa se intample cu `strict: true`, dar reasoning_tokens
+            # poate consuma tot bugetul si lasa raspunsul trunchiat — acelasi
+            # gotcha ca la _EMPTY_ANSWER_FALLBACK_RO din orchestrator.py.
+            logger.warning("foundry complete_json: JSON invalid din model: %r", continut[:200])
+            raise AiProviderError("Modelul nu a raspuns cu JSON valid.") from exc
+
+        return StructuredCompletion(
+            data=date,
             tokens_in=usage.prompt_tokens if usage else 0,
             tokens_out=usage.completion_tokens if usage else 0,
             tokens_cached=cached,

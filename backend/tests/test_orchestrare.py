@@ -30,6 +30,7 @@ def test_tool_urile_nu_expun_identitatea_catre_model() -> None:
 
     assert {u.nume for u in unelte} == {
         "obtine_sold",
+        "obtine_conturi",
         "obtine_cashflow_lunar",
         "obtine_tranzactii_recente",
         "obtine_neregularitati",
