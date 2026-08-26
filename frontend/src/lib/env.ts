@@ -1,19 +1,4 @@
-/**
- * Singurul loc care citeste process.env in frontend — echivalentul
- * backend/app/core/config.py. Variabilele NEXT_PUBLIC_* raman scrise literal
- * (nu acces dinamic): Next.js le inlocuieste la build oriunde apar in cod,
- * inclusiv intr-un modul importat, deci centralizarea e sigura si pentru
- * cod care ajunge in bundle-ul de browser.
- *
- * BACKEND_INTERNAL_URL e singurul nume canonic pentru URL-ul backend-ului —
- * inainte existau trei (BACKEND_INTERNAL_URL/BACKEND_API_URL/BACKEND_URL),
- * aparute in paralel in fisiere diferite, cu un singur nume prezent de fapt
- * in .env (vezi istoricul din lib/data/backend.ts).
- */
 
-// "||", nu "??": cheile de mai jos pot fi prezente dar goale in .env
-// (SUPABASE_INTERNAL_URL="" e placeholder-ul documentat pentru cazul cloud),
-// iar "??" cade pe fallback doar la null/undefined, nu si la string gol.
 export const BACKEND_INTERNAL_URL = process.env.BACKEND_INTERNAL_URL || "http://localhost:8000";
 export const BACKEND_INTERNAL_API_KEY = process.env.BACKEND_INTERNAL_API_KEY;
 

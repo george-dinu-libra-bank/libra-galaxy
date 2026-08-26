@@ -46,6 +46,13 @@ class RaportCalitate:
 PRAG_UMBRE = 0.35
 PRAG_LUMINI = 0.25
 
+# Pentru un document, pragurile de mai sus n-au sens: o carte de identitate e
+# in mare parte alba, deci o poza buna are multi pixeli aproape albi. Se cere
+# si contrast prabusit, adica exact situatia in care cerneala nu se mai
+# distinge de hartie — vezi analizeaza_document.
+PRAG_LUMINI_DOCUMENT = 0.45
+PRAG_CONTRAST_DOCUMENT = 35.0
+
 # Deviatia standard sub care poza e "in ceata" — lumina difuza, fara contrast.
 PRAG_CONTRAST = 25.0
 
@@ -304,6 +311,7 @@ def analizeaza_document(imagine_bytes: bytes) -> RaportCalitate:
 
     medie, umbre, lumini = _expunere(gri)
     claritate = _claritate(gri)
+    contrast = _contrast(gri)
     reflexie = _reflexie_locala(gri)
     latura_lunga = max(arr.shape[0], arr.shape[1])
 
@@ -318,7 +326,17 @@ def analizeaza_document(imagine_bytes: bytes) -> RaportCalitate:
                 True,
             )
         )
-    elif medie > setari.calitate_luma_max or lumini > PRAG_LUMINI:
+    # Un buletin nu e o fata: cartea de identitate e in mare parte alba si
+    # bleu, deci o poza CORECTA are media lumei mare si multi pixeli aproape
+    # albi. Regula copiata de la selfie ("medie mare = prea luminoasa")
+    # respingea poze perfect lizibile — cu CNP-ul citit corect de OCR in
+    # aceeasi secunda.
+    #
+    # Ce strica de fapt OCR-ul nu e lumina multa, ci lumina care sterge
+    # diferenta dintre cerneala si hartie. De aceea se cer AMANDOUA: si multi
+    # pixeli arsi, si contrast prabusit. Un buletin luminos dar cu text negru
+    # clar are contrast mare si trece, cum si trebuie.
+    elif lumini > PRAG_LUMINI_DOCUMENT and contrast < PRAG_CONTRAST_DOCUMENT:
         probleme.append(
             Problema(
                 "prea_luminoasa",
@@ -360,6 +378,7 @@ def analizeaza_document(imagine_bytes: bytes) -> RaportCalitate:
         "medie_luma": round(medie, 1),
         "umbre": round(umbre, 3),
         "lumini": round(lumini, 3),
+        "contrast": round(contrast, 1),
         "reflexie": round(reflexie, 3),
         "latura_lunga": float(latura_lunga),
     }

@@ -262,3 +262,39 @@ def test_ruta_refuza_un_fisier_gol(client):
 
     assert raspuns.status_code == 422
     assert raspuns.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+# --- Buletin luminos, dar lizibil -------------------------------------------
+
+
+def _buletin_luminos(latura: int = 1200) -> bytes:
+    """
+    Cum arata de fapt o carte de identitate: fond aproape alb pe toata poza,
+    cu text negru peste. Media lumei e mare si multi pixeli sunt aproape albi
+    — ceea ce, cu regula de la selfie, o facea sa iasa "prea luminoasa".
+    """
+    arr = np.full((latura, latura, 3), 248, dtype=np.uint8)
+    for i in range(12):
+        y = 120 + i * 80
+        arr[y : y + 28, 100 : latura - 100] = 15  # randuri de text negru
+    return _poza(arr)
+
+
+def test_buletinul_luminos_cu_text_clar_nu_e_respins(fara_detector):
+    """
+    Regresie: un buletin fotografiat corect era respins ca "prea luminoasa",
+    desi OCR-ul ii citea CNP-ul in aceeasi secunda.
+    """
+    raport = calitate_poza.analizeaza_document(_buletin_luminos())
+
+    assert "prea_luminoasa" not in coduri(raport)
+    assert raport.acceptabila
+
+
+def test_buletinul_spalacit_e_tot_respins(fara_detector):
+    """Aceeasi lumina, dar fara text: nu mai exista contrast, deci nici ce citi."""
+    arr = np.full((1200, 1200, 3), 250, dtype=np.uint8)
+
+    raport = calitate_poza.analizeaza_document(_poza(arr))
+
+    assert "prea_luminoasa" in coduri(raport)

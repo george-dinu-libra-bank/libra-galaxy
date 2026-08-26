@@ -94,11 +94,16 @@ _FRAUD_PHRASES: tuple[str, ...] = (
 # cuvant care se termina in "e" urmat de " client" ar prinde fals-pozitiv
 # (ex. "ce conditii trebuie sa indeplineasca UN cliENT" nu, dar "sa fiE
 # client" da) — verificat, "este" intreg e suficient de specific.
+#
+# "are cont la"/"are cont in" raman radacini deschise (fara sa enumere "voi"/
+# "banca"/"sucursala"/"aceasta banca" separat) — raportat + reprodus live ca
+# "are cont la aceast banca" (fara "a" final, gresit de tastare) nu se
+# potrivea cu "are cont la aceasta banca": orice continuare specifica ar
+# rata mereu o formulare noua, exact lectia repetata de mai multe ori azi.
 _THIRD_PARTY_PHRASES: tuple[str, ...] = (
     "este un client al", "este client al", "este un client", "este client", "este clienta",
     "client al acestei banci", "clienta a acestei banci",
-    "are cont la voi", "are cont in banca", "are cont in sucursala",
-    "are cont la banca", "are cont la sucursala", "are cont la aceasta banca",
+    "are cont la", "are cont in",
     # "is a client of this bank" nu e aici: numele subiectului sta intre "is"
     # si "a client" ("Is John Smith a client..."), deci un substring literal
     # cu "is" nu s-ar potrivi niciodata — si o varianta fara "is" ("a client

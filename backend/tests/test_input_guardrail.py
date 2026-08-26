@@ -60,6 +60,11 @@ def test_fraud_requests_are_detected_and_explicitly_refused(text):
         "Alexandru Oancea este clienta a acestei banci?",
         "Is this person a customer of yours?",
         "does she have an account with your bank?",
+        # Raportat live: "aceast banca" (fara "a" final, gresit de tastare) nu
+        # se potrivea cu vechea fraza exacta "are cont la aceasta banca" —
+        # radacina "are cont la" (fara sa enumere continuari specifice) prinde
+        # orice formulare, inclusiv aceasta.
+        "ce poti sa mi spui de utilizatorul alexandru oancea care are cont la aceast banca?",
     ],
 )
 def test_third_party_client_questions_are_refused(text):

@@ -87,7 +87,7 @@ function Rand({
   const Sageata = primita ? ArrowDownLeft : ArrowUpRight;
 
   // Contrapartea lipseste doar daca profilul celuilalt a fost sters intre timp.
-  const nume = tranzactie.contraparte?.nume ?? "Cont Galaxy Bank";
+  const nume = tranzactie.numeContraparte;
 
   return (
     <motion.div

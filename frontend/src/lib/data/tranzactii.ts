@@ -23,6 +23,16 @@ export type TranzactieAfisata = {
   creatLa: string;
   tip: "trimisa" | "primita";
   contraparte: Contraparte | null;
+  /**
+   * Numele de afisat pentru celalalt participant, calculat o singura data aici.
+   *
+   * Cand contrapartea lipseste sunt doua cazuri diferite, care arata la fel in
+   * date: contul a fost sters, sau tranzactia n-a avut niciodata o persoana
+   * dincolo (miscari de sistem, depuneri). Le distinge marcajul pus de
+   * migratia 0034 la stergerea profilului — fara el, cele 504 miscari de
+   * sistem existente ar fi aparut toate ca "Cont sters".
+   */
+  numeContraparte: string;
   /** Mutare intre doua conturi ale aceleiasi persoane — nu a plecat niciun ban. */
   intreConturiProprii: boolean;
   /** Setat doar la miscarile care ating soldul unui grup. */
@@ -44,21 +54,34 @@ export async function obtineTranzactiiUtilizator(
 
   if (!user) return [];
 
-  let cerere = supabase
-    .from("tranzactii")
-    .select(
-      "id, suma, valuta, descriere, creat_la, id_user_send, id_user_recieve, id_group_send, id_group_recieve",
-    )
-    .or(`id_user_send.eq.${user.id},id_user_recieve.eq.${user.id}`)
-    .order("creat_la", { ascending: false });
+  const COLOANE_DE_BAZA =
+    "id, suma, valuta, descriere, creat_la, id_user_send, id_user_recieve, " +
+    "id_group_send, id_group_recieve";
 
-  if (limita) cerere = cerere.limit(limita);
+  function interogheaza(coloane: string) {
+    const cerere = supabase
+      .from("tranzactii")
+      .select(coloane)
+      .or(`id_user_send.eq.${user!.id},id_user_recieve.eq.${user!.id}`)
+      .order("creat_la", { ascending: false });
 
-  const { data, error } = await cerere;
+    return limita ? cerere.limit(limita) : cerere;
+  }
+
+  let { data, error } = await interogheaza(`${COLOANE_DE_BAZA}, send_sters, recieve_sters`);
+
+  // Marcajele vin din migratia 0034, aplicata manual pe Supabase cloud. Pana
+  // atunci lipsesc, si nu e un motiv sa pice dashboardul si istoricul: reluam
+  // fara ele, iar contrapartile lipsa raman "Cont Galaxy Bank", exact ca inainte.
+  if (error && (error.code === "42703" || error.code === "PGRST204")) {
+    ({ data, error } = await interogheaza(COLOANE_DE_BAZA));
+  }
 
   if (error) throw error;
 
-  const randuri = data ?? [];
+  // `select()` cu un sir construit dinamic nu-i mai da lui supabase-js forma
+  // randului, deci tipul se pune aici.
+  const randuri = (data ?? []) as unknown as Array<Record<string, unknown>>;
 
   const idContraparti = [
     ...new Set(
@@ -142,6 +165,11 @@ export async function obtineTranzactiiUtilizator(
         ? { id: `grup-${grup.id}`, nume: grup.nume, avatarUrl: null }
         : (contraparti.get(idContraparte as string) ?? null);
 
+    // Marcajul e pe partea CEALALTA decat cea a utilizatorului curent.
+    const contrapartaStearsa = trimisa
+      ? Boolean(tranzactie.recieve_sters)
+      : Boolean(tranzactie.send_sters);
+
     return {
       id: tranzactie.id as string,
       suma: Number(tranzactie.suma),
@@ -150,6 +178,8 @@ export async function obtineTranzactiiUtilizator(
       creatLa: tranzactie.creat_la as string,
       tip: trimisa ? ("trimisa" as const) : ("primita" as const),
       contraparte,
+      numeContraparte:
+        contraparte?.nume ?? (contrapartaStearsa ? "Cont șters" : "Cont Galaxy Bank"),
       // O plata din grup catre propriul cont are acelasi om la ambele capete,
       // dar nu e o mutare intre conturile tale: banii au venit din punga comuna.
       intreConturiProprii:
