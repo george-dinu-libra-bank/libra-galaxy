@@ -28,7 +28,9 @@ from app.repositories.admin_repository import AdminRepository, AnalizaRepository
 from app.schemas.admin import (
     AnalizaRequest,
     AnalizaResponse,
+    CerereInchidereContResponse,
     CerereStergereAdminResponse,
+    DecizieInchidereRequest,
     DecizieStergereRequest,
     ContSemnalatResponse,
     IstoricAnalizaResponse,
@@ -370,4 +372,76 @@ async def sterge_client(
     if id_user:
         await depozit.sterge_utilizator_auth(str(id_user))
 
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Cereri de inchidere a unui CONT BANCAR
+#
+# Alta operatiune decat cele de mai sus: acolo pleaca omul din banca, aici se
+# inchide un singur cont bancar si omul ramane client. Cererea o depune clientul
+# direct prin RLS (politicile din 0040); aici e doar partea bancii, care are
+# nevoie de service-role ca sa mute bani.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/cereri-inchidere-cont", response_model=list[CerereInchidereContResponse])
+async def cereri_inchidere_cont(
+    doar_deschise: bool = Query(default=False),
+    administrator: UserContext = Depends(cere_administrator),
+    client: Client = Depends(get_admin_supabase),
+) -> list[CerereInchidereContResponse]:
+    """Coada, cu toate conturile deschise ale clientului in fiecare rand.
+
+    Analistul trebuie sa poata alege destinatia banilor dintr-o lista reala, nu
+    sa o ghiceasca — deci vine odata cu cererea, dintr-o singura citire.
+    """
+    depozit = AdminRepository(client)
+    return [
+        CerereInchidereContResponse(**cerere)
+        for cerere in await depozit.cereri_inchidere_cont(doar_deschise)
+    ]
+
+
+@router.post(
+    "/cereri-inchidere-cont/{id_cerere}/decizie",
+    response_model=CerereInchidereContResponse,
+)
+async def decide_inchidere_cont(
+    id_cerere: UUID,
+    cerere: DecizieInchidereRequest,
+    administrator: UserContext = Depends(cere_administrator),
+    client: Client = Depends(get_admin_supabase),
+) -> CerereInchidereContResponse:
+    """Aproba (muta banii, inchide cardurile, inchide contul) sau respinge.
+
+    Garzile stau in `public.inchide_cont_bancar` (0040), nu aici: contul
+    principal, contul blocat, soldul negativ si destinatia invalida sunt refuzate
+    de RPC, intr-o singura tranzactie cu mutarea banilor. Ruta doar transmite.
+    """
+    depozit = AdminRepository(client)
+    rezultat = await depozit.decide_inchidere_cont(
+        id_cerere,
+        UUID(administrator.user_id),
+        cerere.aproba,
+        id_destinatie=cerere.id_cont_destinatie,
+        motiv=cerere.motiv,
+    )
+    return CerereInchidereContResponse(**rezultat)
+
+
+@router.post("/conturi/{id_cont}/redeschide", status_code=204)
+async def redeschide_cont(
+    id_cont: UUID,
+    administrator: UserContext = Depends(cere_administrator),
+    client: Client = Depends(get_admin_supabase),
+) -> Response:
+    """Anuleaza o inchidere gresita.
+
+    Banii NU se intorc singuri — au plecat intr-un cont real si pot fi deja
+    cheltuiti. Se redeschide contul gol, iar restul se rezolva cu un transfer
+    obisnuit; asta scrie si in notificarea catre client.
+    """
+    depozit = AdminRepository(client)
+    await depozit.redeschide_cont(id_cont, UUID(administrator.user_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)

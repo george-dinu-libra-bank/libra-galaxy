@@ -55,7 +55,13 @@ export function ListaConturi({ conturi }: { conturi: ContBancar[] }) {
                   {formateazaSuma(cont.sold, cont.valuta)}
                 </p>
 
-                <MeniuCont cont={cont} />
+                {/* Celelalte conturi deschise: destinatiile posibile pentru
+                    banii ramasi, daca omul cere inchiderea acestuia. Lista o
+                    avem deja aici, deci nu se mai citeste o data. */}
+                <MeniuCont
+                  cont={cont}
+                  celelalte={conturi.filter((alt) => alt.id !== cont.id)}
+                />
               </div>
 
               {cont.blocatDeBanca ? (
