@@ -31,6 +31,7 @@ from app.context.builder import AssembledContext
 from app.core.security import Principal
 from app.providers.base import ChatMessage, ChatProvider
 from app.tools.base import SelectedTool, ToolResult
+from app.tools.categorii_tranzactii import SUMA_PATTERN as _SUMA
 
 # Aceeasi normalizare ca in orchestration/intent.py: casefold + fara diacritice,
 # ca "rată" si "rata" sa fie acelasi lucru.
@@ -57,7 +58,8 @@ _VREA_CERERE = (
 # se alegea vechimea (3 ani -> 36 luni) in loc de durata ceruta. "de" optional
 # intre numar si unitate, fiindca romana il pune ("48 de luni") si nu-l pune
 # ("48 luni") la fel de des.
-_SUMA = re.compile(r"(\d[\d.\s]{2,})\s*(?:lei|ron)?")
+# _SUMA vine din categorii_tranzactii.py (SUMA_PATTERN) — acelasi tipar, reutilizat
+# de find_transaction_for_receipt, nu duplicat.
 _ANI = re.compile(r"pe\s+(\d{1,2})\s*(?:de\s+)?(?:ani|an)\b")
 _LUNI = re.compile(r"pe\s+(\d{1,3})\s*(?:de\s+)?(?:luni|luna)\b")
 

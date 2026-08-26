@@ -41,10 +41,10 @@ export async function trimiteMesaj(
   citesteCuVoce: boolean = false,
 ): Promise<RezultatMesaj> {
   const trimis = text.trim();
-  if (!trimis) {
+  if (!trimis && atasamentIds.length === 0) {
     return {
       conversatieId: conversatieId ?? "", mesajId: "", text: "", citari: [], nivelIncredere: null, agentId: "",
-      eroare: "Scrie ceva mai intai.",
+      eroare: "Scrie ceva sau atașează un fișier.",
     };
   }
 
@@ -56,7 +56,13 @@ export async function trimiteMesaj(
     confidence: NivelIncredere;
     agent_id: string;
     file: { url: string; filename: string; kind: string } | null;
-    quick_action: { kind: string; accounts: { id: string; name: string | null; iban: string; currency: string | null }[]; url: string } | null;
+    quick_action: {
+      kind: string;
+      accounts: { id: string; name: string | null; iban: string; currency: string | null }[];
+      url: string;
+      transaction_id?: string | null;
+      suggested_category?: string | null;
+    } | null;
     audio_base64: string | null;
   }>("/assistant/messages", {
     method: "POST",
@@ -84,10 +90,23 @@ export async function trimiteMesaj(
           tip: date.quick_action.kind,
           conturi: date.quick_action.accounts.map((cont) => ({ id: cont.id, nume: cont.name, iban: cont.iban, valuta: cont.currency })),
           url: date.quick_action.url,
+          idTranzactie: date.quick_action.transaction_id,
+          categorieSugerata: date.quick_action.suggested_category,
         }
       : null,
     audioBase64: date.audio_base64 ?? undefined,
   };
+}
+
+/** Scrierea reala din spatele butonului "Confirmă" — niciodata apelata de
+ *  model, doar de un click (CLAUDE.md #9). */
+export async function confirmaCategorie(idTranzactie: string, categorie: string): Promise<{ eroare?: string }> {
+  const { eroare } = await apelBackend("/api/v1/analiza/categorii-manuale", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id_tranzactie: idTranzactie, categorie }),
+  });
+  return eroare ? { eroare } : {};
 }
 
 /** Incarca un PDF sau o poza, inainte de a fi atasat(a) unui mesaj. */

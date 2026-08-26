@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.agents.base import AttachmentContext
 from app.agents.document_intelligence import DocumentIntelligenceAgent
 from app.context.builder import AssembledContext
 from app.core.security import Principal
@@ -86,3 +87,33 @@ def test_generic_intents_do_not_narrow_by_category():
     for intent in ("document_question", "knowledge_question", "unknown"):
         selections = DocumentIntelligenceAgent().select_tools("ce comisioane are transferul SEPA", intent)
         assert "categorie_hint" not in selections[0].args
+
+
+@pytest.mark.anyio
+async def test_attachment_sent_alone_gets_a_proactive_suggestion_not_a_refusal():
+    """Raportat live: trimiterea unei poze fara nicio intrebare trebuie sa
+    primeasca o descriere + o sugestie a ce se poate face cu ea — nu refuzul
+    generic de scop (care se aplica doar cand chiar nu exista nimic de
+    analizat, nici hit-uri, nici atasament)."""
+    agent = DocumentIntelligenceAgent()
+    provider = ChatProviderFals()
+    atasament = AttachmentContext(kind="imagine", filename="chitanta.jpg", image_data_uri="data:image/jpeg;base64,AAA=")
+
+    answer = await agent.respond(UTILIZATOR_RO, "", CONTEXT_GOL, [], provider, attachments=[atasament])
+
+    assert answer.text == "raspuns"
+    system_prompt = provider.mesaje_primite[0][0].content
+    assert "sugereaza" in system_prompt or "sugerezi" in system_prompt or "sugera" in system_prompt
+    assert "NU afirma ca ai facut deja legatura" in system_prompt
+
+
+@pytest.mark.anyio
+async def test_attachment_sent_alone_in_english_uses_the_english_rule():
+    agent = DocumentIntelligenceAgent()
+    provider = ChatProviderFals()
+    atasament = AttachmentContext(kind="imagine", filename="receipt.jpg", image_data_uri="data:image/jpeg;base64,AAA=")
+
+    await agent.respond(UTILIZATOR_EN, "", CONTEXT_GOL, [], provider, attachments=[atasament])
+
+    system_prompt = provider.mesaje_primite[0][0].content
+    assert "Do NOT claim you have already linked" in system_prompt

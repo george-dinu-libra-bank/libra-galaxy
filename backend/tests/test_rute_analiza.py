@@ -15,3 +15,9 @@ def test_cashflow_cere_autentificare() -> None:
 
 def test_tranzactii_categorizate_cere_autentificare() -> None:
     assert CLIENT.get("/api/v1/analiza/tranzactii-categorizate").status_code == 401
+
+
+def test_categorii_manuale_cere_autentificare() -> None:
+    assert CLIENT.post(
+        "/api/v1/analiza/categorii-manuale", json={"id_tranzactie": "abc", "categorie": "restaurant"}
+    ).status_code == 401

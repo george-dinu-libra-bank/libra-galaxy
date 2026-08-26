@@ -45,6 +45,16 @@ class TranzactieCategorizata(BaseModel):
     categorie: str
 
 
+class SeteazaCategorieRequest(BaseModel):
+    id_tranzactie: str
+    categorie: str
+
+
+class SeteazaCategorieResponse(BaseModel):
+    id_tranzactie: str
+    categorie: str
+
+
 class AlertaResponse(BaseModel):
     id_tranzactie: str
     data: str

@@ -19,6 +19,9 @@ _INTENT_RISK: dict[str, RiskLevel] = {
     "group_intent": RiskLevel.LOW,
     # Raspuns fix, fara date sensibile in afara de numele deja cunoscut al utilizatorului.
     "greeting": RiskLevel.LOW,
+    # Doar citire (find_transaction_for_receipt) — scrierea categoriei se face
+    # separat, prin ruta determinista apelata de butonul de confirmare, niciodata de aici.
+    "categorize_receipt_intent": RiskLevel.LOW,
 }
 
 

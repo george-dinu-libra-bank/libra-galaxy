@@ -35,6 +35,21 @@ _NO_MATCH_TEXT_EN = (
     "need something else."
 )
 
+_ATTACHMENT_ONLY_RULE_RO = (
+    "Utilizatorul a trimis un atasament (poza sau document) fara nicio intrebare. Descrie pe scurt "
+    "ce contine, apoi sugereaza explicit ce poti face cu el: sa verifici carei categorii de cheltuiala "
+    "ii corespunde, sau sa il legi de o tranzactie reala din istoric daca utilizatorul confirma suma si "
+    "data platii. NU afirma ca ai facut deja legatura sau ca ai categorisit ceva — doar sugereaza pasul "
+    "urmator si intreaba daca utilizatorul vrea sa continue."
+)
+_ATTACHMENT_ONLY_RULE_EN = (
+    "The user sent an attachment (photo or document) without asking anything. Briefly describe what "
+    "it contains, then explicitly suggest what you can do with it: check which spending category it "
+    "matches, or link it to a real transaction from their history if they confirm the amount and date. "
+    "Do NOT claim you have already linked or categorized anything — just suggest the next step and ask "
+    "if they want to proceed."
+)
+
 _SCORE_HIGH_THRESHOLD = 0.65
 _SCORE_MEDIUM_THRESHOLD = 0.5
 
@@ -84,7 +99,13 @@ class DocumentIntelligenceAgent:
         ]
         confidence = _confidence_from_score(hits[0]["score"]) if hits else CONFIDENCE_MEDIUM
 
-        if hits:
+        if not user_text.strip() and attachments:
+            # Atasament trimis singur, fara intrebare — nu are sens sa cerem
+            # citare stricta din fragmente RAG (n-a fost cautat nimic relevant,
+            # vezi search_bank_knowledge cu query gol); modelul trebuie doar sa
+            # descrie atasamentul si sa sugereze pasul urmator.
+            grounding_rule = _ATTACHMENT_ONLY_RULE_RO if principal.locale == "ro" else _ATTACHMENT_ONLY_RULE_EN
+        elif hits:
             grounding_rule = "Raspunde EXCLUSIV din fragmentele regasite de mai sus si din fisierul atasat, daca exista."
         else:
             grounding_rule = "Nu exista fragmente din baza de cunostinte — raspunde EXCLUSIV din fisierul atasat de utilizator."

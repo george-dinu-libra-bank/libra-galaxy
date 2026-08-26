@@ -12,23 +12,28 @@ gresit iese la iveala imediat.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 
 from app.agents.base import AgentAnswer
 from app.agents.specs import DOCUMENT_INTELLIGENCE, FINANCIAL_ADVISOR
+from app.agents.transaction_intelligence import TransactionIntelligenceAgent
 from app.context.builder import AssembledContext
 from app.core.security import Principal
 from app.orchestration.input_guardrail import REFUSAL_TEXT
 from app.orchestration.orchestrator import Orchestrator
 from app.orchestration.routing import AgentRouter
-from app.repositories.banking_read_repository import AccountRow
+from app.providers.base import ChatCompletion
+from app.repositories.attachment_repository import Attachment
+from app.repositories.banking_read_repository import AccountRow, TransactionRow
 from app.repositories.conversation_repository import Conversation
 from app.repositories.memory_repository import UserMemory
 from app.repositories.message_repository import Message
 from app.repositories.summary_repository import ConversationSummary
 from app.services.transaction_export_service import GeneratedExport
+from app.tools.banking_tools import build_banking_tools
 from app.tools.registry import ToolRegistry
 
 UTILIZATOR = Principal(user_id=str(uuid4()), role="customer", permissions={"assistant:use"})
@@ -118,9 +123,12 @@ class TelemetryFalse:
         pass
 
 
+@dataclass
 class AttachmentsFalse:
+    inregistrari: dict[str, object] = field(default_factory=dict)
+
     async def get_owned_many(self, user_id, attachment_ids):
-        return []
+        return [self.inregistrari[id_] for id_ in attachment_ids if id_ in self.inregistrari]
 
     async def attach_to_message(self, attachment_ids, message_id) -> None:
         pass
@@ -185,6 +193,9 @@ def _construieste_orchestrator(
     export_service: ExportServiceFalse | None = None,
     banking: BankingFalse | None = None,
     profiles: ProfilesFalse | None = None,
+    attachments: AttachmentsFalse | None = None,
+    tool_registry: ToolRegistry | None = None,
+    chat_provider=None,
 ) -> Orchestrator:
     return Orchestrator(
         conversations=ConversationsFalse(),
@@ -192,12 +203,12 @@ def _construieste_orchestrator(
         summaries=SummariesFalse(),
         memories=memories or MemoriesFalse(),
         telemetry=TelemetryFalse(),
-        attachments=AttachmentsFalse(),
+        attachments=attachments or AttachmentsFalse(),
         attachment_storage=AttachmentStorageFalse(),
-        tool_registry=ToolRegistry([]),
+        tool_registry=tool_registry or ToolRegistry([]),
         agents=agents or {"document_intelligence": AgentFals()},
         router=AgentRouter(),
-        chat_provider=ChatProviderFals(),
+        chat_provider=chat_provider or ChatProviderFals(),
         environment="test",
         chat_price_in=0.0,
         chat_price_out=0.0,
@@ -558,3 +569,125 @@ async def test_fraud_adjacent_transfer_request_is_refused_not_routed_to_transfer
     assert result.agent_id == "input_guardrail"
     assert result.quick_action is None
     assert "nu este permisă" in result.text
+
+
+class AttachmentStorageDescarcaImagine:
+    async def download(self, path: str) -> bytes:
+        return b"\xff\xd8\xff\xe0falsa-imagine-jpeg"
+
+
+@pytest.mark.anyio
+async def test_send_message_allows_attachment_only() -> None:
+    """Un atasament trimis fara nicio intrebare trebuie sa ajunga normal la
+    document_intelligence (nu la un refuz sau la o eroare) — text gol, dar
+    attachment_ids nevid. Titlul conversatiei foloseste numele fisierului,
+    nu ramane gol."""
+    conturi = ConversationsFalse()
+    attachments = AttachmentsFalse(
+        inregistrari={"atas-1": Attachment(
+            id="atas-1", user_id=UTILIZATOR.user_id, kind="imagine", filename="chitanta.jpg",
+            storage_path="x/chitanta.jpg", content_type="image/jpeg", size_bytes=10, extracted_text=None,
+        )}
+    )
+    agent = AgentFals(text="Vad o chitanță — vrei să o leg de o tranzacție?")
+    orchestrator = Orchestrator(
+        conversations=conturi,
+        messages=MessagesFalse(),
+        summaries=SummariesFalse(),
+        memories=MemoriesFalse(),
+        telemetry=TelemetryFalse(),
+        attachments=attachments,
+        attachment_storage=AttachmentStorageDescarcaImagine(),
+        tool_registry=ToolRegistry([]),
+        agents={"document_intelligence": agent},
+        router=AgentRouter(),
+        chat_provider=ChatProviderFals(),
+        environment="test",
+        chat_price_in=0.0,
+        chat_price_out=0.0,
+        export_service=ExportServiceFalse(),
+        banking=BankingFalse(),
+        profiles=ProfilesFalse(),
+    )
+
+    result = await orchestrator.handle_message(UTILIZATOR, None, "", attachment_ids=["atas-1"])
+
+    assert result.agent_id == "document_intelligence"
+    assert result.text == "Vad o chitanță — vrei să o leg de o tranzacție?"
+    assert conturi.titluri_setate == ["Atașament: chitanta.jpg"]
+
+
+class ChatProviderRaspunsFixat:
+    deployment = "test-deployment"
+
+    async def complete(self, messages) -> ChatCompletion:
+        return ChatCompletion(
+            text="Am găsit o tranzacție potrivită.", tokens_in=1, tokens_out=1,
+            tokens_cached=0, deployment=self.deployment,
+        )
+
+
+class BankingRepoCuTranzactii:
+    def __init__(self, transactions: list[TransactionRow]) -> None:
+        self._transactions = transactions
+
+    def list_accounts(self, user_id: str):
+        return []
+
+    def list_recent_transactions(self, user_id: str, limit: int = 50) -> list[TransactionRow]:
+        return self._transactions
+
+
+# Spre deosebire de UTILIZATOR (doar "assistant:use"): find_transaction_for_receipt
+# trece prin execute_tools() si cere real "accounts:read" — testele de mai jos
+# nu ocolesc executorul (spre deosebire de AgentFals, care nu cere niciun tool).
+UTILIZATOR_CU_CONTURI = Principal(
+    user_id=str(uuid4()), role="customer", permissions={"assistant:use", "accounts:read"}
+)
+
+
+@pytest.mark.anyio
+async def test_categorize_receipt_intent_attaches_a_confirm_category_quick_action() -> None:
+    """Cand exista exact o tranzactie recenta cu suma mentionata si o categorie
+    recunoscuta, quick_action-ul de confirmare trebuie atasat determinist —
+    modelul nu alege singur intre tranzactii (CLAUDE.md #9), doar raspunde normal."""
+    tranzactie = TransactionRow(
+        id="tx-chitanta", amount=150.0, currency="RON", description="Cina la restaurant",
+        created_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        incoming=False, counterparty_name=None,
+    )
+    tool_registry = ToolRegistry(build_banking_tools(BankingRepoCuTranzactii([tranzactie])))
+    orchestrator = _construieste_orchestrator(
+        agents={"transaction_intelligence": TransactionIntelligenceAgent()},
+        tool_registry=tool_registry,
+        chat_provider=ChatProviderRaspunsFixat(),
+    )
+
+    result = await orchestrator.handle_message(
+        UTILIZATOR_CU_CONTURI, None, "Ia la cunostinta aceasta plata, era 150 lei la restaurant"
+    )
+
+    assert result.agent_id == "transaction_intelligence"
+    assert result.text == "Am găsit o tranzacție potrivită."
+    assert result.quick_action is not None
+    assert result.quick_action.kind == "confirma_categorie"
+    assert result.quick_action.transaction_id == "tx-chitanta"
+    assert result.quick_action.suggested_category == "restaurant"
+
+
+@pytest.mark.anyio
+async def test_categorize_receipt_intent_without_a_clear_match_has_no_quick_action() -> None:
+    """Fara nicio tranzactie potrivita, raspunsul modelului (ghidat sa ceara
+    clarificari) ramane singurul rezultat — nu se ataseaza niciun buton."""
+    tool_registry = ToolRegistry(build_banking_tools(BankingRepoCuTranzactii([])))
+    orchestrator = _construieste_orchestrator(
+        agents={"transaction_intelligence": TransactionIntelligenceAgent()},
+        tool_registry=tool_registry,
+        chat_provider=ChatProviderRaspunsFixat(),
+    )
+
+    result = await orchestrator.handle_message(
+        UTILIZATOR_CU_CONTURI, None, "Ia la cunostinta aceasta plata, era 150 lei"
+    )
+
+    assert result.quick_action is None

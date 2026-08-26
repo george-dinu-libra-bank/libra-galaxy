@@ -8,9 +8,11 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+from app.core.errors import ConfigurationError, ResourceNotFoundError, ValidationError
 from app.ml.caracteristici import normalizeaza
 from app.ml.neregularitati import DetectorNeregularitati, Neregularitate
 from app.repositories.card_repository import CardRepository
+from app.repositories.categorie_manuala_repository import CategorieManualaRepository
 from app.repositories.cont_repository import ContRepository
 from app.repositories.tranzactie_repository import TranzactieRepository
 from app.schemas.analiza import (
@@ -20,7 +22,7 @@ from app.schemas.analiza import (
     LunaCashflow,
     SoldSumar,
 )
-from app.tools.categorii_tranzactii import categorizeaza
+from app.tools.categorii_tranzactii import CATEGORII_VALIDE, categorizeaza
 
 MAX_LUNI = 12
 MAX_ZILE = 365
@@ -49,12 +51,14 @@ class AnalizaService:
         conturi: ContRepository | None = None,
         detector: DetectorNeregularitati | None = None,
         limita_randuri: int = 1000,
+        categorii_manuale: CategorieManualaRepository | None = None,
     ) -> None:
         self._tranzactii = tranzactii
         self._carduri = carduri
         self._conturi = conturi
         self._detector = detector or DetectorNeregularitati()
         self._limita = limita_randuri
+        self._categorii_manuale = categorii_manuale
 
     async def sold_sumar(self, user_id: UUID) -> SoldSumar:
         conturi = await self._conturi.ale_utilizatorului(user_id) if self._conturi else []
@@ -121,6 +125,7 @@ class AnalizaService:
         acum = datetime.now(timezone.utc)
         inceput = _inceput_de_luna(acum)
         randuri = await self._tranzactii.intre(user_id, inceput, acum, self._limita)
+        suprascrieri = await self._suprascrieri(randuri)
 
         totaluri: dict[str, float] = defaultdict(float)
         for rand in randuri:
@@ -128,7 +133,7 @@ class AnalizaService:
                 continue
             if str(rand.get("id_user_send")) != str(user_id):
                 continue  # doar cheltuielile (bani iesiti), nu incasarile
-            categorie = categorizeaza(rand.get("descriere"), None)
+            categorie = suprascrieri.get(str(rand["id"])) or categorizeaza(rand.get("descriere"), None)
             totaluri[categorie] += float(rand["suma"])
 
         categorii = sorted(
@@ -147,6 +152,8 @@ class AnalizaService:
         randuri = await self._tranzactii.intre(
             user_id, acum - timedelta(days=zile), acum, self._limita
         )
+        randuri = randuri[:limita]
+        suprascrieri = await self._suprascrieri(randuri)
         return [
             {
                 "data": str(rand["creat_la"])[:10],
@@ -156,11 +163,35 @@ class AnalizaService:
                 "directie": "iesire"
                 if str(rand.get("id_user_send")) == str(user_id)
                 else "intrare",
-                # Determinist (tools/categorii_tranzactii.py), niciodata ghicit de model.
-                "categorie": categorizeaza(rand.get("descriere"), None),
+                # Suprascrierea confirmata de utilizator (0036) are prioritate;
+                # altfel determinist (tools/categorii_tranzactii.py), niciodata
+                # ghicit de model.
+                "categorie": suprascrieri.get(str(rand["id"])) or categorizeaza(rand.get("descriere"), None),
             }
-            for rand in randuri[:limita]
+            for rand in randuri
         ]
+
+    async def _suprascrieri(self, randuri: list[dict]) -> dict[str, str]:
+        if not self._categorii_manuale or not randuri:
+            return {}
+        return await self._categorii_manuale.pentru_tranzactii([rand["id"] for rand in randuri])
+
+    async def seteaza_categorie_manuala(self, user_id: UUID, tranzactie_id: UUID, categorie: str) -> None:
+        """Scrierea reala din spatele butonului "Confirmă" din chat — niciodata
+        apelata de model, doar de ruta determinista (CLAUDE.md #9)."""
+        if categorie not in CATEGORII_VALIDE:
+            raise ValidationError(f"Categorie necunoscuta: {categorie}")
+
+        # RLS (0002: "tranzactii proprii: select") face verificarea de
+        # proprietate: daca tranzactia nu exista sau nu e a lui user_id (clientul
+        # cu care a fost construit acest service), .obtine() intoarce None.
+        tranzactie = await self._tranzactii.obtine(tranzactie_id)
+        if tranzactie is None:
+            raise ResourceNotFoundError("Tranzactia nu exista sau nu iti apartine.")
+
+        if self._categorii_manuale is None:
+            raise ConfigurationError("AnalizaService a fost construit fara CategorieManualaRepository.")
+        await self._categorii_manuale.seteaza(tranzactie_id, user_id, categorie)
 
     async def neregularitati(self, user_id: UUID, zile: int = 180) -> list[Neregularitate]:
         zile = max(1, min(zile, MAX_ZILE))

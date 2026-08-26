@@ -10,6 +10,14 @@ from app.tools.categorii_tranzactii import CATEGORIE_IMPLICITA, categorizeaza
         ("Chirie apartament", None, "locuinta"),
         ("Factura Enel Energie", None, "utilitati"),
         ("Alimentare Petrom", None, "masina"),
+        # Raportat live: "benzina" mergea deja, dar "drum" si alti termeni
+        # auto cadeau pe "altele" — radacini adaugate, nu doar comercianti.
+        ("Plata drum spre munte", None, "masina"),
+        ("Revizie anuala", None, "masina"),
+        ("Anvelope de iarna", None, "masina"),
+        ("ITP", None, "masina"),
+        ("Vinieta Ungaria", None, "masina"),
+        ("Autostrada A1", None, "masina"),
         ("Cina la restaurant", None, "restaurant"),
         ("Reteta", "Farmacia Tei", "sanatate"),
         ("Abonament Netflix lunar", None, "abonamente"),

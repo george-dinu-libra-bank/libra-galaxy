@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.core.errors import ConfigurationError, ResourceNotFoundError, ValidationError
 from app.services.analiza_service import MAX_TRANZACTII_LISTATE, AnalizaService
 
 EU = uuid4()
@@ -20,6 +21,23 @@ class TranzactiiFalse:
             for r in self.randuri
             if start <= datetime.fromisoformat(r["creat_la"]) <= sfarsit
         ]
+
+    async def obtine(self, tranzactie_id):
+        return next((r for r in self.randuri if r["id"] == str(tranzactie_id)), None)
+
+
+class CategoriiManualeFalse:
+    def __init__(self, suprascrieri: dict[str, str] | None = None) -> None:
+        self.suprascrieri = suprascrieri or {}
+        self.scrise: list[tuple] = []
+
+    async def pentru_tranzactii(self, tranzactie_ids):
+        cerute = {str(id_) for id_ in tranzactie_ids}
+        return {id_: cat for id_, cat in self.suprascrieri.items() if id_ in cerute}
+
+    async def seteaza(self, id_tranzactie, id_user, categorie):
+        self.scrise.append((str(id_tranzactie), str(id_user), categorie))
+        self.suprascrieri[str(id_tranzactie)] = categorie
 
 
 class CarduriFalse:
@@ -177,3 +195,93 @@ async def test_perioadele_cerute_sunt_plafonate() -> None:
 
     assert len((await service.cashflow_lunar(EU, luni=999)).luni) <= 12
     assert len(await service.tranzactii_recente(EU, zile=99999, limita=999)) <= MAX_TRANZACTII_LISTATE
+
+
+@pytest.mark.anyio
+async def test_categoria_manuala_suprascrie_categorizeaza_in_cheltuieli_pe_categorie() -> None:
+    """Raportat live: un transfer catre un comerciant necunoscut cade pe
+    "altele", desi utilizatorul a confirmat explicit din asistent ca e
+    "restaurant" — suprascrierea (0036) trebuie sa aiba prioritate."""
+    tranzactie = _tranzactie(0, 100.0, iesire=True, descriere="Comerciant necunoscut XYZ")
+    service = AnalizaService(
+        TranzactiiFalse([tranzactie]),
+        CarduriFalse([]),
+        categorii_manuale=CategoriiManualeFalse({tranzactie["id"]: "restaurant"}),
+    )
+
+    raspuns = await service.cheltuieli_pe_categorie_luna_curenta(EU)
+
+    assert len(raspuns.categorii) == 1
+    assert raspuns.categorii[0].categorie == "restaurant"
+    assert raspuns.categorii[0].total == 100.0
+
+
+@pytest.mark.anyio
+async def test_categoria_manuala_suprascrie_categorizeaza_in_tranzactii_recente() -> None:
+    tranzactie = _tranzactie(0, 42.0, iesire=True, descriere="Comerciant necunoscut XYZ")
+    service = AnalizaService(
+        TranzactiiFalse([tranzactie]),
+        CarduriFalse([]),
+        categorii_manuale=CategoriiManualeFalse({tranzactie["id"]: "masina"}),
+    )
+
+    randuri = await service.tranzactii_recente(EU)
+
+    assert randuri[0]["categorie"] == "masina"
+
+
+@pytest.mark.anyio
+async def test_fara_suprascriere_categorizeaza_ramane_implicitul() -> None:
+    tranzactie = _tranzactie(0, 42.0, iesire=True, descriere="Comerciant necunoscut XYZ")
+    service = AnalizaService(
+        TranzactiiFalse([tranzactie]), CarduriFalse([]), categorii_manuale=CategoriiManualeFalse({}),
+    )
+
+    randuri = await service.tranzactii_recente(EU)
+
+    assert randuri[0]["categorie"] == "altele"
+
+
+@pytest.mark.anyio
+async def test_seteaza_categorie_manuala_scrie_cand_tranzactia_apartine_utilizatorului() -> None:
+    tranzactie = _tranzactie(0, 150.0, iesire=True, descriere="Cina la restaurant")
+    categorii_manuale = CategoriiManualeFalse()
+    service = AnalizaService(
+        TranzactiiFalse([tranzactie]), CarduriFalse([]), categorii_manuale=categorii_manuale,
+    )
+
+    await service.seteaza_categorie_manuala(EU, tranzactie["id"], "restaurant")
+
+    assert categorii_manuale.scrise == [(tranzactie["id"], str(EU), "restaurant")]
+
+
+@pytest.mark.anyio
+async def test_seteaza_categorie_manuala_respinge_o_categorie_necunoscuta() -> None:
+    tranzactie = _tranzactie(0, 150.0, iesire=True)
+    service = AnalizaService(
+        TranzactiiFalse([tranzactie]), CarduriFalse([]), categorii_manuale=CategoriiManualeFalse(),
+    )
+
+    with pytest.raises(ValidationError):
+        await service.seteaza_categorie_manuala(EU, tranzactie["id"], "categorie-inventata")
+
+
+@pytest.mark.anyio
+async def test_seteaza_categorie_manuala_respinge_o_tranzactie_care_nu_exista_sau_nu_e_a_lui() -> None:
+    # TranzactiiFalse.obtine() simuleaza RLS: o tranzactie straina/inexistenta
+    # nu se gaseste niciodata, indiferent de id_user dat aici.
+    service = AnalizaService(
+        TranzactiiFalse([]), CarduriFalse([]), categorii_manuale=CategoriiManualeFalse(),
+    )
+
+    with pytest.raises(ResourceNotFoundError):
+        await service.seteaza_categorie_manuala(EU, str(uuid4()), "restaurant")
+
+
+@pytest.mark.anyio
+async def test_seteaza_categorie_manuala_fara_repository_e_o_eroare_de_configurare() -> None:
+    tranzactie = _tranzactie(0, 150.0, iesire=True)
+    service = AnalizaService(TranzactiiFalse([tranzactie]), CarduriFalse([]))
+
+    with pytest.raises(ConfigurationError):
+        await service.seteaza_categorie_manuala(EU, tranzactie["id"], "restaurant")

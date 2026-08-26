@@ -1,10 +1,19 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Query
 from supabase import Client
 
 from app.agents.registru import construieste_analiza
 from app.api.dependencies import UserContext, get_current_user, get_user_supabase
+from app.core.errors import ValidationError
 from app.infrastructure.config import Settings, get_settings
-from app.schemas.analiza import CashflowResponse, CheltuieliPeCategorieResponse, TranzactieCategorizata
+from app.schemas.analiza import (
+    CashflowResponse,
+    CheltuieliPeCategorieResponse,
+    SeteazaCategorieRequest,
+    SeteazaCategorieResponse,
+    TranzactieCategorizata,
+)
 
 router = APIRouter(prefix="/analiza", tags=["analiza"])
 
@@ -47,3 +56,24 @@ async def tranzactii_categorizate(
     analiza = construieste_analiza(client_supabase, settings)
     randuri = await analiza.tranzactii_recente(user.user_id, zile=zile, limita=limita)
     return [TranzactieCategorizata(**rand) for rand in randuri]
+
+
+@router.post("/categorii-manuale", response_model=SeteazaCategorieResponse)
+async def seteaza_categorie_manuala(
+    body: SeteazaCategorieRequest,
+    user: UserContext = Depends(get_current_user),
+    client_supabase: Client = Depends(get_user_supabase),
+    settings: Settings = Depends(get_settings),
+) -> SeteazaCategorieResponse:
+    """Scrierea reala din spatele butonului de confirmare din chat (asistent),
+    apelata direct de un click, niciodata de model (CLAUDE.md #9). Validarea
+    categoriei si verificarea de proprietate a tranzactiei traiesc in
+    AnalizaService.seteaza_categorie_manuala, nu aici."""
+    try:
+        id_tranzactie = UUID(body.id_tranzactie)
+    except ValueError as exc:
+        raise ValidationError("id_tranzactie nu este un identificator valid.") from exc
+
+    analiza = construieste_analiza(client_supabase, settings)
+    await analiza.seteaza_categorie_manuala(user.user_id, id_tranzactie, body.categorie)
+    return SeteazaCategorieResponse(id_tranzactie=body.id_tranzactie, categorie=body.categorie)
