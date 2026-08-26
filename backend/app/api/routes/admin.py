@@ -347,7 +347,7 @@ async def decide_stergere(
     """
     depozit = AdminRepository(client)
     rezultat = await depozit.decide_stergere(
-        id_cerere, UUID(administrator.user_id), cerere.aproba, cerere.motiv
+        id_cerere, administrator.user_id, cerere.aproba, cerere.motiv
     )
     return CerereStergereAdminResponse(**rezultat)
 
@@ -366,7 +366,7 @@ async def sterge_client(
     n-are acces.
     """
     depozit = AdminRepository(client)
-    rezultat = await depozit.sterge_client(id_cerere, UUID(administrator.user_id))
+    rezultat = await depozit.sterge_client(id_cerere, administrator.user_id)
 
     id_user = (rezultat or {}).get("id_utilizator")
     if id_user:
@@ -422,7 +422,7 @@ async def decide_inchidere_cont(
     depozit = AdminRepository(client)
     rezultat = await depozit.decide_inchidere_cont(
         id_cerere,
-        UUID(administrator.user_id),
+        administrator.user_id,
         cerere.aproba,
         id_destinatie=cerere.id_cont_destinatie,
         motiv=cerere.motiv,
@@ -443,5 +443,5 @@ async def redeschide_cont(
     obisnuit; asta scrie si in notificarea catre client.
     """
     depozit = AdminRepository(client)
-    await depozit.redeschide_cont(id_cont, UUID(administrator.user_id))
+    await depozit.redeschide_cont(id_cont, administrator.user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
