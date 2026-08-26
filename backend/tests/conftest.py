@@ -23,3 +23,22 @@ import pytest
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def limitator_curat():
+    """Limitatorul de rata tine starea intr-un dict la nivel de modul.
+
+    Fara curatenie intre teste, ordinea lor decide daca trec: un fisier care
+    incarca zece documente consuma limita si pica fisierul urmator — si o face
+    doar cand suita ruleaza intreaga, nu cand rulezi testul singur. Exact asa
+    s-a manifestat: 27 de teste rosii in suita, toate verzi luate separat.
+
+    Autouse la nivel de conftest, nu in fiecare fisier: starea e globala, deci
+    si curatenia trebuie sa fie.
+    """
+    from app.infrastructure import rate_limit
+
+    rate_limit._INCERCARI.clear()
+    yield
+    rate_limit._INCERCARI.clear()

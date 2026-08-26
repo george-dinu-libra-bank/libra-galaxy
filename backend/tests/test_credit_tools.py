@@ -14,6 +14,7 @@ from app.core.security import Principal
 from app.orchestration.intent import classify_intent
 from app.tools.base import RiskLevel, SideEffect
 from app.tools.credit_tools import build_credit_tools
+from app.tools.knowledge_tools import build_knowledge_tools
 
 # `Principal.user_id` e str, nu UUID — repository-ul face `str()` oricum.
 ID_USER = "6d1eaaec-0000-4000-8000-000000000001"
@@ -192,11 +193,21 @@ def test_simularea_se_cere_doar_cu_suma_si_durata() -> None:
     agent = CreditAdvisorAgent()
 
     alese = {t.name: t.args for t in agent.select_tools("ce rata as avea la 30.000 pe 4 ani?", "credit_question")}
-    assert alese["simulate_credit"] == {"suma": "30000.0", "luni": 48}
+    # "30000", nu "30000.0": suma ajunge in URL-ul formularului, iar `str(float)`
+    # lasa un ".0" pe care tool-ul il taia apoi tacit cu `int()`.
+    assert alese["simulate_credit"] == {"suma": "30000", "luni": 48}
 
     # Fara cifre n-are ce calcula, iar o eroare de tool ar trebui explicata de model.
     fara = {t.name for t in agent.select_tools("as vrea un credit", "credit_question")}
     assert "simulate_credit" not in fara
+
+
+class _RetrievalFals:
+    """Nu se cauta nimic in testul asta — se verifica doar cine are voie sa ceara
+    tool-ul, adica exact ce citeste executorul inainte sa-l ruleze."""
+
+    async def search(self, query, profile=None):
+        return []
 
 
 def test_tool_urile_sunt_atasate_agentului_care_le_poate_cere() -> None:
@@ -207,7 +218,16 @@ def test_tool_urile_sunt_atasate_agentului_care_le_poate_cere() -> None:
         t.name for t in build_credit_tools(_RepoFals())
         if "credit_advisor" in t.allowed_agents
     }
-    assert ale_registrului == set(CREDIT_ADVISOR.tool_names)
+    # `search_bank_knowledge` vine din alt constructor (knowledge_tools), dar
+    # agentul chiar il cere de cand raspunde si la intrebari despre produs — deci
+    # se verifica separat ca e permis, nu se scoate din socoteala.
+    assert ale_registrului == set(CREDIT_ADVISOR.tool_names) - {"search_bank_knowledge"}
+
+    din_cunostinte = build_knowledge_tools(_RetrievalFals())[0]
+    assert din_cunostinte.name == "search_bank_knowledge"
+    assert "credit_advisor" in din_cunostinte.allowed_agents, (
+        "spec-ul cere tool-ul, dar executorul l-ar filtra tacit"
+    )
 
 
 # --- pregatirea cererii din conversatie ------------------------------------
@@ -216,19 +236,55 @@ def test_tool_urile_sunt_atasate_agentului_care_le_poate_cere() -> None:
 def test_datele_formularului_se_citesc_din_fraza() -> None:
     """Orchestratorul cheama `select_tools` o singura data pe tura, fara bucla in
     care modelul sa umple argumentele treptat — deci le extragem determinist."""
-    from app.agents.credit_advisor import _date_cerere, _normalizeaza
+    from app.agents.credit_advisor import _date_cerere, _normalizeaza_cu_harta
 
-    date = _date_cerere(_normalizeaza(
+    original = (
         "vreau sa depun o cerere de credit de 30000 lei pe 48 de luni, "
         "lucrez la ACME Software de 3 ani, castig 5200 net si am rate de 800"
-    ))
+    )
+    text, harta = _normalizeaza_cu_harta(original)
+    date = _date_cerere(text, harta, original)
 
+    assert date["suma"] == "30000"
     assert date["luni"] == 48, "durata creditului, nu vechimea la angajator"
     assert date["venit_declarat"] == "5200"
     assert date["obligatii_declarate"] == "800"
-    # Numele se opreste la cuvantul de legatura; altfel ajungea „acme software de 3 ani".
-    assert date["angajator"] == "acme software"
+    # Numele se opreste la cuvantul de legatura (altfel ajungea „ACME Software de
+    # 3 ani") si pastreaza majusculele din textul original: valoarea asta ajunge
+    # in formular, sub ochii unui analist.
+    assert date["angajator"] == "ACME Software"
     assert date["vechime_angajator_luni"] == 36
+
+
+def test_suma_nu_e_furata_de_venit_cand_venitul_e_spus_primul() -> None:
+    """`_cifre` lua primul numar >= 1000 din fraza, oricare ar fi fost el.
+
+    Testul vechi folosea doar ordinea convenabila (suma inaintea venitului), deci
+    n-a prins niciodata ca „castig 5200 net, vreau un credit de 30000" completa
+    formularul cu 5200 ca suma imprumutata.
+    """
+    from app.agents.credit_advisor import _date_cerere, _normalizeaza_cu_harta
+
+    original = "castig 5200 net, vreau un credit de 30000 lei pe 48 de luni"
+    text, harta = _normalizeaza_cu_harta(original)
+    date = _date_cerere(text, harta, original)
+
+    assert date["suma"] == "30000"
+    assert date["venit_declarat"] == "5200"
+
+
+def test_vechimea_se_citeste_si_cu_de_intre_numar_si_unitate() -> None:
+    """„36 de luni" e la fel de romanesc ca „36 luni".
+
+    Fara "de" optional in regex, tool-ul intorcea vechimea ca `missing` si agentul
+    reintreba exact ce tocmai spusese omul.
+    """
+    from app.agents.credit_advisor import _date_cerere, _normalizeaza_cu_harta
+
+    for fraza in ("am vechime de 36 de luni", "am vechime de 36 luni"):
+        original = f"vreau un credit de 30000 pe 48 de luni, lucrez la ACME, {fraza}"
+        text, harta = _normalizeaza_cu_harta(original)
+        assert _date_cerere(text, harta, original)["vechime_angajator_luni"] == 36, fraza
 
 
 async def test_fara_date_tool_ul_spune_ce_lipseste() -> None:
@@ -259,6 +315,7 @@ async def test_suma_in_afara_limitelor_produsului_e_oprita_aici() -> None:
     date = await (_tool("prepare_credit_application").callback(PRINCIPAL, {
         "suma": "5000000", "luni": 48, "venit_declarat": "5200",
         "angajator": "ACME", "vechime_angajator_luni": 36,
+        "obligatii_declarate": "0",
     }))
 
     assert date["ready"] is False

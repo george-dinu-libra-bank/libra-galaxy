@@ -198,7 +198,39 @@ function DetaliuTranzactie({ tranzactie }: { tranzactie: TranzactieAfisata }) {
       </div>
 
       <div>
-        <Rand eticheta={primita ? "Expeditor" : "Beneficiar"} valoare={nume} />
+        {/*
+          La o mutare intre conturile proprii, „Expeditor: tu / Beneficiar: tu"
+          nu spune nimic — singura informatie reala a miscarii sunt cele doua
+          conturi. E si cazul consolidarii dinaintea inchiderii contului
+          (migratia 0037), unde omul chiar vrea sa vada de unde in ce s-au strans
+          banii.
+        */}
+        {tranzactie.intreConturiProprii ? (
+          <>
+            {tranzactie.numeContPropriu ? (
+              <Rand eticheta="Din contul" valoare={tranzactie.numeContPropriu} />
+            ) : null}
+            {tranzactie.numeContCelalalt ? (
+              <Rand eticheta="În contul" valoare={tranzactie.numeContCelalalt} />
+            ) : null}
+          </>
+        ) : (
+          <>
+            <Rand eticheta={primita ? "Expeditor" : "Beneficiar"} valoare={nume} />
+            {/*
+              Din ce buzunar al tau au plecat banii, sau in care au intrat. De
+              cand un om poate avea mai multe conturi, numele contrapartii
+              singur nu mai spune povestea intreaga. Doar in detaliu, nu pe rand:
+              randul din lista are deja nume, descriere si grup pe 440px.
+            */}
+            {tranzactie.numeContPropriu ? (
+              <Rand
+                eticheta={primita ? "În contul" : "Din contul"}
+                valoare={tranzactie.numeContPropriu}
+              />
+            ) : null}
+          </>
+        )}
         {tranzactie.grup?.directie === "din" ? (
           <Rand eticheta="Sursă" valoare={`Grupul ${tranzactie.grup.nume}`} />
         ) : null}

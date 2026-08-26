@@ -49,6 +49,8 @@ function Rand({
           </span>
           <span className="tabular block truncate text-[12.5px] text-ink-faint">
             {sursa.numarMascat}
+            {/* Cand alegi din ce cont pleaca banii, care e cel principal conteaza. */}
+            {sursa.estePrincipal ? " · Cont principal" : ""}
           </span>
         </span>
         <span className="tabular shrink-0 text-[13px] font-medium text-ink">

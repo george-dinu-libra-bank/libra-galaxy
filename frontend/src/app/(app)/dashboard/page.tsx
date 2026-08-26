@@ -3,7 +3,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeftRight, Banknote, ChevronRight, CreditCard, Users } from "lucide-react";
 import { AvatarUtilizator } from "@/components/dashboard/avatar-utilizator";
-import { DetaliiContDrawer } from "@/components/dashboard/detalii-cont-drawer";
 import { ListaConturi } from "@/components/dashboard/lista-conturi";
 import { SchimbValutarDrawer } from "@/components/dashboard/schimb-valutar-drawer";
 import { SoldAnimat } from "@/components/dashboard/sold-animat";
@@ -79,6 +78,7 @@ export default async function DashboardPage() {
   // 0018 nerulata inca), lista vine goala si restul ecranului se vede la fel.
   const notificari = await obtineNotificari().catch(() => []);
 
+
   // Bulina de pe cardul de credite: cate mesaje de la banca n-a deschis inca.
   // Contorul vine gata numarat de backend, pe fiecare cerere (o singura
   // interogare pentru toata lista), deci aici e o adunare, nu inca o citire.
@@ -124,6 +124,7 @@ export default async function DashboardPage() {
             avatarUrl={profil?.avatar_url ?? null}
             nume={profil?.nume ?? "client Galaxy Bank"}
           />
+
         </div>
       </header>
 
@@ -148,9 +149,6 @@ export default async function DashboardPage() {
 
           <ListaConturi conturi={conturi} />
 
-          <div className="mt-4">
-            <DetaliiContDrawer profil={profil} />
-          </div>
         </>
       ) : (
         <section className="mt-6 rounded-card bg-surface p-6 shadow-sm">
