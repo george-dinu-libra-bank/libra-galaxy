@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useRef } from "react";
+import { useValutaDashboard } from "@/components/dashboard/context-valuta";
 import type { CheltuieliPeCategorie } from "@/lib/data/analiza";
-import { CATEGORIE_INFO, etichetaCategorie } from "@/lib/categorii";
+import { CATEGORIE_INFO, etichetaCategorie, totalizeazaPeCategorie } from "@/lib/categorii";
 import { cn, formateazaSuma } from "@/lib/utils";
+import type { Curs } from "@/lib/valute";
 
 const LATIME_GLISARE = 240;
 
@@ -22,9 +24,16 @@ function numeLuna(luna: string) {
  * orizontal, glisabil cu săgeți sau direct cu degetul (`overflow-x-auto`).
  * Categoria vine determinist din backend (tools/categorii_tranzactii.py),
  * niciodată calculată aici.
+ *
+ * Backend-ul intoarce o suma pe (categorie, valuta), nu un total gata
+ * convertit — se recalculeaza aici cu valuta aleasa de pe dashboard
+ * (ValutaDashboardContext, aceeasi cu butonul de pe TotalConturi), la fel cum
+ * totalul din conturi foloseste cursurile fara cerere noua la server.
  */
-export function CategoriiCheltuieli({ date }: { date: CheltuieliPeCategorie }) {
+export function CategoriiCheltuieli({ date, cursuri }: { date: CheltuieliPeCategorie; cursuri: Curs[] }) {
   const glisor = useRef<HTMLDivElement>(null);
+  const { valuta } = useValutaDashboard();
+  const categorii = totalizeazaPeCategorie(date.categorii, cursuri, valuta);
 
   function glisează(directie: 1 | -1) {
     glisor.current?.scrollBy({ left: directie * LATIME_GLISARE, behavior: "smooth" });
@@ -37,7 +46,7 @@ export function CategoriiCheltuieli({ date }: { date: CheltuieliPeCategorie }) {
           Cheltuieli {numeLuna(date.luna)}
         </h2>
 
-        {date.categorii.length > 0 ? (
+        {categorii.length > 0 ? (
           <Link
             href="/categorii"
             className="rounded-field px-2 py-1 text-[13px] font-semibold text-primary-600 transition-colors hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
@@ -47,7 +56,7 @@ export function CategoriiCheltuieli({ date }: { date: CheltuieliPeCategorie }) {
         ) : null}
       </div>
 
-      {date.categorii.length === 0 ? (
+      {categorii.length === 0 ? (
         <p className="mt-4 rounded-card bg-surface p-6 text-center text-[15px] text-ink-faint shadow-sm">
           Nu ai nicio cheltuială luna asta.
         </p>
@@ -66,7 +75,7 @@ export function CategoriiCheltuieli({ date }: { date: CheltuieliPeCategorie }) {
             ref={glisor}
             className="flex flex-1 snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-1"
           >
-            {date.categorii.map((c) => {
+            {categorii.map((c) => {
               const info = CATEGORIE_INFO[c.categorie];
               const Icona = info?.icona ?? CATEGORIE_INFO.altele.icona;
               return (
@@ -86,7 +95,7 @@ export function CategoriiCheltuieli({ date }: { date: CheltuieliPeCategorie }) {
                     {etichetaCategorie(c.categorie)}
                   </span>
                   <span className="tabular truncate text-[15px] font-semibold text-ink">
-                    {formateazaSuma(c.total, date.valuta)}
+                    {formateazaSuma(c.total, valuta)}
                   </span>
                 </Link>
               );

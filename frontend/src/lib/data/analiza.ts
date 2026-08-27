@@ -11,12 +11,15 @@ const INDISPONIBIL = "Analiza financiară nu este disponibilă momentan.";
 
 export type CategorieCheltuiala = {
   categorie: string;
+  // O suma pe (categorie, valuta), niciodata convertita de backend — vezi
+  // schemas/analiza.py::CategorieCheltuiala. Insumarea intre valute diferite
+  // se face client-side, cu cursurile deja aduse (lib/categorii.ts::totalizeazaPeCategorie).
+  valuta: string;
   total: number;
 };
 
 export type CheltuieliPeCategorie = {
   luna: string; // AAAA-LL
-  valuta: string;
   categorii: CategorieCheltuiala[];
 };
 
@@ -45,11 +48,10 @@ export type TranzactieCategorizata = {
 export async function obtineCheltuieliPeCategorie(): Promise<CheltuieliPeCategorie> {
   const { date } = await apelBackend<{
     luna: string;
-    valuta: string;
-    categorii: { categorie: string; total: number }[];
+    categorii: { categorie: string; valuta: string; total: number }[];
   }>("/api/v1/analiza/cheltuieli-pe-categorie", {}, INDISPONIBIL);
 
-  return date ?? { luna: "", valuta: "RON", categorii: [] };
+  return date ?? { luna: "", categorii: [] };
 }
 
 export async function obtineCashflow(luni: number = 1): Promise<Cashflow | null> {

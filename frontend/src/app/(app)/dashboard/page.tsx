@@ -5,6 +5,7 @@ import { ArrowLeftRight, Banknote, ChevronRight, CreditCard, Users } from "lucid
 import { AvatarUtilizator } from "@/components/dashboard/avatar-utilizator";
 import { CashflowDrawer } from "@/components/dashboard/cashflow-drawer";
 import { CategoriiCheltuieli } from "@/components/dashboard/categorii-cheltuieli";
+import { ValutaDashboardProvider } from "@/components/dashboard/context-valuta";
 import { ListaConturi } from "@/components/dashboard/lista-conturi";
 import { SchimbValutarDrawer } from "@/components/dashboard/schimb-valutar-drawer";
 import { TotalConturi } from "@/components/dashboard/total-conturi";
@@ -100,6 +101,7 @@ export default async function DashboardPage() {
   const cashflow = await obtineCashflow(1);
 
   return (
+    <ValutaDashboardProvider>
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
       <header className="grid grid-cols-[1fr_auto_1fr] items-start gap-3">
         <div className="min-w-0">
@@ -146,7 +148,7 @@ export default async function DashboardPage() {
             <MesajeBanca notificari={notificari} />
           </div>
 
-          <CategoriiCheltuieli date={cheltuieliPeCategorie} />
+          <CategoriiCheltuieli date={cheltuieliPeCategorie} cursuri={cursuri} />
 
           <ListaConturi conturi={conturi} />
 
@@ -203,5 +205,6 @@ export default async function DashboardPage() {
 
       <UltimeleTranzactii tranzactii={tranzactii} />
     </div>
+    </ValutaDashboardProvider>
   );
 }

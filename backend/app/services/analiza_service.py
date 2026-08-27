@@ -115,33 +115,40 @@ class AnalizaService:
         medie = round(sum(l.cheltuieli for l in rezultat) / len(rezultat), 2) if rezultat else 0.0
         return CashflowResponse(valuta=valuta, luni=rezultat, media_lunara_cheltuieli=medie)
 
-    async def cheltuieli_pe_categorie_luna_curenta(
-        self, user_id: UUID, valuta: str = "RON"
-    ) -> CheltuieliPeCategorieResponse:
+    async def cheltuieli_pe_categorie_luna_curenta(self, user_id: UUID) -> CheltuieliPeCategorieResponse:
         """Cheltuielile lunii calendaristice curente, pe categorie — pentru
-        widgetul de dashboard (stil George/BCR). Categoria vine din acelasi
+        widgetul de dashboard si pagina /categorii. Categoria vine din acelasi
         categorizeaza() determinist ca la tranzactii_recente(), niciodata
-        ghicit de un model (CLAUDE.md #25)."""
+        ghicit de un model (CLAUDE.md #25).
+
+        Nu se filtreaza si nu se converteste pe nicio valuta aici — se aduna
+        strict pe (categorie, valuta), cate o suma pentru fiecare pereche.
+        Inainte se filtra pe o singura valuta (implicit RON), asa ca o cheltuiala
+        in EUR disparea complet din widget in loc sa fie convertita si adunata;
+        conversia intre valute cere cursuri, iar acelea exista doar in
+        Next.js/Supabase (lib/data/curs-valutar.ts), nu in acest serviciu."""
         acum = datetime.now(timezone.utc)
         inceput = _inceput_de_luna(acum)
         randuri = await self._tranzactii.intre(user_id, inceput, acum, self._limita)
         suprascrieri = await self._suprascrieri(randuri)
 
-        totaluri: dict[str, float] = defaultdict(float)
+        totaluri: dict[tuple[str, str], float] = defaultdict(float)
         for rand in randuri:
-            if rand.get("valuta") != valuta:
-                continue
             if str(rand.get("id_user_send")) != str(user_id):
                 continue  # doar cheltuielile (bani iesiti), nu incasarile
             categorie = suprascrieri.get(str(rand["id"])) or categorizeaza(rand.get("descriere"), None)
-            totaluri[categorie] += float(rand["suma"])
+            valuta = rand.get("valuta") or "RON"
+            totaluri[(categorie, valuta)] += float(rand["suma"])
 
         categorii = sorted(
-            (CategorieCheltuiala(categorie=c, total=round(t, 2)) for c, t in totaluri.items()),
+            (
+                CategorieCheltuiala(categorie=categorie, valuta=valuta, total=round(total, 2))
+                for (categorie, valuta), total in totaluri.items()
+            ),
             key=lambda c: c.total,
             reverse=True,
         )
-        return CheltuieliPeCategorieResponse(luna=inceput.strftime("%Y-%m"), valuta=valuta, categorii=categorii)
+        return CheltuieliPeCategorieResponse(luna=inceput.strftime("%Y-%m"), categorii=categorii)
 
     async def tranzactii_recente(
         self, user_id: UUID, zile: int = 30, limita: int = 10

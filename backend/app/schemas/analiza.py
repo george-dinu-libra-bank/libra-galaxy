@@ -27,12 +27,17 @@ class CashflowResponse(BaseModel):
 
 class CategorieCheltuiala(BaseModel):
     categorie: str
+    # O suma pe (categorie, valuta) — niciodata convertita aici: backend-ul n-are
+    # acces la cursuri valutare (acelea traiesc doar in Next.js/Supabase, vezi
+    # frontend/src/lib/data/curs-valutar.ts). Conversia si insumarea pe categorie
+    # se fac client-side (lib/categorii.ts::totalizeazaPeCategorie), la fel ca
+    # totalul din conturi (lib/valute.ts::totalSoldIn).
+    valuta: str
     total: float
 
 
 class CheltuieliPeCategorieResponse(BaseModel):
     luna: str  # YYYY-MM
-    valuta: str = "RON"
     categorii: list[CategorieCheltuiala]
 
 

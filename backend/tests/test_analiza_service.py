@@ -146,6 +146,7 @@ async def test_cheltuieli_pe_categorie_agrega_si_sorteaza_descrescator() -> None
 
     assert raspuns.categorii[0].categorie == "cumparaturi"
     assert raspuns.categorii[0].total == 100.0
+    assert raspuns.categorii[0].valuta == "RON"
     assert raspuns.categorii[1].categorie == "restaurant"
     assert raspuns.categorii[1].total == 50.0  # 30 + 20, aceeasi categorie
 
@@ -163,15 +164,40 @@ async def test_cheltuieli_pe_categorie_exclude_incasarile() -> None:
 
 
 @pytest.mark.anyio
-async def test_cheltuieli_pe_categorie_exclude_alta_valuta() -> None:
+async def test_cheltuieli_pe_categorie_pastreaza_fiecare_valuta_separat() -> None:
+    """Inainte, o cheltuiala in EUR disparea complet din widget (filtrata pe
+    RON implicit) — acum trebuie sa apara ca propriul ei rand, cu valuta ei.
+    Conversia/insumarea intre valute e treaba frontend-ului (lib/categorii.ts),
+    nu a serviciului: acesta n-are cursuri valutare la dispozitie."""
     service = AnalizaService(
         TranzactiiFalse([_tranzactie(0, 100.0, iesire=True, valuta="EUR", descriere="Restaurant Paris")]),
         CarduriFalse([]),
     )
 
-    raspuns = await service.cheltuieli_pe_categorie_luna_curenta(EU, valuta="RON")
+    raspuns = await service.cheltuieli_pe_categorie_luna_curenta(EU)
 
-    assert raspuns.categorii == []
+    assert len(raspuns.categorii) == 1
+    assert raspuns.categorii[0].categorie == "restaurant"
+    assert raspuns.categorii[0].valuta == "EUR"
+    assert raspuns.categorii[0].total == 100.0
+
+
+@pytest.mark.anyio
+async def test_cheltuieli_pe_categorie_nu_amesteca_valutele_diferite_in_aceeasi_categorie() -> None:
+    service = AnalizaService(
+        TranzactiiFalse(
+            [
+                _tranzactie(0, 30.0, iesire=True, valuta="RON", descriere="Restaurant Bistro"),
+                _tranzactie(0, 20.0, iesire=True, valuta="EUR", descriere="Restaurant Paris"),
+            ]
+        ),
+        CarduriFalse([]),
+    )
+
+    raspuns = await service.cheltuieli_pe_categorie_luna_curenta(EU)
+
+    perechi = {(c.categorie, c.valuta): c.total for c in raspuns.categorii}
+    assert perechi == {("restaurant", "RON"): 30.0, ("restaurant", "EUR"): 20.0}
 
 
 @pytest.mark.anyio
