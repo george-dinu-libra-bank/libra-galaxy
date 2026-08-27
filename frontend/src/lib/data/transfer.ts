@@ -81,6 +81,43 @@ export async function obtineConturiTransfer(): Promise<ContSursa[]> {
 }
 
 /**
+ * Contul cu IBAN-ul dat, ca beneficiar de transfer. Null daca nu exista.
+ *
+ * IBAN-ul identifica un cont, nu un om (tabela conturi_bancare). Conturile si
+ * profilurile altora nu se pot citi cu cheia anon (RLS), deci cautarea merge cu
+ * service_role — dar intoarce strict numele si IBAN-ul contului cautat, adica
+ * exact ce vede oricum cel care e pe cale sa-i trimita bani.
+ *
+ * Se foloseste si de actiunea „beneficiar nou" din formular, si de linkul dintr-un
+ * cod QR, unde beneficiarul poate fi cineva cu care n-ai mai avut de-a face.
+ */
+export async function cautaContDupaIban(ibanBrut: string): Promise<BeneficiarTransfer | null> {
+  const iban = ibanBrut.replace(/\s+/g, "").toUpperCase();
+
+  const supabaseAdmin = createAdminClient();
+
+  const { data, error } = await supabaseAdmin
+    .from("conturi_bancare")
+    .select("id, iban, profiles ( nume )")
+    .eq("iban", iban)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  // PostgREST intoarce relatia ca obiect sau ca lista, dupa cum o deduce.
+  const relatie = data.profiles as { nume: string } | { nume: string }[] | null;
+  const proprietar = Array.isArray(relatie) ? relatie[0] : relatie;
+
+  return {
+    id: data.id as string,
+    nume: proprietar?.nume ?? "Cont Galaxy Bank",
+    iban: data.iban as string,
+    banca: BANCA_INTERNA,
+  };
+}
+
+/**
  * Beneficiarii recenti — conturile catre care utilizatorul a mai trimis bani
  * sau de la care a primit, cele mai recente primele.
  *

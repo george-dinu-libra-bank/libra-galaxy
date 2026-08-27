@@ -72,10 +72,26 @@ from app.orchestration.routing import AgentRouter
         ("neata", "greeting"),
         ("Hello", "greeting"),
         ("Hi", "greeting"),
+        ("Ia la cunostinta aceasta plata, era 150 lei", "categorize_receipt_intent"),
+        # Raportat live: "cunostiinta" (cu doi de i) e o greseala frecventa —
+        # trebuie acoperita la fel ca "cunostinta".
+        ("Ia la cunostiinta aceasta plata", "categorize_receipt_intent"),
+        ("Noteaza aceasta plata ca fiind de la restaurant", "categorize_receipt_intent"),
+        ("Leaga asta de o tranzactie din istoric", "categorize_receipt_intent"),
+        ("Categorizeaz-o ca masina", "categorize_receipt_intent"),
+        ("Note this payment as groceries", "categorize_receipt_intent"),
+        ("Can you link this to a transaction?", "categorize_receipt_intent"),
     ],
 )
 def test_classify_intent(text, expected_intent):
     assert classify_intent(text) == expected_intent
+
+
+def test_categorize_receipt_intent_wins_over_spending_analysis_stem():
+    # "leaga asta de o tranzactie" contine radacina "tranzact" (spending_analysis),
+    # dar categorize_receipt_intent e verificat inaintea lui — altfel cererea de
+    # legare a atasamentului ar cadea gresit pe o simpla intrebare de istoric.
+    assert classify_intent("Leaga asta de o tranzactie, te rog") == "categorize_receipt_intent"
 
 
 def test_export_request_wins_over_spending_analysis_stem():

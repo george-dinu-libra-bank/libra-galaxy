@@ -43,24 +43,17 @@ export const SECUNDE_CONFIRMARE = 120;
  *
  * Mesajele de card vorbesc despre card, nu despre „tine": de la 0035 incoace,
  * cine plateste in magazin nu e neaparat posesorul cardului.
+ *
+ * Lista e scurta pentru ca de la 0046 incoace deschiderea platii nu mai judeca
+ * nimic despre card, cont sau sold — alea se verifica dupa autorizare, in
+ * `aproba_plata`, si ajung la magazin ca plata terminata in FAILED cu `motiv`,
+ * nu ca eroare la creare.
  */
 const MESAJE: Record<string, string> = {
   NEAUTENTIFICAT: "Trebuie să fii autentificat în Galaxy Bank.",
   SUMA_INVALIDA: "Suma comenzii este invalidă.",
   VALUTA_NESUPORTATA: "Valuta comenzii nu este acceptată.",
   DATE_CARD_GRESITE: "Datele cardului nu corespund niciunui card Galaxy Bank.",
-  CARD_BLOCAT: "Cardul este blocat din aplicație.",
-  CARD_BLOCAT_DE_BANCA: "Cardul a fost blocat de bancă.",
-  CARD_EXPIRAT: "Cardul a expirat.",
-  FARA_CONT: "Contul acestui card nu mai există.",
-  CONT_BLOCAT: "Contul cardului este blocat de bancă.",
-  FONDURI_INSUFICIENTE: "Cardul nu are fonduri suficiente pentru această plată.",
-  // Banii stau pe cont, nu pe card, deci si plata cu cardul se loveste de
-  // poprirea de pe conturi (0047).
-  POPRIRE_ACTIVA:
-    "O parte din banii din cont sunt indisponibilizați printr-o poprire.",
-  LIMITA_DEPASITA: "Plata ar depăși limita zilnică a cardului.",
-  CURS_INDISPONIBIL: "Cursul valutar nu este disponibil acum. Încearcă mai târziu.",
   PLATA_INEXISTENTA: "Plata nu există sau nu îți aparține.",
 };
 
@@ -124,6 +117,10 @@ async function idUtilizatorCurent() {
  * Nu cere sesiune: cardul e singura identitate a platii. SQL-ul gaseste cardul
  * dupa numar/expirare/CVV si deschide plata pe numele posesorului lui, care e
  * apoi si singurul care o poate autoriza. Cine cumpara poate fi oricine.
+ *
+ * Cautarea cardului e tot ce se intampla aici: daca e blocat, daca a expirat si
+ * daca are bani in cont se afla abia dupa ce posesorul autorizeaza (0046). Cine
+ * sta la casa nu poate afla starea contului altcuiva tastand un numar de card.
  *
  * Suma nu vine niciodata din formular: se citeste din catalog dupa slug, ca un
  * client sa nu-si poata alege pretul. Din datele cardului, CVV-ul serveste doar

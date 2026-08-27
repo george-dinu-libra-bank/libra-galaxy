@@ -8,8 +8,6 @@ Culorile vin din DESIGN.md, ca raportul sa semene cu aplicatia din care iese.
 """
 
 import io
-import logging
-import pathlib
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
@@ -26,66 +24,20 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from app.rapoarte import fonturi
 from app.services.raport_service import ETICHETE_TIP, Raport
 
-logger = logging.getLogger(__name__)
-
-# -----------------------------------------------------------------------------
-# Fontul
-#
-# Helvetica, fontul implicit din reportlab, e codat Latin-1 si nu contine s si t
-# cu virgula (È™, È›) sau a cu caciula (Äƒ). Textul static de aici putea fi scris fara
-# diacritice, dar sinteza vine de la un model de limbaj si le foloseste — iar
-# reportlab desena patrate negre in locul lor, chiar in paragraful pe care un om
-# il citeste primul.
-#
-# DejaVu acopera complet romana si vine cu imaginea Debian a containerului. Daca
-# lipseste (backend rulat direct pe Windows), cadem inapoi pe Helvetica: raportul
-# iese fara diacritice, dar iese — un PDF lipsa ar fi mai rau decat unul urat.
-# -----------------------------------------------------------------------------
-
+# Fontul cu diacritice e cautat de `rapoarte/fonturi.py` — vezi acolo de ce nu
+# ajunge Helvetica si ce se intampla cand nu se gaseste nimic mai bun.
 FONT_NORMAL = "Helvetica"
 FONT_BOLD = "Helvetica-Bold"
 
-_CAI_FONT = (
-    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-    ("C:/Windows/Fonts/DejaVuSans.ttf", "C:/Windows/Fonts/DejaVuSans-Bold.ttf"),
-    # Arial exista pe orice Windows si acopera romana.
-    ("C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/arialbd.ttf"),
-)
-
 
 def _inregistreaza_fontul() -> None:
-    """Cauta un font cu diacritice si il inregistreaza o singura data."""
+    """Fixeaza numele fontului pentru tot modulul, la prima folosire."""
     global FONT_NORMAL, FONT_BOLD
+    FONT_NORMAL, FONT_BOLD = fonturi.inregistreaza()
 
-    if FONT_NORMAL != "Helvetica":
-        return  # deja gasit
-
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-
-    for cale_normal, cale_bold in _CAI_FONT:
-        if not (pathlib.Path(cale_normal).exists() and pathlib.Path(cale_bold).exists()):
-            continue
-        try:
-            pdfmetrics.registerFont(TTFont("RaportRO", cale_normal))
-            pdfmetrics.registerFont(TTFont("RaportRO-Bold", cale_bold))
-            pdfmetrics.registerFontFamily(
-                "RaportRO", normal="RaportRO", bold="RaportRO-Bold"
-            )
-        except Exception:
-            logger.exception("fontul %s nu a putut fi inregistrat", cale_normal)
-            continue
-
-        FONT_NORMAL, FONT_BOLD = "RaportRO", "RaportRO-Bold"
-        return
-
-    logger.warning(
-        "niciun font cu diacritice gasit; raportul PDF iese cu Helvetica, "
-        "deci fara diacritice romanesti"
-    )
 
 # DESIGN.md, sectiunea 2.
 PRIMARY_600 = colors.HexColor("#2F6FED")

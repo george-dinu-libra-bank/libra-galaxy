@@ -56,6 +56,12 @@
   --animate-sheet-in: sheet-in 380ms var(--ease-soft) both;
   --animate-pop: pop 180ms var(--ease-soft) both;
   --animate-band: band 220ms var(--ease-soft) both;
+
+  /* Scanteia care da ocol bordurii (StarBorder, folosit pe /prezentare).
+     Componenta vine din React Bits cu un `tailwind.config.js` de adaugat, dar
+     Tailwind 4 nu are asa ceva aici — animatiile se declara in @theme. */
+  --animate-star-movement-top: star-movement-top linear infinite alternate;
+  --animate-star-movement-bottom: star-movement-bottom linear infinite alternate;
 }
 
 @keyframes fade-up {
@@ -97,6 +103,28 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes star-movement-top {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(100%, 0%);
+    opacity: 0;
+  }
+}
+
+@keyframes star-movement-bottom {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-100%, 0%);
+    opacity: 0;
   }
 }
 
@@ -213,6 +241,73 @@ body {
 .stagger > * {
   animation: var(--animate-fade-up);
   animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+/* =============================================================================
+   Contractul de credit — vezi backend/app/credit/contract.py
+   Acelasi subset de etichete e produs de editorul analistului, stocat in baza
+   si desenat in PDF. Tailwind isi reseteaza titlurile si listele, deci sunt
+   redate aici; altfel un `<h2>` din contract ar arata ca un paragraf.
+   ========================================================================== */
+.contract-text > :first-child {
+  margin-top: 0;
+}
+
+.contract-text h1 {
+  margin: 0 0 12px;
+  font-size: 19px;
+  line-height: 25px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+}
+
+.contract-text h2 {
+  margin: 20px 0 6px;
+  font-size: 15px;
+  line-height: 21px;
+  font-weight: 600;
+  color: var(--color-primary-700);
+}
+
+.contract-text h3 {
+  margin: 14px 0 4px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.contract-text p {
+  margin: 0 0 10px;
+}
+
+.contract-text ul,
+.contract-text ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.contract-text ul {
+  list-style: disc;
+}
+
+.contract-text ol {
+  list-style: decimal;
+}
+
+.contract-text li {
+  margin-bottom: 4px;
+}
+
+.contract-text b,
+.contract-text strong {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.contract-text u {
+  text-underline-offset: 2px;
 }
 
 ::selection {

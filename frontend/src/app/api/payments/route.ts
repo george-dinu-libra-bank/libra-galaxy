@@ -4,9 +4,10 @@ import { creeazaPlata } from "@/lib/services/plati";
 /**
  * POST /api/payments — magazinul cere o plata cu datele unui card Libra.
  *
- * Ruta ramane subtire: autentificarea, validarea cardului si suma din catalog
- * sunt treaba serviciului (lib/services/plati.ts), iar regulile bancare stau in
- * SQL. Raspunsul e cel asteptat de checkout: { paymentId, status }.
+ * Ruta ramane subtire: identificarea cardului si suma din catalog sunt treaba
+ * serviciului (lib/services/plati.ts), iar regulile bancare stau in SQL — de la
+ * 0046, verificate abia dupa ce posesorul autorizeaza. Raspunsul e cel asteptat
+ * de checkout: { paymentId, status }.
  */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {

@@ -6,6 +6,7 @@ from app.context.builder import AssembledContext
 from app.core.security import Principal
 from app.providers.base import ChatMessage, ChatProvider
 from app.tools.base import SelectedTool, ToolResult
+from app.tools.categorii_tranzactii import extrage_suma
 
 
 class TransactionIntelligenceAgent:
@@ -16,6 +17,18 @@ class TransactionIntelligenceAgent:
             return [
                 SelectedTool("get_cards", {}, "detalii despre cardurile proprii"),
                 SelectedTool("get_accounts", {}, "cardurile nu au sold propriu, banii sunt in conturi"),
+            ]
+        if intent == "categorize_receipt_intent":
+            # Suma extrasa determinist din text — la fel ca la credit_advisor,
+            # nu lasam modelul sa umple argumentul tool-ului. Fara o suma
+            # gasita, tool-ul intoarce candidates=[] si modelul (ghidat de
+            # prohibited din specs.py) trebuie sa ceara suma explicit.
+            suma = extrage_suma(user_text)
+            return [
+                SelectedTool(
+                    "find_transaction_for_receipt", {"suma": suma} if suma is not None else {},
+                    "utilizatorul vrea sa lege un atasament de o plata reala",
+                ),
             ]
         return [
             SelectedTool("get_recent_transactions", {"limit": 30}, "tranzactii recente pentru analiza"),

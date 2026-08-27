@@ -90,6 +90,9 @@ export type Credit = {
   dataAcordarii: string;
   status: StareCredit;
   inchisLa: string | null;
+  /** Link semnat catre PDF-ul contractului, valabil cateva minute. `null` pe
+   * creditele acordate inainte de introducerea contractelor. */
+  contractUrl: string | null;
 };
 
 export type StareRata = "programata" | "platita" | "restanta" | "anulata";
@@ -212,6 +215,34 @@ export async function obtineMesajeCerere(idCerere: string): Promise<MesajCerere[
   return date ?? [];
 }
 
+/** Contractul unei cereri, in HTML deja sanitizat de backend. */
+export type ContractCerere = {
+  idCerere: string;
+  html: string;
+  trimisLa: string | null;
+};
+
+/**
+ * Contractul pe care clientul trebuie sa-l citeasca inainte sa semneze.
+ *
+ * `null` cat timp banca nu l-a trimis — backendul raspunde 404 pana la
+ * aprobare, fiindca pana atunci textul e ciorna analistului.
+ */
+export async function obtineContractCerere(idCerere: string): Promise<ContractCerere | null> {
+  const { date } = await apelBackend<Record<string, unknown>>(
+    `/api/v1/credite/cereri/${encodeURIComponent(idCerere)}/contract`,
+    {},
+    INDISPONIBIL,
+  );
+  if (!date) return null;
+
+  return {
+    idCerere: String(date.id_cerere ?? idCerere),
+    html: String(date.html ?? ""),
+    trimisLa: (date.trimis_la as string | null) ?? null,
+  };
+}
+
 export async function obtineCalculRambursare(id: string): Promise<CalculRambursare | null> {
   const { date } = await apelBackend<Record<string, unknown>>(
     `/api/v1/credite/${id}/rambursare`,
@@ -241,6 +272,7 @@ export function laCredit(rand: Record<string, unknown>): Credit {
     dataAcordarii: String(rand.data_acordarii),
     status: rand.status as StareCredit,
     inchisLa: (rand.inchis_la as string | null) ?? null,
+    contractUrl: (rand.contract_url as string | null) ?? null,
   };
 }
 

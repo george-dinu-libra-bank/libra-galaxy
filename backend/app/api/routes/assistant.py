@@ -65,6 +65,8 @@ def _quick_action_out_from_result(quick_action) -> QuickActionOut | None:
             for account in quick_action.accounts
         ],
         url=quick_action.url,
+        transaction_id=quick_action.transaction_id,
+        suggested_category=quick_action.suggested_category,
     )
 
 

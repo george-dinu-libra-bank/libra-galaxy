@@ -1,14 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { BANCA_INTERNA, type BeneficiarTransfer } from "@/lib/data/transfer";
+import { cautaContDupaIban, type BeneficiarTransfer } from "@/lib/data/transfer";
 import { ibanEsteValid } from "@/lib/iban";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { contEsteBlocat, MESAJ_CONT_BLOCAT } from "@/lib/cont-blocat";
+import { scaneazaTransfer } from "@/lib/cuvinte-sensibile";
 import { createClient } from "@/lib/supabase/server";
 
 export type RezultatCautareBeneficiar = { beneficiar?: BeneficiarTransfer; eroare?: string };
-export type RezultatTransfer = { eroare?: string };
+export type RezultatTransfer = {
+  eroare?: string;
+  /** Transferul a fost oprit de scanerul de cuvinte si asteapta un administrator. */
+  semnalat?: boolean;
+};
 
 function normalizeazaIban(iban: string) {
   return iban.replace(/\s+/g, "").toUpperCase();
@@ -35,31 +40,18 @@ export async function cautaBeneficiarDupaIban(
 
   if (!ibanEsteValid(iban)) return { eroare: "IBAN invalid." };
 
-  const supabaseAdmin = createAdminClient();
+  try {
+    // Un cont propriu ramane o destinatie valida: se pot muta bani intre
+    // conturile aceleiasi persoane. Doar acelasi cont e respins, in RPC.
+    const beneficiar = await cautaContDupaIban(iban);
 
-  // IBAN-ul identifica un cont, nu un om (0007_conturi_bancare.sql).
-  const { data, error } = await supabaseAdmin
-    .from("conturi_bancare")
-    .select("id, iban, id_user, profiles ( nume )")
-    .eq("iban", iban)
-    .maybeSingle();
+    if (!beneficiar) return { eroare: "Nu exista niciun cont Galaxy Bank cu acest IBAN." };
 
-  if (error) return { eroare: "Nu am putut cauta beneficiarul. Incearca din nou." };
-  if (!data) return { eroare: "Nu exista niciun cont Galaxy Bank cu acest IBAN." };
-
-  const relatie = data.profiles as { nume: string } | { nume: string }[] | null;
-  const proprietar = Array.isArray(relatie) ? relatie[0] : relatie;
-
-  return {
-    beneficiar: {
-      id: data.id as string,
-      // Un cont propriu ramane o destinatie valida: se pot muta bani intre
-      // conturile aceleiasi persoane. Doar acelasi cont e respins, in RPC.
-      nume: proprietar?.nume ?? "Cont Galaxy Bank",
-      iban: data.iban as string,
-      banca: BANCA_INTERNA,
-    },
-  };
+    return { beneficiar };
+  } catch (exc) {
+    console.error("ERROR cautaBeneficiarDupaIban:", exc);
+    return { eroare: "Nu am putut cauta beneficiarul. Incearca din nou." };
+  }
 }
 
 /**
@@ -134,10 +126,27 @@ export async function trimiteTransfer(input: {
 
   const descriere = input.detalii.trim() || null;
 
+  // Scanarea se face inainte de miscarea banilor, nu dupa: un transfer semnalat
+  // nu ajunge niciodata la beneficiar, deci nu e nevoie sa fie stornat. Lista de
+  // cuvinte vine din cache (lib/cuvinte-sensibile.ts), asa ca de obicei nu costa
+  // nicio interogare in plus.
+  const cuvinteGasite = await scaneazaTransfer(descriere);
+
   // Doua functii, aceleasi garantii: banii din punga comuna pleaca prin
   // core_banking_groups, care verifica in plus ca esti membru al grupului.
-  const { error } =
-    input.idGrupSursa != null
+  // Cand descrierea a fost semnalata, ambele drumuri trec prin
+  // transfer_semnalat: debiteaza sursa si lasa suma in asteptare (0043).
+  const { error } = cuvinteGasite.length
+    ? await supabaseAdmin.rpc("transfer_semnalat", {
+        p_id_user: user.id,
+        p_iban_dest: iban,
+        p_suma: suma,
+        p_descriere: descriere,
+        p_id_cont_send: input.idGrupSursa != null ? null : (input.idContSursa ?? null),
+        p_id_grup_send: input.idGrupSursa ?? null,
+        p_cuvinte: cuvinteGasite,
+      })
+    : input.idGrupSursa != null
       ? await supabaseAdmin.rpc("core_banking_groups", {
           p_id_group: input.idGrupSursa,
           p_suma: suma,
@@ -174,5 +183,7 @@ export async function trimiteTransfer(input: {
     revalidatePath(`/grupuri/${input.idGrupSursa}`);
   }
 
-  return {};
+  // Nu se spune care cuvant a declansat verificarea: ar transforma formularul
+  // intr-un instrument de ghicit lista administratorului.
+  return { semnalat: cuvinteGasite.length > 0 };
 }

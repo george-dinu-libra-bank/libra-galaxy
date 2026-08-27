@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeftRight, Banknote, ChevronRight, CreditCard, Users } from "lucide-react";
+import { ArrowLeftRight, Banknote, ChevronRight, CreditCard } from "lucide-react";
 import { AvatarUtilizator } from "@/components/dashboard/avatar-utilizator";
 import { BandaPoprire } from "@/components/dashboard/banda-poprire";
+import { CashflowDrawer } from "@/components/dashboard/cashflow-drawer";
+import { CategoriiCheltuieli } from "@/components/dashboard/categorii-cheltuieli";
+import { ValutaDashboardProvider } from "@/components/dashboard/context-valuta";
 import { ListaConturi } from "@/components/dashboard/lista-conturi";
+import { PrimesteQrDrawer } from "@/components/dashboard/primeste-qr-drawer";
 import { SchimbValutarDrawer } from "@/components/dashboard/schimb-valutar-drawer";
-import { SoldAnimat } from "@/components/dashboard/sold-animat";
+import { TotalConturi } from "@/components/dashboard/total-conturi";
 import { UltimeleTranzactii } from "@/components/dashboard/ultimele-tranzactii";
 import { MesajeBanca } from "@/components/dashboard/mesaje-banca";
 import { VerificaIdentitateBanner } from "@/components/dashboard/verifica-identitate-banner";
@@ -14,7 +18,8 @@ import { Banda } from "@/components/ui/banda";
 import { Bulina } from "@/components/ui/bulina";
 import { ClopotelNotificari } from "@/components/ui/clopotel-notificari";
 import { Logo } from "@/components/ui/logo";
-import { obtineConturiUtilizator, totalSold } from "@/lib/data/conturi";
+import { obtineCashflow, obtineCheltuieliPeCategorie } from "@/lib/data/analiza";
+import { obtineConturiUtilizator } from "@/lib/data/conturi";
 import { obtineCereri } from "@/lib/data/credite";
 import type { StareCerere } from "@/lib/data/credite";
 import { obtineNotificari } from "@/lib/data/notificari";
@@ -29,10 +34,13 @@ export const metadata: Metadata = {
 
 // Istoricul a iesit de aici in favoarea schimbului valutar: e la un tap distanta
 // in bara de jos, pe cand schimbul n-avea niciun drum catre el.
+//
+// „Beneficiari" a iesit in favoarea codului QR: lista beneficiarilor se deschide
+// oricum din ecranul de transfer, in timp ce a CERE bani n-avea niciun drum.
+// Pagina /beneficiari ramane, cu intrarea mutata in drawerul de beneficiari.
 const ACTIUNI = [
   { eticheta: "Transfer", href: "/transfer", icoana: ArrowLeftRight },
   { eticheta: "Carduri", href: "/carduri", icoana: CreditCard },
-  { eticheta: "Beneficiari", href: "/beneficiari", icoana: Users },
 ];
 
 /** Stilul unei dale din grila — impartit intre linkuri si declansatorul de drawer. */
@@ -98,11 +106,11 @@ export default async function DashboardPage() {
     .filter((cerere) => CERERI_CU_FIR_DESCHIS.includes(cerere.status))
     .reduce((suma, cerere) => suma + cerere.mesajeNecitite, 0);
 
-  // Totalul se aduna aici, pe server — cifra ajunge gata calculata in HTML.
-  // Conturile pot fi in valute diferite, deci se aduc intai la RON.
-  const total = totalSold(conturi, cursuri);
+  const cheltuieliPeCategorie = await obtineCheltuieliPeCategorie();
+  const cashflow = await obtineCashflow(1);
 
   return (
+    <ValutaDashboardProvider>
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
       <header className="grid grid-cols-[1fr_auto_1fr] items-start gap-3">
         <div className="min-w-0">
@@ -114,10 +122,7 @@ export default async function DashboardPage() {
           <p className="mt-3 text-[13px] text-ink-faint">
             Total în {conturi.length === 1 ? "cont" : `${conturi.length} conturi`}
           </p>
-          <SoldAnimat
-            sold={total}
-            className="tabular text-[30px] font-bold leading-[36px] text-ink"
-          />
+          <TotalConturi conturi={conturi} cursuri={cursuri} />
         </div>
 
         <Logo size={44} className="justify-self-center" />
@@ -152,7 +157,11 @@ export default async function DashboardPage() {
             <MesajeBanca notificari={notificari} />
           </div>
 
+          {/* Poprirea sta inaintea analizei de cheltuieli: e o restrictie in
+              vigoare pe banii din ecran, nu o informatie despre trecut. */}
           {poprire ? <BandaPoprire poprire={poprire} /> : null}
+
+          <CategoriiCheltuieli date={cheltuieliPeCategorie} cursuri={cursuri} />
 
           <ListaConturi conturi={conturi} />
 
@@ -202,11 +211,18 @@ export default async function DashboardPage() {
           </Link>
         ))}
 
-        {/* Singura dala care nu duce nicaieri: deschide un drawer peste ecran. */}
+        {/* Dalele care nu duc nicaieri: deschid cate un drawer peste ecran. */}
+        <PrimesteQrDrawer
+          conturi={conturi}
+          numeUtilizator={profil?.nume ?? ""}
+          className={DALA}
+        />
         <SchimbValutarDrawer conturi={conturi} cursuri={cursuri} className={DALA} />
+        <CashflowDrawer cashflow={cashflow} className={DALA} />
       </div>
 
       <UltimeleTranzactii tranzactii={tranzactii} />
     </div>
+    </ValutaDashboardProvider>
   );
 }

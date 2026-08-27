@@ -35,9 +35,11 @@ type Configuratie = {
 const CONFIGURATII: Record<ActiuneAnalist, Configuratie> = {
   aproba: {
     titlu: "Aprobi cererea?",
-    confirmare: "Da, trimite oferta",
+    confirmare: "Da, trimite oferta și contractul",
     etichetaCamp: "Motivarea deciziei (opțional)",
-    ajutorCamp: "Ajunge în explicația pe care o citește clientul, alături de punctajul automat.",
+    ajutorCamp:
+      "Ajunge în explicația pe care o citește clientul, alături de punctajul automat. " +
+      "Odată cu oferta pleacă și contractul de mai sus — după trimitere nu se mai poate modifica.",
     mesajObligatoriu: false,
     varianta: "primary",
   },

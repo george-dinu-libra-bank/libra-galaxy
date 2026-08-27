@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { Check, ChevronRight, Plus, Search, User } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
@@ -190,6 +191,17 @@ export function AlegeBeneficiarDrawer({
                   </p>
                 ) : null}
               </div>
+
+              {/* Singura intrare catre /beneficiari, de cand dala din „Actiuni
+                  rapide" a devenit codul QR. Aici e si locul ei firesc: pagina
+                  aia e despre aceiasi oameni pe care ii cauti acum. */}
+              <Link
+                href="/beneficiari"
+                className="flex items-center justify-center gap-1.5 rounded-field px-3 py-2 text-[13px] font-semibold text-primary-600 transition-colors hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+              >
+                Vezi toți beneficiarii
+                <ChevronRight size={15} strokeWidth={2} aria-hidden />
+              </Link>
             </div>
           )}
         </DrawerContent>

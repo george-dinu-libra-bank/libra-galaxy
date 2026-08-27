@@ -54,7 +54,14 @@ export type TranzactieAfisata = {
   numeContCelalalt: string | null;
   /** Setat doar la miscarile care ating soldul unui grup. */
   grup: GrupTranzactie | null;
+  /**
+   * Starea din 0043. `normala` acopera tot ce trece prin core_banking; celelalte
+   * apar doar la transferurile oprite de scanerul de cuvinte sensibile.
+   */
+  status: StatusTranzactie;
 };
+
+export type StatusTranzactie = "normala" | "flagged" | "acceptata" | "anulata";
 
 /**
  * Tranzactiile in care utilizatorul curent e expeditor sau destinatar, cele mai
@@ -85,12 +92,21 @@ export async function obtineTranzactiiUtilizator(
     return limita ? cerere.limit(limita) : cerere;
   }
 
-  let { data, error } = await interogheaza(`${COLOANE_DE_BAZA}, send_sters, recieve_sters`);
+  // Coloanele vin din migratii aplicate manual pe Supabase cloud, deci pot lipsi
+  // una cate una. Se coboara treapta cu treapta, ca lipsa lui `status` (0043) sa
+  // nu arunce si marcajele de cont sters (0034) — nu e un motiv sa pice
+  // dashboardul si istoricul.
+  const lipsesteColoana = (cod?: string) => cod === "42703" || cod === "PGRST204";
 
-  // Marcajele vin din migratia 0034, aplicata manual pe Supabase cloud. Pana
-  // atunci lipsesc, si nu e un motiv sa pice dashboardul si istoricul: reluam
-  // fara ele, iar contrapartile lipsa raman "Cont Galaxy Bank", exact ca inainte.
-  if (error && (error.code === "42703" || error.code === "PGRST204")) {
+  let { data, error } = await interogheaza(
+    `${COLOANE_DE_BAZA}, send_sters, recieve_sters, status`,
+  );
+
+  if (error && lipsesteColoana(error.code)) {
+    ({ data, error } = await interogheaza(`${COLOANE_DE_BAZA}, send_sters, recieve_sters`));
+  }
+
+  if (error && lipsesteColoana(error.code)) {
     ({ data, error } = await interogheaza(COLOANE_DE_BAZA));
   }
 
@@ -98,7 +114,18 @@ export async function obtineTranzactiiUtilizator(
 
   // `select()` cu un sir construit dinamic nu-i mai da lui supabase-js forma
   // randului, deci tipul se pune aici.
-  const randuri = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const toate = (data ?? []) as unknown as Array<Record<string, unknown>>;
+
+  // Un transfer oprit sau anulat nu a ajuns niciodata in contul beneficiarului,
+  // deci nu are ce cauta in istoricul lui: ar arata ca bani primiti care nu se
+  // vad in sold. Expeditorul il vede in continuare — lui i-au plecat banii — cu
+  // starea afisata langa el.
+  const randuri = toate.filter(
+    (t) =>
+      t.id_user_send === user.id ||
+      (t.status ?? "normala") === "normala" ||
+      t.status === "acceptata",
+  );
 
   const idContraparti = [
     ...new Set(
@@ -223,6 +250,7 @@ export async function obtineTranzactiiUtilizator(
           (trimisa ? tranzactie.id_cont_recieve : tranzactie.id_cont_send) as string,
         ) ?? null,
       grup,
+      status: ((tranzactie.status as string | null) ?? "normala") as StatusTranzactie,
     };
   });
 }
