@@ -296,10 +296,20 @@ class DepozitFals:
 
     # -- operatiuni (semantica RPC-urilor din 0010) -------------------------
 
-    async def acorda(self, id_cerere, id_cont, rata_lunara, dae, grafic, semnatura) -> dict:
+    async def acorda(
+        self, id_cerere, id_cont, rata_lunara, dae, grafic, semnatura, contract_url
+    ) -> dict:
         cerere = self.cereri[str(id_cerere)]
         if cerere["status"] != "oferta":
             raise RuntimeError("CERERE_IN_STARE_GRESITA")
+
+        # Aceleasi doua refuzuri ca in `credit_acorda` (0044_contract_credit):
+        # nu se semneaza un contract care n-a fost trimis, si nici unul al carui
+        # PDF n-a ajuns in storage.
+        if not cerere.get("contract_trimis_la") or not (cerere.get("contract_html") or "").strip():
+            raise RuntimeError("CONTRACT_LIPSA")
+        if not (contract_url or "").strip():
+            raise RuntimeError("CONTRACT_NESALVAT")
 
         # Aceeasi verificare ca in SQL: graficul trebuie sa insumeze exact creditul.
         suma = float(cerere["suma_ceruta"])
@@ -543,8 +553,11 @@ def test_fluxul_complet_pana_la_credit_stins(client, depozit: DepozitFals) -> No
     decizie = client.post(f"/api/v1/credite/cereri/{id_cerere}/evalueaza").json()
     assert decizie["decizie"] == "aprobat", decizie
 
+    # Semnatura cere de acum si dovada ca omul a deschis contractul: fara
+    # `contract_citit`, schema refuza cererea (0044_contract_credit).
     acordare = client.post(
-        f"/api/v1/credite/cereri/{id_cerere}/accepta", json={"id_cont": ID_CONT}
+        f"/api/v1/credite/cereri/{id_cerere}/accepta",
+        json={"id_cont": ID_CONT, "contract_citit": True, "contract_derulat": 1.0},
     )
     assert acordare.status_code == 200, acordare.text
     id_credit = acordare.json()["id_credit"]
@@ -603,7 +616,8 @@ def test_ratele_se_incaseaza_o_singura_data(client, depozit: DepozitFals) -> Non
     id_cerere = _cerere(client)
     client.post(f"/api/v1/credite/cereri/{id_cerere}/evalueaza")
     id_credit = client.post(
-        f"/api/v1/credite/cereri/{id_cerere}/accepta", json={"id_cont": ID_CONT}
+        f"/api/v1/credite/cereri/{id_cerere}/accepta",
+        json={"id_cont": ID_CONT, "contract_citit": True, "contract_derulat": 1.0},
     ).json()["id_credit"]
 
     client.post(f"/api/v1/credite/{id_credit}/avanseaza-timp?luni=3")

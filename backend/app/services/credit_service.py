@@ -26,6 +26,8 @@ from hashlib import sha256
 from typing import Any
 from uuid import UUID, uuid4
 
+from anyio import to_thread
+
 from app.core.errors import ResourceNotFoundError, ValidationError
 from app.credit import amortizare, reguli, scorecard
 from app.credit import contract as contract_credit

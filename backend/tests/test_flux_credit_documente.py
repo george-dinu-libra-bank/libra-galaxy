@@ -403,6 +403,17 @@ def _decizie(client, id_cerere: str, actiune: str, nota: str | None = None):
     )
 
 
+def _aproba(client, id_cerere: str, nota: str | None = None):
+    """Aprobarea asa cum se intampla in panou: intai se deschide dosarul.
+
+    Deschiderea genereaza contractul din sablon (`contract_dosar`), iar de la
+    0044_contract_credit aprobarea fara contract completat e refuzata: o oferta
+    pleaca intotdeauna cu textul pe care clientul urmeaza sa-l semneze.
+    """
+    client.get("/api/v1/admin/credite/cereri/" + id_cerere)
+    return _decizie(client, id_cerere, "aproba", nota)
+
+
 def test_cererea_de_acte_muta_mingea_la_client(client, depozit: DepozitFals) -> None:
     """Starea proprie exista ca sa se stie cine asteapta pe cine.
 
@@ -624,7 +635,7 @@ def test_confirmarea_nu_poate_sterge_o_oferta_emisa(client, depozit: DepozitFals
     """
     id_cerere = _cerere_evaluata(client)
     id_document = _incarca(client, id_cerere)["id"]
-    assert _decizie(client, id_cerere, "aproba").json()["status"] == "oferta"
+    assert _aproba(client, id_cerere).json()["status"] == "oferta"
 
     raspuns = client.post(
         "/api/v1/admin/credite/documente/" + id_document + "/confirma",
@@ -648,7 +659,7 @@ def test_retragerea_ofertei_aduce_dosarul_inapoi_si_spune_de_ce(
     arata o rata pentru ceva ce nu mai exista.
     """
     id_cerere = _cerere_evaluata(client)
-    assert _decizie(client, id_cerere, "aproba").json()["status"] == "oferta"
+    assert _aproba(client, id_cerere).json()["status"] == "oferta"
 
     raspuns = _decizie(
         client, id_cerere, "retrage_oferta", "Am primit date noi despre angajator."
@@ -674,7 +685,7 @@ def test_retragerea_cere_un_motiv_si_o_oferta(client, depozit: DepozitFals) -> N
     assert refuz.status_code == 422, refuz.text
     assert refuz.json()["error"]["code"] == "CREDIT_STARE_INVALIDA"
 
-    _decizie(client, id_cerere, "aproba")
+    _aproba(client, id_cerere)
     # Cu oferta, dar fara motiv: clientul ar ramane cu oferta disparuta si zero
     # explicatii. Aici opreste validarea de schema, inainte sa ajunga la serviciu.
     assert _decizie(client, id_cerere, "retrage_oferta", "   ").status_code == 422
@@ -700,7 +711,7 @@ def test_clientul_isi_poate_retrage_cererea(client, depozit: DepozitFals) -> Non
 def test_o_oferta_nu_se_anuleaza_ci_expira(client, depozit: DepozitFals) -> None:
     """Acolo omul are ceva de semnat; ignorarea duce singura la 'expirata'."""
     id_cerere = _cerere_evaluata(client)
-    _decizie(client, id_cerere, "aproba")
+    _aproba(client, id_cerere)
 
     assert client.post("/api/v1/credite/cereri/" + id_cerere + "/anuleaza").status_code == 422
 
@@ -711,7 +722,7 @@ def test_oferta_trecuta_de_termen_devine_expirata_la_citire(
     """Fara maturarea lenesa, ecranul arata „Semneaza" pentru ceva ce banca nu
     mai onoreaza, iar refuzul venea abia dupa apasare (din RPC)."""
     id_cerere = _cerere_evaluata(client)
-    _decizie(client, id_cerere, "aproba")
+    _aproba(client, id_cerere)
 
     depozit.cereri[id_cerere]["oferta_expira_la"] = (
         datetime.now(timezone.utc) - timedelta(days=1)
@@ -742,7 +753,7 @@ def test_analistul_poate_raspunde_si_pe_o_oferta(client, depozit: DepozitFals) -
     schimba starea (`cere_documente`) ramane refuzata acolo.
     """
     id_cerere = _cerere_evaluata(client)
-    _decizie(client, id_cerere, "aproba")
+    _aproba(client, id_cerere)
 
     client.post(
         "/api/v1/credite/cereri/" + id_cerere + "/mesaje",
