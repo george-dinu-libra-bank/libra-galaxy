@@ -8,6 +8,7 @@ import type { StareCont } from "@/lib/tipuri-admin";
 import { Banda } from "@/components/ui/banda";
 import { RaportCont } from "@/components/admin/raport-cont";
 import { DeciziaContului } from "@/components/admin/decizia-contului";
+import { DeschideInvestigatie } from "@/components/admin/deschide-investigatie";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +87,14 @@ export default async function PaginaRaport({
           istoric={stare.analize}
         />
       ) : null}
+
+      <DeschideInvestigatie
+        idUtilizator={id}
+        nume={raport.nume}
+        gravitate={Math.round(raport.scor_maxim)}
+        numarSemnalari={raport.numar_semnalari}
+        constatari={raport.constatari}
+      />
     </div>
   );
 }

@@ -24,17 +24,6 @@ from app.core.security import Principal
 from app.providers.base import ChatMessage, ChatProvider
 from app.tools.base import SelectedTool, ToolResult
 
-_NO_MATCH_TEXT_RO = (
-    "Pot răspunde doar la întrebări legate de domeniul bancar — conturi, carduri, tranzacții, "
-    "credite, transferuri sau produsele Galaxy Bank. Reformulează întrebarea sau contactează "
-    "echipa de suport dacă ai nevoie de altceva."
-)
-_NO_MATCH_TEXT_EN = (
-    "I can only help with banking-related questions — accounts, cards, transactions, credit, "
-    "transfers, or Galaxy Bank's products. Rephrase your question or contact support if you "
-    "need something else."
-)
-
 _ATTACHMENT_ONLY_RULE_RO = (
     "Utilizatorul a trimis un atasament (poza sau document) fara nicio intrebare. Descrie pe scurt "
     "ce contine, apoi sugereaza explicit ce poti face cu el: sa verifici carei categorii de cheltuiala "
@@ -68,8 +57,8 @@ class DocumentIntelligenceAgent:
     def select_tools(self, user_text: str, intent: str) -> list[SelectedTool]:
         # Categoria = folderul din galaxy-bank-knowledge (migratia 0033).
         # Ingustare aplicata doar unde intentia chiar garanteaza subiectul —
-        # credit_intent e singura care ajunge aici prin fallback-ul router-ului
-        # (routing.py::DEFAULT_AGENT_ID) fara sa fie o intrebare generica.
+        # credit_intent e eticheta care garanteaza cel mai clar subiectul, chiar
+        # daca ajunge aici (nu la credit_advisor) pentru partea informativa.
         # document_question/knowledge_question/unknown raman fara filtru:
         # pot fi despre orice categorie (ex. comisioane apar si la carduri,
         # si la conturi, si la transferuri).
@@ -89,10 +78,6 @@ class DocumentIntelligenceAgent:
     ) -> AgentAnswer:
         hits = self._hits(tool_results)
 
-        if not hits and not attachments:
-            text = _NO_MATCH_TEXT_RO if principal.locale == "ro" else _NO_MATCH_TEXT_EN
-            return AgentAnswer(text=text, citations=[])
-
         citations = [
             {"document_id": hit["document_id"], "section": hit.get("section"), "score": hit["score"]}
             for hit in hits[:3]
@@ -107,8 +92,18 @@ class DocumentIntelligenceAgent:
             grounding_rule = _ATTACHMENT_ONLY_RULE_RO if principal.locale == "ro" else _ATTACHMENT_ONLY_RULE_EN
         elif hits:
             grounding_rule = "Raspunde EXCLUSIV din fragmentele regasite de mai sus si din fisierul atasat, daca exista."
-        else:
+        elif attachments:
             grounding_rule = "Nu exista fragmente din baza de cunostinte — raspunde EXCLUSIV din fisierul atasat de utilizator."
+        else:
+            # Nici fragmente, nici atasament — inainte se scurtcircuita aici cu
+            # un text fix; acum modelul insusi hotaraste, ghidat de regula de
+            # refuz off-topic de mai jos (comuna tuturor agentilor) sau, daca
+            # intrebarea chiar e bancara dar nedocumentata, o spune sincer.
+            grounding_rule = (
+                "Nu exista fragmente din baza de cunostinte pentru aceasta intrebare. Daca intrebarea "
+                "e despre domeniul bancar dar informatia nu exista, spune sincer ca nu e documentata. "
+                "Daca nu are nicio legatura cu domeniul bancar, aplica mai jos regula despre refuzul politicos."
+            )
 
         system_prompt = build_system_prompt(self.spec, context) + (
             f"\n\n{grounding_rule} Daca informatia nu e acolo, spune simplu ca nu e documentata — "

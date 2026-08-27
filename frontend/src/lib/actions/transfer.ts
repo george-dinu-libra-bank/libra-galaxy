@@ -5,8 +5,10 @@ import { cautaContDupaIban, type BeneficiarTransfer } from "@/lib/data/transfer"
 import { ibanEsteValid } from "@/lib/iban";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { contEsteBlocat, MESAJ_CONT_BLOCAT } from "@/lib/cont-blocat";
+import { ipCerere } from "@/lib/ip-cerere";
 import { scaneazaTransfer } from "@/lib/cuvinte-sensibile";
 import { createClient } from "@/lib/supabase/server";
+import { formateazaSuma } from "@/lib/utils";
 
 export type RezultatCautareBeneficiar = { beneficiar?: BeneficiarTransfer; eroare?: string };
 export type RezultatTransfer = {
@@ -84,6 +86,44 @@ const MESAJE_CORE_BANKING: Record<string, string> = {
 };
 
 /**
+ * Cat tine poprirea blocat, scos din `details`-ul refuzului.
+ *
+ * core_banking scrie acolo o propozitie intreaga, in limbaj de banca ("...din
+ * conturile acestui client"), din care clientului ii foloseste doar cifra.
+ * Fara potrivire, apelantul cade pe mesajul fix — niciodata pe textul brut.
+ */
+function sumaBlocata(detalii: string | null | undefined) {
+  const gasit = /([0-9]+(?:[.,][0-9]{1,2})?)\s*([A-Z]{3})/.exec(detalii ?? "");
+
+  if (!gasit) return null;
+
+  const suma = Number(gasit[1].replace(",", "."));
+
+  return Number.isFinite(suma) ? formateazaSuma(suma, gasit[2]) : null;
+}
+
+/**
+ * Mesajul pentru un refuz venit din core_banking.
+ *
+ * Popririle se trateaza aparte, din doua motive: suma blocata difera de la un
+ * client la altul, deci merita spusa (altfel omul vede soldul intreg pe ecran
+ * si un refuz care pare arbitrar), iar familia de coduri poate creste in baza
+ * fara ca aplicatia sa fie redeployata — orice `POPRIRE_*` nou primeste macar
+ * explicatia corecta, nu „incearca din nou".
+ */
+function mesajCoreBanking(error: { message: string; details?: string | null }) {
+  if (error.message?.startsWith("POPRIRE")) {
+    const blocat = sumaBlocata(error.details);
+
+    return blocat
+      ? `O poprire tine indisponibila suma de ${blocat}. Poti trimite doar ce ramane peste ea.`
+      : MESAJE_CORE_BANKING.POPRIRE_ACTIVA;
+  }
+
+  return MESAJE_CORE_BANKING[error.message];
+}
+
+/**
  * Muta bani din contul propriu in contul beneficiarului (dupa IBAN) si scrie
  * tranzactia. Cardurile nu sunt implicate — soldul e pe cont.
  *
@@ -136,7 +176,7 @@ export async function trimiteTransfer(input: {
   // core_banking_groups, care verifica in plus ca esti membru al grupului.
   // Cand descrierea a fost semnalata, ambele drumuri trec prin
   // transfer_semnalat: debiteaza sursa si lasa suma in asteptare (0043).
-  const { error } = cuvinteGasite.length
+  const { data, error } = cuvinteGasite.length
     ? await supabaseAdmin.rpc("transfer_semnalat", {
         p_id_user: user.id,
         p_iban_dest: iban,
@@ -164,12 +204,28 @@ export async function trimiteTransfer(input: {
         });
 
   if (error) {
-    const mesaj = MESAJE_CORE_BANKING[error.message];
+    const mesaj = mesajCoreBanking(error);
 
     // Orice altceva (functia lipseste, deadlock, retea) — log si mesaj generic.
     if (!mesaj) console.error("ERROR trimiteTransfer:", error);
 
     return { eroare: mesaj ?? "Nu am putut trimite banii. Incearca din nou." };
+  }
+
+  // De unde a plecat transferul. Se scrie dupa, nu ca parametru al RPC-urilor:
+  // sunt trei functii diferite, toate ale altor fluxuri, si un parametru in plus
+  // ar fi insemnat sa le rescriu pe toate trei.
+  //
+  // Banii au plecat deja. Un esec aici pierde un semnal de detectie, nu o
+  // tranzactie, deci nu intoarce eroare catre om.
+  try {
+    const ip = await ipCerere();
+    const idTranzactie = (data as { id_tranzactie?: string } | null)?.id_tranzactie;
+    if (ip && idTranzactie) {
+      await supabaseAdmin.from("tranzactii").update({ ip }).eq("id", idTranzactie);
+    }
+  } catch (exc) {
+    console.error("nu am putut nota IP-ul transferului:", exc);
   }
 
   revalidatePath("/dashboard");

@@ -11,7 +11,6 @@ from uuid import uuid4
 import pytest
 
 from app.core.security import Principal
-from app.orchestration.intent import classify_intent
 from app.tools.base import RiskLevel, SideEffect
 from app.tools.credit_tools import build_credit_tools
 from app.tools.knowledge_tools import build_knowledge_tools
@@ -137,25 +136,13 @@ async def test_simularea_refuza_valori_absurde() -> None:
     assert "error" in await unealta.callback(PRINCIPAL, {"suma": "abc", "luni": 12})
 
 
-def test_intentia_separa_dosarul_de_brosura() -> None:
-    """Intrebarile despre dosarul propriu merg la agent, cele despre produs la RAG."""
-    assert classify_intent("de ce mi-a fost respinsa cererea?") == "credit_question"
-    assert classify_intent("ce rata am luna asta?") == "credit_question"
-    assert classify_intent("ce se intampla cu creditul meu?") == "credit_question"
-
-    # Astea raman intrebari de cunostinte — brosura, nu dosarul.
-    assert classify_intent("Este o oferta buna la credit ipotecar?") == "unknown"
-    assert classify_intent("ce comision are transferul?") == "document_question"
-
-    # Si nu fura ce era deja rutat corect.
-    assert classify_intent("cat am cheltuit luna asta?") == "spending_analysis"
-    assert classify_intent("cat am in cont?") == "account_overview"
-
-
 # --- lantul intreg: intentie -> agent -> tool-uri ---------------------------
 #
-# Testele de mai sus verificau tool-urile izolat, iar cele de intentie doar
-# clasificarea. Intre ele era o gaura prin care a trecut un bug intreg: tool-urile
+# Separarea dosar/brosura (care intrebare merge la credit_advisor vs. la RAG)
+# e acum decisa prin rationament LLM (orchestration/llm_router.py), nu prin
+# clasificare determinista de testat pe un string — testele de mai jos verifica
+# ce a mai ramas determinist: ce agent detine eticheta si ce tool-uri cere
+# odata ce a primit-o. Intre ele era o gaura prin care a trecut un bug intreg: tool-urile
 # erau atasate lui `financial_advisor`, care nu foloseste registrul
 # (`select_tools()` intoarce mereu []). Erau inregistrate si imposibil de cerut,
 # iar asistentul raspundea „nu am acces la deciziile bancii".

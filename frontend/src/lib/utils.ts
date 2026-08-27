@@ -46,7 +46,7 @@ export function formateazaOra(data: string | Date) {
 }
 
 /** Ziua calendaristica in Europe/Bucharest, ca sir "AAAA-LL-ZZ" comparabil. */
-function ziISO(data: string | Date) {
+export function ziISO(data: string | Date) {
   return new Date(data).toLocaleDateString("en-CA", { timeZone: FUS_ORAR });
 }
 

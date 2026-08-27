@@ -94,7 +94,9 @@ export function DepuneInGrupDrawer({
         description="Banii ies din contul tău și intră în soldul comun."
         footer={
           <Button className="w-full" loading={seTrimite} onClick={trimite}>
-            {sumaValida ? `Pune ${formateazaSuma(sumaNumerica)}` : "Pune banii"}
+            {sumaValida
+              ? `Pune ${formateazaSuma(sumaNumerica, contAles?.valuta)}`
+              : "Pune banii"}
           </Button>
         }
       >
@@ -132,7 +134,7 @@ export function DepuneInGrupDrawer({
                       </span>
 
                       <span className="tabular shrink-0 text-[13px] font-medium text-ink">
-                        {formateazaSuma(cont.sold)}
+                        {formateazaSuma(cont.sold, cont.valuta)}
                       </span>
 
                       {cont.id === idCont ? (
@@ -149,13 +151,15 @@ export function DepuneInGrupDrawer({
               </div>
 
               <Camp
-                eticheta="Sumă (RON)"
+                eticheta={`Sumă${contAles ? ` (${contAles.valuta})` : ""}`}
                 inputMode="decimal"
                 placeholder="0,00"
                 value={suma}
                 onChange={(e) => setSuma(e.target.value.replace(/[^0-9,.]/g, ""))}
                 ajutor={
-                  contAles ? `Disponibil: ${formateazaSuma(contAles.sold)}` : undefined
+                  contAles
+                    ? `Disponibil: ${formateazaSuma(contAles.sold, contAles.valuta)}`
+                    : undefined
                 }
               />
 

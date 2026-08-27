@@ -13,6 +13,11 @@ class AccountRow:
     balance: float
     currency: str
     created_at: str
+    # Oprit de banca: din el nu mai pot pleca bani. Asistentul trebuie sa stie,
+    # altfel raspunde ca totul e in regula unui om caruia tocmai i s-a blocat
+    # contul (vezi tools/banking_tools.py). Implicit fals: un cont e liber pana
+    # se spune altfel, iar apelantii mai vechi nu trebuie sa se schimbe.
+    blocked: bool = False
 
 
 @dataclass(frozen=True)
@@ -39,7 +44,7 @@ class BankingReadRepository:
     def list_accounts(self, user_id: str) -> list[AccountRow]:
         result = (
             self._client.table("conturi_bancare")
-            .select("id, nume, iban, sold, valuta, creat_la")
+            .select("id, nume, iban, sold, valuta, blocat_administrativ, creat_la")
             .eq("id_user", user_id)
             .order("creat_la")
             .execute()
@@ -50,6 +55,7 @@ class BankingReadRepository:
                 # Implicit RON, la fel ca frontend/src/lib/data/conturi.ts:
                 # conturile mai vechi de 0013_schimb_valutar.sql pot avea valuta null.
                 balance=float(row["sold"]), currency=row.get("valuta") or "RON",
+                blocked=bool(row.get("blocat_administrativ")),
                 created_at=row["creat_la"],
             )
             for row in (result.data or [])

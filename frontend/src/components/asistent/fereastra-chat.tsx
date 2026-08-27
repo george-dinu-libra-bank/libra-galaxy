@@ -23,12 +23,19 @@ function audioDinBase64(base64: string): string {
 export function FereastraChat({
   conversatieIdInitial,
   mesajeInitiale,
+  intrebareInitiala = "",
 }: {
   conversatieIdInitial: string | null;
   mesajeInitiale: MesajAsistent[];
+  /**
+   * Text pus in casuta la deschidere, venit din `?intrebare=` — de exemplu
+   * cand omul apasa "Intreaba asistentul" pe o notificare de blocare. Se
+   * pre-completeaza si atat: trimiterea ramane a lui.
+   */
+  intrebareInitiala?: string;
 }) {
   const router = useRouter();
-  const [continut, setContinut] = useState("");
+  const [continut, setContinut] = useState(intrebareInitiala);
   const [atasament, setAtasament] = useState<Atasament | null>(null);
   const [mesajOptimist, setMesajOptimist] = useState<MesajAsistent | null>(null);
   const [seIncarcaFisier, setSeIncarcaFisier] = useState(false);

@@ -15,6 +15,7 @@ export type Grup = {
   sold: number;
   tokenAcces: string;
   creatLa: string;
+  idCreator: string;
 };
 
 export type MembruGrup = {
@@ -41,6 +42,14 @@ export type MesajGrup = {
   /** Autorul, luat din lista de membri; null daca a iesit intre timp din grup. */
   autor: MembruGrup | null;
   alMeu: boolean;
+};
+
+export type InvitatieGrup = {
+  id: number;
+  idGrup: number;
+  numeGrup: string;
+  numeInvitator: string;
+  creatLa: string;
 };
 
 /** Cate mesaje se aduc intr-o conversatie; restul raman in istoricul tabelei. */
@@ -120,7 +129,7 @@ export async function obtineGrup(id: number): Promise<Grup | null> {
 
   const { data, error } = await supabase
     .from("groups")
-    .select("id, nume, sold, token_acces, creat_la")
+    .select("id, nume, sold, token_acces, creat_la, id_creator")
     .eq("id", id)
     .maybeSingle();
 
@@ -133,6 +142,7 @@ export async function obtineGrup(id: number): Promise<Grup | null> {
     sold: Number(data.sold),
     tokenAcces: data.token_acces as string,
     creatLa: data.creat_la as string,
+    idCreator: data.id_creator as string,
   };
 }
 
@@ -155,6 +165,28 @@ export async function obtineMembriiGrupului(idGrup: number): Promise<MembruGrup[
     nume: membru.nume as string,
     avatarUrl: (membru.avatar_url as string | null) ?? null,
     creatLa: membru.creat_la as string,
+  }));
+}
+
+/**
+ * Invitatiile primite, in asteptare — trece prin `public.invitatiile_mele`
+ * (SECURITY DEFINER), la fel ca `membri_grup`: nu esti inca membru al
+ * grupului la care esti invitat, deci politica normala de pe `groups` nu
+ * ti-ar lasa sa vezi numele lui (0044_invitatii_grup.sql).
+ */
+export async function obtineInvitatiileMele(): Promise<InvitatieGrup[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("invitatiile_mele");
+
+  if (error) throw error;
+
+  return (data ?? []).map((invitatie: Record<string, unknown>) => ({
+    id: invitatie.id as number,
+    idGrup: invitatie.id_group as number,
+    numeGrup: invitatie.nume_grup as string,
+    numeInvitator: invitatie.nume_invitator as string,
+    creatLa: invitatie.creat_la as string,
   }));
 }
 

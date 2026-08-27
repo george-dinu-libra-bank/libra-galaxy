@@ -5,14 +5,18 @@ import { ChevronLeft } from "lucide-react";
 import { ConversatieGrup } from "@/components/grupuri/conversatie-grup";
 import { DepuneInGrupDrawer } from "@/components/grupuri/depune-in-grup-drawer";
 import { IesiDinGrupDrawer } from "@/components/grupuri/iesi-din-grup-drawer";
+import { InviteazaDinContrapartiDrawer } from "@/components/grupuri/invita-din-contraparti-drawer";
+import { ListaMembriGrup } from "@/components/grupuri/lista-membri-grup";
 import { PartajeazaGrupDrawer } from "@/components/grupuri/partajeaza-grup-drawer";
-import { AvatarProfil } from "@/components/ui/avatar-profil";
+import { StergeGrupDrawer } from "@/components/grupuri/sterge-grup-drawer";
 import { obtineConturiUtilizator } from "@/lib/data/conturi";
 import {
   obtineGrup,
   obtineMembriiGrupului,
   obtineMesajeleGrupului,
 } from "@/lib/data/grupuri";
+import { obtineContrapartiRecente } from "@/lib/data/tranzactii";
+import { createClient } from "@/lib/supabase/server";
 import { formateazaSuma } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -36,9 +40,19 @@ export default async function GrupPage({ params }: { params: Promise<{ id: strin
 
   if (!grup) notFound();
 
-  const membri = await obtineMembriiGrupului(idGrup);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const esteCreator = user?.id === grup.idCreator;
+
+  const [membri, conturi, contraparti] = await Promise.all([
+    obtineMembriiGrupului(idGrup),
+    obtineConturiUtilizator(),
+    esteCreator ? obtineContrapartiRecente() : Promise.resolve([]),
+  ]);
   const mesaje = await obtineMesajeleGrupului(idGrup, membri);
-  const conturi = await obtineConturiUtilizator();
 
   return (
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
@@ -78,30 +92,26 @@ export default async function GrupPage({ params }: { params: Promise<{ id: strin
       </section>
 
       <section className="mt-8">
-        <h2 className="text-lg font-semibold text-ink">Membri</h2>
-
-        <div className="mt-4 overflow-hidden rounded-card bg-surface shadow-sm">
-          {membri.map((membru, i) => (
-            <div
-              key={membru.idUser}
-              className={`flex items-center gap-3 px-4 py-3 ${
-                i === membri.length - 1 ? "" : "border-b border-line"
-              }`}
-            >
-              <span className="h-10 w-10 shrink-0">
-                <AvatarProfil url={membru.avatarUrl} nume={membru.nume} />
-              </span>
-
-              <p className="min-w-0 flex-1 truncate text-[15px] text-ink">{membru.nume}</p>
-            </div>
-          ))}
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-ink">Membri</h2>
+          {esteCreator ? (
+            <InviteazaDinContrapartiDrawer idGrup={grup.id} contraparti={contraparti} />
+          ) : null}
         </div>
+
+        <ListaMembriGrup
+          membri={membri}
+          idGrup={grup.id}
+          esteCreator={esteCreator}
+          idUserCurent={user?.id ?? ""}
+        />
       </section>
 
       <ConversatieGrup idGrup={grup.id} mesaje={mesaje} />
 
-      <div className="mt-8">
+      <div className="mt-8 flex flex-col gap-1">
         <IesiDinGrupDrawer idGrup={grup.id} nume={grup.nume} />
+        {esteCreator ? <StergeGrupDrawer idGrup={grup.id} nume={grup.nume} /> : null}
       </div>
     </div>
   );

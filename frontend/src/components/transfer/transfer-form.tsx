@@ -153,32 +153,46 @@ export function TransferForm({
           )}
         >
           {semnalat ? (
-            <ShieldAlert size={30} strokeWidth={1.75} aria-hidden className="text-warning" />
+            <ShieldAlert
+              size={30}
+              strokeWidth={1.75}
+              aria-hidden
+              className="text-warning"
+            />
           ) : (
-            <Check size={30} strokeWidth={1.75} aria-hidden className="text-success" />
+            <Check
+              size={30}
+              strokeWidth={1.75}
+              aria-hidden
+              className="text-success"
+            />
           )}
         </span>
+
         <h1 className="mt-5 text-xl font-bold tracking-[-0.02em] text-ink">
           {semnalat ? "Transfer în verificare" : "Transfer trimis"}
         </h1>
+
         <p className="mt-2 text-[15px] leading-[22px] text-ink-soft">
           {semnalat ? (
             <>
-              Suma de {formateazaSuma(sumaNumerica)} a fost reținută și nu a ajuns încă la{" "}
-              {beneficiar.nume}. Un coleg de la bancă verifică transferul și vei primi o
-              notificare cu decizia.
+              Suma de {formateazaSuma(sumaNumerica, contSursa?.valuta)} a fost
+              reținută și nu a ajuns încă la {beneficiar.nume}. Un coleg de la
+              bancă verifică transferul și vei primi o notificare cu decizia.
             </>
           ) : (
             <>
-              Ai trimis {formateazaSuma(sumaNumerica)} catre {beneficiar.nume}.
+              Ai trimis {formateazaSuma(sumaNumerica, contSursa?.valuta)} către{" "}
+              {beneficiar.nume}.
             </>
           )}
         </p>
 
         <div className="mt-8 flex w-full flex-col gap-3">
           <Button className="w-full" onClick={() => router.push("/istoric")}>
-            Vezi in istoric
+            Vezi în istoric
           </Button>
+
           <Button
             varianta="ghost"
             className="w-full"
@@ -190,7 +204,7 @@ export function TransferForm({
               setDetalii("");
             }}
           >
-            Fa un alt transfer
+            Fă un alt transfer
           </Button>
         </div>
       </div>

@@ -28,7 +28,7 @@ export default async function PaginaSecuritate() {
         <p className="mt-1.5 max-w-2xl text-[15px] leading-[22px] text-ink-soft">
           Cuvintele de aici sunt căutate în descrierea fiecărui transfer, înainte ca banii
           să plece. Când unul se potrivește, suma este reținută, transferul ajunge în{" "}
-          <strong className="font-semibold">Tranzacții suspecte</strong>, iar beneficiarul
+          <strong className="font-semibold">Transferuri oprite</strong>, iar beneficiarul
           nu primește nimic până când nu decizi tu.
         </p>
       </div>

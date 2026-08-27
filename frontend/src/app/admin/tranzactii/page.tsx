@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { cereAdmin } from "@/lib/admin";
 import { BackendError } from "@/lib/backend";
 import { obtineConturiSemnalate, obtineStareDetectie } from "@/lib/data/admin-tranzactii";
@@ -46,9 +47,20 @@ export default async function PaginaTranzactii({
         <h1 className="text-[26px] font-bold leading-8 tracking-[-0.02em] text-ink">
           Conturi semnalate
         </h1>
-        <p className="mt-1.5 text-[15px] leading-[22px] text-ink-soft">
+        <p className="mt-1.5 max-w-2xl text-[15px] leading-[22px] text-ink-soft">
           Conturile cu plăți care ies din tiparul lor obișnuit. Sunt constatări statistice,
           nu fraude dovedite.
+        </p>
+        <p className="mt-2 max-w-2xl text-[13px] leading-[19px] text-ink-faint">
+          Plățile de aici au trecut deja; te uiți în urmă și decizi. Transferurile prinse
+          de scanerul de cuvinte, cu banii încă blocați, sunt la{" "}
+          <Link
+            href="/admin/tranzactii-suspecte"
+            className="font-semibold text-primary-600 underline-offset-2 hover:underline"
+          >
+            Transferuri oprite
+          </Link>
+          .
         </p>
       </div>
 

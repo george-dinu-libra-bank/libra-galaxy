@@ -32,6 +32,9 @@ export type ActiuneRapida = {
   // Doar pentru tip="confirma_categorie" (legare atasament -> tranzactie).
   idTranzactie?: string | null;
   categorieSugerata?: string | null;
+  /** Pentru tip="sesizare": textul care ar pleca la banca si eticheta butonului. */
+  rezumat?: string;
+  eticheta?: string;
 };
 
 export type MesajAsistent = {
@@ -81,6 +84,8 @@ export async function obtineMesaje(idConversatie: string): Promise<MesajAsistent
         url: string;
         transaction_id?: string | null;
         suggested_category?: string | null;
+        rezumat?: string;
+        eticheta?: string;
       } | null;
     }[]
   >(`/assistant/conversations/${idConversatie}/messages`);
@@ -101,6 +106,8 @@ export async function obtineMesaje(idConversatie: string): Promise<MesajAsistent
           url: m.quick_action.url,
           idTranzactie: m.quick_action.transaction_id,
           categorieSugerata: m.quick_action.suggested_category,
+          rezumat: m.quick_action.rezumat ?? "",
+          eticheta: m.quick_action.eticheta ?? "",
         }
       : null,
   }));

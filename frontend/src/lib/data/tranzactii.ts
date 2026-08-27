@@ -254,3 +254,28 @@ export async function obtineTranzactiiUtilizator(
     };
   });
 }
+
+/**
+ * Persoanele reale (cont Galaxy Bank) cu care ai mai facut o tranzactie
+ * directa — baza pentru "invita direct" la un grup. Orice contraparte de aici
+ * are garantat un cont real: `tranzactii` inregistreaza doar transferuri
+ * interne (core_banking cere un cont Libra existent dupa IBAN, altfel
+ * respinge operatia inainte sa scrie randul) — nu exista transfer catre alta
+ * banca in acest tabel. Nicio interogare noua: reutilizeaza
+ * obtineTranzactiiUtilizator si dedupica contrapartile in memorie.
+ */
+export async function obtineContrapartiRecente(limita = 30): Promise<Contraparte[]> {
+  const tranzactii = await obtineTranzactiiUtilizator(200);
+
+  const contraparti = new Map<string, Contraparte>();
+
+  for (const tranzactie of tranzactii) {
+    // Depunerile in grup au drept "contraparte" grupul insusi (id `grup-...`),
+    // nu o persoana reala — nu poate fi invitat.
+    if (tranzactie.contraparte && !tranzactie.contraparte.id.startsWith("grup-")) {
+      contraparti.set(tranzactie.contraparte.id, tranzactie.contraparte);
+    }
+  }
+
+  return [...contraparti.values()].slice(0, limita);
+}

@@ -10,6 +10,33 @@ CIFRE_LUNGI = re.compile(r"\d{4,}")
 # Cuvintele care preced un numar de referinta si raman orfane dupa ce il scoatem.
 MARCAJE_REFERINTA = re.compile(r"\b(ref|nr|id|cod|tranzactie|auth)\.?$")
 
+# Miscarile de credit ale bancii, care NU sunt plati facute de om.
+#
+# Descrierile sunt scrise de RPC-urile din 0010_credite_operatiuni.sql, cu
+# format fix: `format('Rata %s/%s credit', ...)` la linia 236 si cele doua
+# variante de rambursare anticipata la 367-368. Tiparul e cunoscut, nu ghicit.
+#
+# Se scot inainte de orice analiza fiindca produceau semnalari absurde. Rata
+# 1/12, 2/12 si 3/12 arata ca trei comercianti DIFERITI — `normalizeaza_comerciant`
+# taie numerele de referinta lungi, dar nu si „1/12" — asa ca fiecare rata
+# devenea „prima plata la un comerciant nou". Rezultatul: banca il intreba pe
+# client daca a autorizat plata propriilor rate.
+#
+# Motivul de fond e insa mai simplu decat bug-ul de grupare: ratele nu sunt un
+# comportament al omului. El nu alege cand si cat se ia; le genereaza banca din
+# graficul creditului. Detectia intreaba „e neobisnuit pentru el?", iar la o
+# miscare pe care nu el o face intrebarea nu are inteles.
+MISCARE_CREDIT = re.compile(
+    r"^\s*(rata\s+\d+\s*/\s*\d+\s+credit"
+    r"|rambursare\s+anticipata\s+(integrala|partiala)\s+credit)\s*$",
+    re.IGNORECASE,
+)
+
+
+def e_miscare_de_credit(descriere: str | None) -> bool:
+    """Randul e o rata sau o rambursare generata de banca, nu o plata a omului."""
+    return bool(descriere) and MISCARE_CREDIT.match(descriere) is not None
+
 
 @dataclass(frozen=True, slots=True)
 class Plata:
@@ -19,6 +46,9 @@ class Plata:
     valuta: str
     comerciant: str
     iesire: bool
+    # De unde a venit plata. Null pentru tot ce s-a intamplat inaintea 0050 si
+    # pentru miscarile generate de sistem (rate, dobanzi).
+    ip: str | None = None
 
 
 def normalizeaza_comerciant(descriere: str | None) -> str:
@@ -32,9 +62,38 @@ def normalizeaza_comerciant(descriere: str | None) -> str:
     return text or "necunoscut"
 
 
+def comerciant_pentru_om(descriere: str | None) -> str:
+    """Numele comerciantului asa cum se scrie intr-un text citit de un om.
+
+    `normalizeaza_comerciant` e facut pentru grupare, deci trece totul prin
+    litere mici — bun ca sa stim ca „Kaufland ref 123" si „KAUFLAND ref 456"
+    sunt acelasi loc, dar intr-o scrisoare catre client „plata la kaufland"
+    arata neingrijit. Aici se taie doar codul de referinta si se pastreaza
+    scrierea originala: „Kaufland ref 99929175" ramane „Kaufland".
+
+    Codurile se scot fiindca pentru omul care citeste sunt zgomot: nu-l ajuta
+    sa-si aminteasca plata si fac fraza de doua ori mai lunga.
+    """
+    if not descriere:
+        return "necunoscut"
+    text = CIFRE_LUNGI.sub("", descriere.strip())
+    text = SPATII.sub(" ", text).strip(" -_/")
+    text = MARCAJE_REFERINTA.sub("", text).strip(" -_/")
+    return text or "necunoscut"
+
+
 def normalizeaza(randuri: list[dict], user_id: UUID) -> list[Plata]:
+    """Randurile brute, ca plati.
+
+    Miscarile de credit se lasa afara aici, in punctul comun, nu la fiecare
+    apelant: si detectia, si raportul, si antrenarea modelului trebuie sa vada
+    aceeasi realitate. Detectia venitului (app/credit/venit.py) nu e atinsa —
+    ea se uita doar la incasari, iar ratele sunt iesiri.
+    """
     plati: list[Plata] = []
     for rand in randuri:
+        if e_miscare_de_credit(rand.get("descriere")):
+            continue
         try:
             moment = datetime.fromisoformat(str(rand["creat_la"]).replace("Z", "+00:00"))
         except ValueError:
@@ -47,6 +106,7 @@ def normalizeaza(randuri: list[dict], user_id: UUID) -> list[Plata]:
                 valuta=rand.get("valuta", "RON"),
                 comerciant=normalizeaza_comerciant(rand.get("descriere")),
                 iesire=str(rand.get("id_user_send")) == str(user_id),
+                ip=(rand.get("ip") or None),
             )
         )
     return sorted(plati, key=lambda p: p.moment)
@@ -104,7 +164,36 @@ def vector(plata: Plata, istoric: list[Plata], toate: list[Plata] | None = None)
         plata.suma / mediana_generala if mediana_generala else 1.0,
         zile_de_la_ultima,
         float(in_24h),
+        # Locul: platile de la un IP nemaivazut. Se uita la toate platile
+        # omului, nu doar la cele de la acest comerciant — un loc nou e nou
+        # indiferent unde plateste.
+        loc_nou(plata, referinta),
     ]
+
+
+def loc_nou(plata: Plata, referinta: list[Plata]) -> float:
+    """1.0 daca plata vine dintr-un loc de unde omul n-a mai platit.
+
+    Se compara IP-ul cu cele din platile lui anterioare, nu cu ale altcuiva:
+    intrebarea e „e neobisnuit PENTRU EL", ca peste tot in modulul asta.
+
+    Lipsa IP-ului intoarce 0.0, nu o valoare-santinela separata. Distinctia
+    conteaza: o a treia valoare ar fi insemnat „loc necunoscut" ca si cum ar fi
+    un fapt despre plata, cand de fapt e o lipsa a noastra — iar pe datele de
+    azi, unde aproape nimic n-are IP, santinela ar fi devenit coloana dominanta
+    si ar fi impins modelul sa taie dupa ea.
+    """
+    if not plata.ip:
+        return 0.0
+
+    vazute = {p.ip for p in referinta if p.ip and p.moment < plata.moment}
+    if not vazute:
+        # Primul IP inregistrat al omului nu e „nou": nu exista cu ce sa fie
+        # comparat. Altfel fiecare client ar fi semnalat la prima plata de dupa
+        # pornirea capturarii.
+        return 0.0
+
+    return 0.0 if plata.ip in vazute else 1.0
 
 
 def _mediana(valori: list[float]) -> float:

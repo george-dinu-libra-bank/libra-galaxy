@@ -1,14 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Check, Copy, Plus, Send, Star, Trash2, User } from "lucide-react";
+import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
 import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
+import { adaugaBeneficiar, stergeBeneficiar } from "@/lib/actions/beneficiari";
+import type { Beneficiar } from "@/lib/data/beneficiari";
 import { ibanEsteValid } from "@/lib/iban";
-import type { Beneficiar } from "@/lib/mock-data";
-import { cn, formateazaIban } from "@/lib/utils";
+import { formateazaIban } from "@/lib/utils";
 
 function initiale(nume: string) {
   return nume
@@ -23,12 +25,25 @@ export function ListaBeneficiari({ beneficiari: initiali }: { beneficiari: Benef
   const [beneficiari, setBeneficiari] = useState(initiali);
   const [selectatId, setSelectatId] = useState<string | null>(null);
   const [pas, setPas] = useState<"detalii" | "sterge">("detalii");
+  const [eroareStergere, setEroareStergere] = useState<string | null>(null);
+  const [seSterge, startTransitionStergere] = useTransition();
 
   const selectat = beneficiari.find((b) => b.id === selectatId) ?? null;
 
   function sterge(id: string) {
-    setBeneficiari((prev) => prev.filter((b) => b.id !== id));
-    setSelectatId(null);
+    setEroareStergere(null);
+
+    startTransitionStergere(async () => {
+      const rezultat = await stergeBeneficiar(id);
+
+      if (rezultat.eroare) {
+        setEroareStergere(rezultat.eroare);
+        return;
+      }
+
+      setBeneficiari((prev) => prev.filter((b) => b.id !== id));
+      setSelectatId(null);
+    });
   }
 
   return (
@@ -83,7 +98,14 @@ export function ListaBeneficiari({ beneficiari: initiali }: { beneficiari: Benef
         }}
       >
         {selectat ? (
-          <DetaliuBeneficiarContinut beneficiar={selectat} pas={pas} setPas={setPas} onSterge={sterge} />
+          <DetaliuBeneficiarContinut
+            beneficiar={selectat}
+            pas={pas}
+            setPas={setPas}
+            onSterge={sterge}
+            seSterge={seSterge}
+            eroareStergere={eroareStergere}
+          />
         ) : (
           <DrawerContent title="" description="">
             {null}
@@ -99,11 +121,15 @@ function DetaliuBeneficiarContinut({
   pas,
   setPas,
   onSterge,
+  seSterge,
+  eroareStergere,
 }: {
   beneficiar: Beneficiar;
   pas: "detalii" | "sterge";
   setPas: (pas: "detalii" | "sterge") => void;
   onSterge: (id: string) => void;
+  seSterge: boolean;
+  eroareStergere: string | null;
 }) {
   const router = useRouter();
   const [copiat, setCopiat] = useState(false);
@@ -124,16 +150,24 @@ function DetaliuBeneficiarContinut({
             <Button varianta="ghost" className="flex-1" onClick={() => setPas("detalii")}>
               Renunță
             </Button>
-            <Button varianta="danger" className="flex-1" onClick={() => onSterge(beneficiar.id)}>
+            <Button
+              varianta="danger"
+              className="flex-1"
+              loading={seSterge}
+              onClick={() => onSterge(beneficiar.id)}
+            >
               Șterge
             </Button>
           </div>
         }
       >
-        <p className="text-[15px] leading-[22px] text-ink-soft">
-          Nu vei mai putea trimite bani rapid catre acest cont din lista de beneficiari.
-          Poti sa il adaugi din nou oricand.
-        </p>
+        <div className="flex flex-col gap-3">
+          {eroareStergere ? <Banda ton="eroare">{eroareStergere}</Banda> : null}
+          <p className="text-[15px] leading-[22px] text-ink-soft">
+            Nu vei mai putea trimite bani rapid catre acest cont din lista de beneficiari.
+            Poti sa il adaugi din nou oricand.
+          </p>
+        </div>
       </DrawerContent>
     );
   }
@@ -194,17 +228,21 @@ function AdaugaBeneficiarDrawer({ onAdaugat }: { onAdaugat: (b: Beneficiar) => v
   const [iban, setIban] = useState("");
   const [eroareNume, setEroareNume] = useState<string | null>(null);
   const [eroareIban, setEroareIban] = useState<string | null>(null);
+  const [eroareGenerala, setEroareGenerala] = useState<string | null>(null);
+  const [seAdauga, startTransition] = useTransition();
 
   function reseteaza() {
     setNume("");
     setIban("");
     setEroareNume(null);
     setEroareIban(null);
+    setEroareGenerala(null);
   }
 
   function adauga() {
     setEroareNume(null);
     setEroareIban(null);
+    setEroareGenerala(null);
 
     if (nume.trim().length < 3) {
       setEroareNume("Introdu numele beneficiarului");
@@ -215,15 +253,19 @@ function AdaugaBeneficiarDrawer({ onAdaugat }: { onAdaugat: (b: Beneficiar) => v
       setEroareIban("IBAN invalid");
       return;
     }
-    onAdaugat({
-      id: `nou-${Date.now()}`,
-      nume: nume.trim(),
-      iban: ibanCurat,
-      banca: "Cont extern",
-      favorit: false,
+
+    startTransition(async () => {
+      const rezultat = await adaugaBeneficiar(nume, ibanCurat);
+
+      if (rezultat.eroare || !rezultat.beneficiar) {
+        setEroareGenerala(rezultat.eroare ?? "Nu am putut adăuga beneficiarul. Încearcă din nou.");
+        return;
+      }
+
+      onAdaugat(rezultat.beneficiar);
+      setDeschis(false);
+      reseteaza();
     });
-    setDeschis(false);
-    reseteaza();
   }
 
   return (
@@ -243,14 +285,15 @@ function AdaugaBeneficiarDrawer({ onAdaugat }: { onAdaugat: (b: Beneficiar) => v
 
       <DrawerContent
         title="Beneficiar nou"
-        description="Adaugă un cont catre care sa trimiti bani rapid."
+        description="Adaugă un cont catre care sa trimiti bani rapid. Dacă e un cont Galaxy Bank, îl poți invita ulterior direct într-un grup."
         footer={
-          <Button className="w-full" onClick={adauga}>
+          <Button className="w-full" loading={seAdauga} onClick={adauga}>
             Adaugă beneficiarul
           </Button>
         }
       >
         <div className="flex flex-col gap-4">
+          {eroareGenerala ? <Banda ton="eroare">{eroareGenerala}</Banda> : null}
           <Camp
             eticheta="Nume beneficiar"
             icoana={User}

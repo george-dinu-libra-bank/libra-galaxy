@@ -67,6 +67,8 @@ def _quick_action_out_from_result(quick_action) -> QuickActionOut | None:
         url=quick_action.url,
         transaction_id=quick_action.transaction_id,
         suggested_category=quick_action.suggested_category,
+        rezumat=getattr(quick_action, "rezumat", ""),
+        eticheta=getattr(quick_action, "eticheta", ""),
     )
 
 

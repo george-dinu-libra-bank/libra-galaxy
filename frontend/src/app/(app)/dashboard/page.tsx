@@ -6,6 +6,7 @@ import { AvatarUtilizator } from "@/components/dashboard/avatar-utilizator";
 import { BandaPoprire } from "@/components/dashboard/banda-poprire";
 import { CashflowDrawer } from "@/components/dashboard/cashflow-drawer";
 import { CategoriiCheltuieli } from "@/components/dashboard/categorii-cheltuieli";
+import { CheltuieliSapteZile } from "@/components/dashboard/cheltuieli-sapte-zile";
 import { ValutaDashboardProvider } from "@/components/dashboard/context-valuta";
 import { ListaConturi } from "@/components/dashboard/lista-conturi";
 import { PrimesteQrDrawer } from "@/components/dashboard/primeste-qr-drawer";
@@ -18,7 +19,11 @@ import { Banda } from "@/components/ui/banda";
 import { Bulina } from "@/components/ui/bulina";
 import { ClopotelNotificari } from "@/components/ui/clopotel-notificari";
 import { Logo } from "@/components/ui/logo";
-import { obtineCashflow, obtineCheltuieliPeCategorie } from "@/lib/data/analiza";
+import {
+  obtineCashflow,
+  obtineCheltuieliPeCategorie,
+  obtineTranzactiiCategorizate,
+} from "@/lib/data/analiza";
 import { obtineConturiUtilizator } from "@/lib/data/conturi";
 import { obtineCereri } from "@/lib/data/credite";
 import type { StareCerere } from "@/lib/data/credite";
@@ -49,6 +54,9 @@ const DALA =
 
 /** Cate miscari incap in rezumatul de pe dashboard; restul stau in /istoric. */
 const TRANZACTII_REZUMAT = 5;
+
+/** Fereastra graficului de cheltuieli de sub conturi. */
+const ZILE_GRAFIC = 7;
 
 // Starile in care /credite chiar randeaza un buton de discutie. Bulina se
 // stinge cand firul se deschide, deci a numara mesaje pe un dosar fara buton
@@ -108,6 +116,10 @@ export default async function DashboardPage() {
 
   const cheltuieliPeCategorie = await obtineCheltuieliPeCategorie();
   const cashflow = await obtineCashflow(1);
+  // Graficul de sub conturi grupeaza singur tranzactiile pe zi: backendul le da
+  // categorizate, una cate una, iar valuta in care se aduna se alege abia in
+  // client (aceeasi cu totalul din conturi).
+  const tranzactii7Zile = await obtineTranzactiiCategorizate(ZILE_GRAFIC);
 
   return (
     <ValutaDashboardProvider>
@@ -153,9 +165,6 @@ export default async function DashboardPage() {
             </div>
           ) : null}
 
-          <div className="mt-4">
-            <MesajeBanca notificari={notificari} />
-          </div>
 
           {/* Poprirea sta inaintea analizei de cheltuieli: e o restrictie in
               vigoare pe banii din ecran, nu o informatie despre trecut. */}
@@ -164,6 +173,8 @@ export default async function DashboardPage() {
           <CategoriiCheltuieli date={cheltuieliPeCategorie} cursuri={cursuri} />
 
           <ListaConturi conturi={conturi} />
+
+          <CheltuieliSapteZile tranzactii={tranzactii7Zile} cursuri={cursuri} />
 
         </>
       ) : (

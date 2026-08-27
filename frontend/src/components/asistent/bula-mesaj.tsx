@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useState, useTransition } from "react";
 import { ArrowRight, Check, FileDown, Landmark, Loader2, Mic, Users } from "lucide-react";
+import { CardSesizare } from "@/components/asistent/card-sesizare";
 import { cn, formateazaIban } from "@/lib/utils";
 import { confirmaCategorie } from "@/lib/actions/asistent";
 import type { ActiuneRapida, FisierGenerat, NivelIncredere } from "@/lib/data/asistent";
@@ -181,6 +182,13 @@ export function BulaMesaj({
             </a>
           ))}
         </div>
+      ) : null}
+
+      {!alMeu && actiuneRapida?.tip === "sesizare" && actiuneRapida.rezumat ? (
+        <CardSesizare
+          subiect={actiuneRapida.eticheta || "Sesizare din asistent"}
+          rezumat={actiuneRapida.rezumat}
+        />
       ) : null}
 
       {!alMeu && actiuneRapida && ACTIUNI_SIMPLE[actiuneRapida.tip] ? (

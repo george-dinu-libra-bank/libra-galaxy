@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { CreeazaGrupDrawer } from "@/components/grupuri/creeaza-grup-drawer";
 import { IntraInGrupDrawer } from "@/components/grupuri/intra-in-grup-drawer";
+import { InvitatiileMele } from "@/components/grupuri/invitatiile-mele";
 import { ListaGrupuri } from "@/components/grupuri/lista-grupuri";
-import { obtineGrupurileMele } from "@/lib/data/grupuri";
+import { obtineGrupurileMele, obtineInvitatiileMele } from "@/lib/data/grupuri";
+import { obtineContrapartiRecente } from "@/lib/data/tranzactii";
 
 export const metadata: Metadata = {
   title: "Grupuri · Galaxy Bank",
@@ -22,7 +24,11 @@ export default async function GrupuriPage({
   const { token } = await searchParams;
   const tokenInitial = Array.isArray(token) ? token[0] : token;
 
-  const grupuri = await obtineGrupurileMele();
+  const [grupuri, invitatii, contraparti] = await Promise.all([
+    obtineGrupurileMele(),
+    obtineInvitatiileMele(),
+    obtineContrapartiRecente(),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
@@ -32,10 +38,14 @@ export default async function GrupuriPage({
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <CreeazaGrupDrawer />
+        <CreeazaGrupDrawer contraparti={contraparti} />
         {/* `key` pe token: un link nou de invitatie remonteaza drawerul, deci
             cauta din nou grupul in loc sa ramana pe rezultatul precedent. */}
         <IntraInGrupDrawer key={tokenInitial ?? "manual"} tokenInitial={tokenInitial} />
+      </div>
+
+      <div className="mt-6">
+        <InvitatiileMele invitatii={invitatii} />
       </div>
 
       <ListaGrupuri grupuri={grupuri} />

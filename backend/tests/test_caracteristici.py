@@ -97,3 +97,54 @@ def test_fara_referinta_generala_se_foloseste_istoricul() -> None:
     plata = _plata(10, 100.0)
 
     assert vector(plata, istoric) == vector(plata, istoric, istoric)
+
+
+# -- miscarile de credit nu sunt plati ale omului ------------------------------
+
+
+def test_ratele_de_credit_nu_intra_in_analiza():
+    """Le genereaza banca din grafic; omul nu alege cand si cat se ia.
+
+    Cat timp intrau, fiecare rata parea alt comerciant („rata 1/12 credit",
+    „rata 2/12 credit"), deci fiecare devenea „prima plata la un comerciant
+    nou" — si banca ajungea sa-l intrebe pe client daca a autorizat plata
+    propriilor rate.
+    """
+    from uuid import uuid4
+    from app.ml.caracteristici import normalizeaza
+
+    uid = uuid4()
+    randuri = [
+        {"id": "1", "creat_la": "2026-08-20T10:00:00Z", "suma": 878.69,
+         "descriere": "Rata 1/12 credit", "id_user_send": str(uid)},
+        {"id": "2", "creat_la": "2026-08-20T10:01:00Z", "suma": 7591.67,
+         "descriere": "Rambursare anticipata integrala credit", "id_user_send": str(uid)},
+        {"id": "3", "creat_la": "2026-08-20T11:00:00Z", "suma": 155.92,
+         "descriere": "Kaufland ref 99929175", "id_user_send": str(uid)},
+    ]
+
+    plati = normalizeaza(randuri, uid)
+
+    assert [p.id for p in plati] == ["3"]
+    assert plati[0].comerciant == "kaufland"
+
+
+def test_o_plata_obisnuita_care_contine_cuvantul_credit_ramane():
+    """Filtrul e ancorat pe formatul exact al RPC-urilor, nu pe cuvinte."""
+    from app.ml.caracteristici import e_miscare_de_credit
+
+    assert e_miscare_de_credit("Rata 3/12 credit")
+    assert not e_miscare_de_credit("Credit Suisse ref 1234567")
+    assert not e_miscare_de_credit("Rata la sala credit card")
+    assert not e_miscare_de_credit(None)
+
+
+def test_numele_pentru_om_pastreaza_scrierea_si_taie_referinta():
+    """In grupare conteaza sa fie acelasi loc; intr-o scrisoare conteaza sa arate bine."""
+    from app.ml.caracteristici import comerciant_pentru_om, normalizeaza_comerciant
+
+    assert comerciant_pentru_om("Kaufland ref 99929175") == "Kaufland"
+    assert comerciant_pentru_om("Bijuterii Lux ref 91112345") == "Bijuterii Lux"
+    assert comerciant_pentru_om(None) == "necunoscut"
+    # Gruparea ramane pe litere mici, neschimbata.
+    assert normalizeaza_comerciant("Kaufland ref 99929175") == "kaufland"

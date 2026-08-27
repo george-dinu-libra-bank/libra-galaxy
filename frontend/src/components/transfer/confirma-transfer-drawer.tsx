@@ -50,7 +50,7 @@ export function ConfirmaTransferDrawer({
         cuInchidere={!seTrimite}
         footer={
           <Button className="w-full" loading={seTrimite} onClick={onConfirma}>
-            Trimite {formateazaSuma(suma)}
+            Trimite {formateazaSuma(suma, contSursa.valuta)}
           </Button>
         }
       >
@@ -58,7 +58,7 @@ export function ConfirmaTransferDrawer({
           <div className="rounded-field bg-primary-50 p-4 text-center">
             <p className="text-[13px] text-primary-700">Sumă</p>
             <p className="tabular mt-1 text-[28px] font-bold leading-8 text-primary-900">
-              {formateazaSuma(suma)}
+              {formateazaSuma(suma, contSursa.valuta)}
             </p>
           </div>
 
