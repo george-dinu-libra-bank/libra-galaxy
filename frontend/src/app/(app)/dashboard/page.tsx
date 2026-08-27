@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeftRight, Banknote, ChevronRight, CreditCard, Users } from "lucide-react";
 import { AvatarUtilizator } from "@/components/dashboard/avatar-utilizator";
+import { BandaPoprire } from "@/components/dashboard/banda-poprire";
 import { ListaConturi } from "@/components/dashboard/lista-conturi";
 import { SchimbValutarDrawer } from "@/components/dashboard/schimb-valutar-drawer";
 import { SoldAnimat } from "@/components/dashboard/sold-animat";
@@ -17,6 +18,7 @@ import { obtineConturiUtilizator, totalSold } from "@/lib/data/conturi";
 import { obtineCereri } from "@/lib/data/credite";
 import type { StareCerere } from "@/lib/data/credite";
 import { obtineNotificari } from "@/lib/data/notificari";
+import { obtinePoprireaActiva } from "@/lib/data/popriri";
 import { obtineCursuri } from "@/lib/data/curs-valutar";
 import { obtineTranzactiiUtilizator } from "@/lib/data/tranzactii";
 import { createClient } from "@/lib/supabase/server";
@@ -77,6 +79,9 @@ export default async function DashboardPage() {
   // Mesajele bancii nu pot darama dashboardul: daca tabela lipseste (migrarea
   // 0018 nerulata inca), lista vine goala si restul ecranului se vede la fel.
   const notificari = await obtineNotificari().catch(() => []);
+  // Poprirea nu poate darama dashboardul, din acelasi motiv ca mesajele bancii:
+  // bariera adevarata e in baza (0043), aici e doar explicatia dinainte.
+  const poprire = await obtinePoprireaActiva().catch(() => null);
 
 
   // Bulina de pe cardul de credite: cate mesaje de la banca n-a deschis inca.
@@ -146,6 +151,8 @@ export default async function DashboardPage() {
           <div className="mt-4">
             <MesajeBanca notificari={notificari} />
           </div>
+
+          {poprire ? <BandaPoprire poprire={poprire} /> : null}
 
           <ListaConturi conturi={conturi} />
 

@@ -78,6 +78,12 @@ const MESAJE_CORE_BANKING: Record<string, string> = {
   CONT_SURSA_STRAIN: "Nu poti plati dintr-un cont care nu este al tau.",
   AUTOTRANSFER: "Nu poti trimite bani in acelasi cont din care platesti.",
   FONDURI_INSUFICIENTE: "Nu ai fonduri suficiente in cont.",
+  // Ridicat de trigger-ul din 0047. Nu e acelasi lucru cu FONDURI_INSUFICIENTE:
+  // banii SUNT in cont, dar o parte din ei sunt indisponibilizati printr-o
+  // poprire. Un mesaj de „fonduri insuficiente" ar trimite omul sa-si caute
+  // banii care se vad pe ecran.
+  POPRIRE_ACTIVA:
+    "O parte din banii tăi sunt indisponibilizați printr-o poprire, iar suma cerută îi depășește pe cei disponibili.",
   // Ridicate de core_banking_groups (0009_core_banking_groups.sql).
   GRUP_INEXISTENT: "Grupul nu exista.",
   NU_ESTI_MEMBRU: "Nu faci parte din acest grup.",

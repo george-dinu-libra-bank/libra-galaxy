@@ -55,6 +55,10 @@ const MESAJE: Record<string, string> = {
   FARA_CONT: "Contul acestui card nu mai există.",
   CONT_BLOCAT: "Contul cardului este blocat de bancă.",
   FONDURI_INSUFICIENTE: "Cardul nu are fonduri suficiente pentru această plată.",
+  // Banii stau pe cont, nu pe card, deci si plata cu cardul se loveste de
+  // poprirea de pe conturi (0047).
+  POPRIRE_ACTIVA:
+    "O parte din banii din cont sunt indisponibilizați printr-o poprire.",
   LIMITA_DEPASITA: "Plata ar depăși limita zilnică a cardului.",
   CURS_INDISPONIBIL: "Cursul valutar nu este disponibil acum. Încearcă mai târziu.",
   PLATA_INEXISTENTA: "Plata nu există sau nu îți aparține.",

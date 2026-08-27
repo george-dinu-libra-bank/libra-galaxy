@@ -5,6 +5,7 @@ import { obtineStareConturiToti } from "@/lib/data/admin-tranzactii";
 import type {
   CerereInchidere,
   CerereStergere,
+  Poprire,
   ProfilAdmin,
   StareConturi,
 } from "@/lib/tipuri-admin";
@@ -12,10 +13,13 @@ import { BackendError } from "@/lib/backend";
 import { Banda } from "@/components/ui/banda";
 import { RestabilesteBiometrie } from "@/components/admin/restabileste-biometrie";
 import { BlocareCont } from "@/components/admin/blocare-cont";
+import { PoprireCont } from "@/components/admin/poprire-cont";
+import { Popriri } from "@/components/admin/popriri";
 import { CereriStergere } from "@/components/admin/cereri-stergere";
 import { CereriInchidere } from "@/components/admin/cereri-inchidere";
 import { obtineCereriStergere } from "@/lib/data/admin-stergeri";
 import { obtineCereriInchidere } from "@/lib/data/admin-inchideri";
+import { obtinePopriri } from "@/lib/data/admin-popriri";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +49,7 @@ export default async function ConturiPage() {
   // niciuna. O coada goala si o coada care nu s-a putut incarca arata acum diferit.
   let cereriStergere: CerereStergere[] = [];
   let cereriInchidere: CerereInchidere[] = [];
+  let popriri: Poprire[] = [];
   const cozicazute: string[] = [];
 
   async function incarca<T>(
@@ -61,11 +66,12 @@ export default async function ConturiPage() {
   }
 
   try {
-    [conturi, stariConturi, cereriStergere, cereriInchidere] = await Promise.all([
+    [conturi, stariConturi, cereriStergere, cereriInchidere, popriri] = await Promise.all([
       obtineToateConturile(admin.token),
       incarca("starea conturilor", obtineStareConturiToti(admin.token)),
       incarca("cererile de închidere a relației", obtineCereriStergere(admin.token)),
       incarca("cererile de închidere a conturilor", obtineCereriInchidere(admin.token)),
+      incarca("popririle", obtinePopriri(admin.token)),
     ]);
   } catch (exc) {
     eroare =
@@ -116,6 +122,10 @@ export default async function ConturiPage() {
         </Banda>
       ) : null}
 
+      {/* Popririle sunt masuri in curs, nu cereri care asteapta un raspuns —
+          de aceea stau inaintea cozilor. */}
+      <Popriri popriri={popriri} />
+
       {/* Inchiderea unui cont bancar sta inaintea plecarii din banca: e
           operatiunea mai deasa, si cea reversibila. */}
       <CereriInchidere cereri={cereriInchidere} />
@@ -162,6 +172,9 @@ function RandCont({
             total={stare.total}
             blocate={stare.blocate}
           />
+        ) : null}
+        {stare ? (
+          <PoprireCont idUtilizator={cont.id} nume={cont.nume} total={stare.total} />
         ) : null}
         <RestabilesteBiometrie userId={cont.id} nume={cont.nume} />
       </span>

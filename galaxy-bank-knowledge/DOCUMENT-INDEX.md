@@ -32,6 +32,7 @@ data_actualizare: 2026-08-25
 | conturi/cont-economii.md | conturi | cont-economii | Galaxy Savings este contul de economii în RON destinat păstrării unei rezerve disponibile, cu dobândă anuală de 2,75%. | _source-of-truth.md |
 | conturi/conturi-valuta.md | conturi | conturi-valuta | Galaxy Flex este contul multivalută care permite administrarea RON, EUR, USD și GBP în cadrul aceleiași relații de client. | _source-of-truth.md |
 | conturi/deschidere-cont.md | conturi | deschidere-cont | Pentru conturile retail standard, solicitantul trebuie să aibă minimum 18 ani și să fie rezident fiscal în România. Banca poate solicita informații suplimentare pentru verificăr... | _source-of-truth.md |
+| conturi/poprire.md | conturi | poprire | O poprire indisponibilizeaza o suma anume pe toate conturile clientului, la cererea unui creditor cu titlu executoriu; incasarile intra normal, iar banii peste suma poprita raman disponibili. | _source-of-truth.md, conturi/cont-curent.md |
 | credite/card-credit.md | credite | card-credit | Limita aprobată este între 3.000 și 50.000 RON. | _source-of-truth.md |
 | credite/credit-ipotecar.md | credite | credit-ipotecar | Galaxy Mortgage este creditul ipotecar destinat finanțării unei achiziții sau a unei alte destinații imobiliare eligibile. | _source-of-truth.md |
 | credite/credit-nevoi-personale.md | credite | credit-nevoi-personale | Galaxy Flex Personal este creditul de nevoi personale cu dobândă fixă de 9,90% pe an. | _source-of-truth.md |
