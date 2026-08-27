@@ -1,8 +1,9 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ContSemnalatResponse(BaseModel):
@@ -194,4 +195,102 @@ class DecizieInchidereRequest(BaseModel):
     # Lipsa inseamna „automat": RPC-ul cade pe propunerea clientului, iar daca
     # nici ea nu exista, pe contul principal.
     id_cont_destinatie: UUID | None = None
+    motiv: str | None = Field(default=None, max_length=500)
+
+
+# -----------------------------------------------------------------------------
+# Popriri
+#
+# Alta operatiune decat blocarea contului, si nu trebuie confundata cu ea:
+# blocarea opreste TOT ce pleaca dintr-un cont, poprirea indisponibilizeaza o
+# SUMA pe toate conturile clientului. Pot fi si amandoua deodata.
+# -----------------------------------------------------------------------------
+
+
+class PoprireResponse(BaseModel):
+    """Un dosar de poprire, asa cum il vede analistul.
+
+    ATENTIE la sumele ca text: acelasi camp vine in DOUA forme, dupa drum.
+    PostgREST serializeaza `numeric` ca SIR cand citesti tabela, dar ca NUMAR
+    cand il intoarce un RPC. Prima varianta a acestui model declara doar `str`,
+    si efectul era exact pe dos decat cel util: lista mergea (era goala), iar
+    instituirea unei popriri dadea 500 DUPA ce RPC-ul scrisese deja randul in
+    baza — adica omul primea „eroare" si o poprire reala pe cont.
+
+    Normalizarea sta aici, intr-un singur loc, si nu in cele patru rute: e
+    singurul punct prin care trec amandoua formele.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: UUID
+    id_utilizator: UUID
+    creditor: str
+    dosar: str | None = None
+    suma_totala: str
+    suma_incasata: str
+    valuta: str = "RON"
+    status: str
+    creat_la: datetime
+    incheiat_la: datetime | None = None
+    observatie: str | None = None
+
+    # Vin din alaturarea facuta in depozit, ca analistul sa nu ceara a doua oara.
+    nume: str | None = None
+    email: str | None = None
+    # Soldul cumulat al clientului, in RON. Fara el, „mai are de platit 5000" nu
+    # spune daca poprirea se poate incasa azi sau nu.
+    disponibil: str | None = None
+
+    @field_validator("suma_totala", "suma_incasata", "disponibil", mode="before")
+    @classmethod
+    def _bani_ca_text(cls, valoare: object) -> object:
+        """Orice ar veni — sir, float, Decimal — iese „1234.50".
+
+        Trecerea prin `Decimal(str(...))` si nu prin `float` e intentionata: pe
+        bani nu se face aritmetica in virgula mobila nicaieri in proiectul asta.
+        """
+        if valoare is None or isinstance(valoare, str):
+            return valoare
+        if isinstance(valoare, (int, float, Decimal)):
+            return str(Decimal(str(valoare)).quantize(Decimal("0.01")))
+        return valoare
+
+
+class InstituiePoprireRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id_utilizator: UUID
+    creditor: str = Field(min_length=2, max_length=200)
+    suma: Decimal = Field(gt=0)
+    dosar: str | None = Field(default=None, max_length=100)
+    observatie: str | None = Field(default=None, max_length=2000)
+
+
+class IncaseazaPoprireRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Lipsa inseamna „cat se poate acum" — forma folosita in practica, fiindca
+    # banii pica in transe.
+    suma: Decimal | None = Field(default=None, gt=0)
+
+
+class RidicaPoprireRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    motiv: str | None = Field(default=None, max_length=500)
+
+
+class StorneazaPoprireRequest(BaseModel):
+    """Reverse-ul unei incasari: banii virati se intorc la client.
+
+    Nu e acelasi lucru cu ridicarea. Ridicarea opreste poprirea; stornarea aduce
+    banii inapoi. O poprire pusa gresit si deja incasata cere amandoua, in
+    ordinea asta.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Lipsa inseamna „tot ce s-a incasat".
+    suma: Decimal | None = Field(default=None, gt=0)
     motiv: str | None = Field(default=None, max_length=500)

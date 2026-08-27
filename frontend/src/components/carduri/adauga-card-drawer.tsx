@@ -3,14 +3,32 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Check, CreditCard, Plus } from "lucide-react";
+import { FataCard, type DateFataCard } from "@/components/carduri/fata-card";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
 import { adaugaCard } from "@/lib/actions/carduri";
 import type { StilCard, TipCard } from "@/lib/data/carduri";
 import type { ContBancar } from "@/lib/data/conturi";
-import { ETICHETE_STIL_CARD, GRADIENTE_STIL_CARD } from "@/lib/stil-card";
+import { ETICHETE_STIL_CARD } from "@/lib/stil-card";
 import { cn, formateazaSuma } from "@/lib/utils";
+
+/**
+ * Cardul de exemplu din selectorul de tematica.
+ *
+ * Cifrele sunt inventate si trebuie sa ramana asa: cardul nu exista inca, iar un
+ * numar real de card intr-o previzualizare ar fi si o minciuna, si o scurgere.
+ */
+function exempluCard(stil: StilCard): DateFataCard {
+  return {
+    stil,
+    tip: "fizic",
+    numarMascat: "•••• •••• •••• 1234",
+    dataExpirare: "12/29",
+    blocat: false,
+    blocatDeBanca: false,
+  };
+}
 
 const DESCRIERI_STIL_CARD: Record<StilCard, string> = {
   standard: "Albastrul Galaxy Bank, pentru orice zi.",
@@ -174,11 +192,13 @@ export function AdaugaCardDrawer({
                   : "border-line bg-surface hover:bg-muted",
               )}
             >
-              <span
-                className="h-14 w-20 shrink-0 rounded-field shadow-sm"
-                style={{ background: GRADIENTE_STIL_CARD[stil] }}
-                aria-hidden
-              />
+              {/* Previzualizarea e chiar fata cardului, la scara mica, nu un
+                  dreptunghi cu gradient: omul alege tematica uitandu-se la ce
+                  primeste. Inainte cele doua deviau — aici gradient simplu,
+                  acolo card cu cip si sigla. */}
+              <span className="w-24 shrink-0" aria-hidden>
+                <FataCard miniatura date={exempluCard(stil)} />
+              </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[15px] font-semibold text-ink">
                   {ETICHETE_STIL_CARD[stil]}

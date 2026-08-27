@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from anyio import to_thread
@@ -407,6 +408,169 @@ class AdminRepository:
             self._client.auth.admin.delete_user(id_user)
 
         await to_thread.run_sync(interogare)
+
+    # -- popriri -----------------------------------------------------------
+    #
+    # Nu e acelasi lucru cu blocarea contului, desi amandoua tin bani pe loc:
+    # blocarea (0030) opreste TOT ce pleaca, poprirea (0047) indisponibilizeaza
+    # o SUMA pe toate conturile omului. Pot fi si amandoua deodata.
+    #
+    # Toate garzile stau in RPC-uri, ca la inchiderea contului: cine cat mai are
+    # de platit, ce se intampla cand clientul are mai putin decat suma poprita,
+    # si ce se scrie in istoric. Aici e doar transportul.
+
+    async def popriri(self, doar_active: bool = False) -> list[dict]:
+        """Popririle, cu numele clientului si cu cat are efectiv in conturi.
+
+        Disponibilul vine odata cu lista, dintr-o singura citire: „mai are de
+        platit 5000" nu-i spune analistului daca poprirea se poate incasa azi,
+        iar fara el ar cere randul al doilea pentru fiecare linie din coada.
+        """
+
+        def interogare() -> list[dict]:
+            constructor = (
+                self._client.table("popriri")
+                .select(
+                    "id,id_utilizator,creditor,dosar,suma_totala,suma_incasata,"
+                    "valuta,status,creat_la,incheiat_la,observatie"
+                )
+                .order("creat_la", desc=True)
+            )
+            if doar_active:
+                constructor = constructor.eq("status", "activa")
+            return constructor.execute().data or []
+
+        popriri = await to_thread.run_sync(interogare)
+        if not popriri:
+            return []
+
+        id_uri = list({p["id_utilizator"] for p in popriri})
+
+        def context() -> tuple[dict, dict]:
+            profile = (
+                self._client.table("profiles")
+                .select("id,nume,email")
+                .in_("id", id_uri)
+                .execute()
+                .data
+                or []
+            )
+            conturi = (
+                self._client.table("conturi_bancare")
+                .select("id_user,sold,valuta")
+                .in_("id_user", id_uri)
+                .is_("inchis_la", "null")
+                .execute()
+                .data
+                or []
+            )
+            return (
+                {p["id"]: p for p in profile},
+                conturi,
+            )
+
+        profile, conturi = await to_thread.run_sync(context)
+
+        # Insumarea se face aici, nu in baza: `poprire_disponibil_total` e
+        # revocata pentru oricine in afara de service_role si converteste prin
+        # `converteste`, deci ar cere un apel per client. Pentru o coada de
+        # analist, suma pe valuta contului e destul — conversia exacta o face
+        # RPC-ul cand chiar se incaseaza.
+        disponibil: dict[str, float] = {}
+        for cont in conturi:
+            id_user = cont["id_user"]
+            disponibil[id_user] = disponibil.get(id_user, 0.0) + float(cont.get("sold") or 0)
+
+        for poprire in popriri:
+            profil = profile.get(poprire["id_utilizator"], {})
+            poprire["nume"] = profil.get("nume")
+            poprire["email"] = profil.get("email")
+            poprire["disponibil"] = f"{disponibil.get(poprire['id_utilizator'], 0.0):.2f}"
+
+        return popriri
+
+    async def instituie_poprire(
+        self,
+        id_utilizator: UUID,
+        creditor: str,
+        suma: Decimal,
+        id_admin: UUID,
+        *,
+        dosar: str | None = None,
+        observatie: str | None = None,
+    ) -> dict:
+        def interogare() -> dict:
+            return self._client.rpc(
+                "instituie_poprire",
+                {
+                    "p_id_utilizator": str(id_utilizator),
+                    "p_creditor": creditor,
+                    "p_suma": str(suma),
+                    "p_id_admin": str(id_admin),
+                    "p_dosar": dosar,
+                    "p_observatie": observatie,
+                },
+            ).execute().data
+
+        return await to_thread.run_sync(interogare)
+
+    async def incaseaza_poprire(
+        self, id_poprire: UUID, id_admin: UUID, suma: Decimal | None = None
+    ) -> dict:
+        """Vireaza catre creditor. Fara suma, ia cat se poate acum."""
+
+        def interogare() -> dict:
+            return self._client.rpc(
+                "incaseaza_poprirea",
+                {
+                    "p_id_poprire": str(id_poprire),
+                    "p_id_admin": str(id_admin),
+                    "p_suma": str(suma) if suma is not None else None,
+                },
+            ).execute().data
+
+        return await to_thread.run_sync(interogare)
+
+    async def storneaza_incasarea(
+        self,
+        id_poprire: UUID,
+        id_admin: UUID,
+        suma: Decimal | None = None,
+        motiv: str | None = None,
+    ) -> dict:
+        """Reverse-ul incasarii: banii virati se intorc in contul clientului.
+
+        Nu ridica poprirea — daca ea ramane activa, banii intorsi redevin
+        indisponibili pe loc. Asta e corect: datoria a redevenit neplatita.
+        """
+
+        def interogare() -> dict:
+            return self._client.rpc(
+                "storneaza_incasarea",
+                {
+                    "p_id_poprire": str(id_poprire),
+                    "p_id_admin": str(id_admin),
+                    "p_suma": str(suma) if suma is not None else None,
+                    "p_motiv": motiv,
+                },
+            ).execute().data
+
+        return await to_thread.run_sync(interogare)
+
+    async def ridica_poprire(
+        self, id_poprire: UUID, id_admin: UUID, motiv: str | None = None
+    ) -> dict:
+        def interogare() -> dict:
+            return self._client.rpc(
+                "ridica_poprirea",
+                {
+                    "p_id_poprire": str(id_poprire),
+                    "p_id_admin": str(id_admin),
+                    "p_motiv": motiv,
+                },
+            ).execute().data
+
+        return await to_thread.run_sync(interogare)
 
 
 
