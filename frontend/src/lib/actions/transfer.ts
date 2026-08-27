@@ -5,6 +5,7 @@ import { cautaContDupaIban, type BeneficiarTransfer } from "@/lib/data/transfer"
 import { ibanEsteValid } from "@/lib/iban";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { contEsteBlocat, MESAJ_CONT_BLOCAT } from "@/lib/cont-blocat";
+import { ipCerere } from "@/lib/ip-cerere";
 import { scaneazaTransfer } from "@/lib/cuvinte-sensibile";
 import { createClient } from "@/lib/supabase/server";
 import { formateazaSuma } from "@/lib/utils";
@@ -175,7 +176,7 @@ export async function trimiteTransfer(input: {
   // core_banking_groups, care verifica in plus ca esti membru al grupului.
   // Cand descrierea a fost semnalata, ambele drumuri trec prin
   // transfer_semnalat: debiteaza sursa si lasa suma in asteptare (0043).
-  const { error } = cuvinteGasite.length
+  const { data, error } = cuvinteGasite.length
     ? await supabaseAdmin.rpc("transfer_semnalat", {
         p_id_user: user.id,
         p_iban_dest: iban,
@@ -209,6 +210,22 @@ export async function trimiteTransfer(input: {
     if (!mesaj) console.error("ERROR trimiteTransfer:", error);
 
     return { eroare: mesaj ?? "Nu am putut trimite banii. Incearca din nou." };
+  }
+
+  // De unde a plecat transferul. Se scrie dupa, nu ca parametru al RPC-urilor:
+  // sunt trei functii diferite, toate ale altor fluxuri, si un parametru in plus
+  // ar fi insemnat sa le rescriu pe toate trei.
+  //
+  // Banii au plecat deja. Un esec aici pierde un semnal de detectie, nu o
+  // tranzactie, deci nu intoarce eroare catre om.
+  try {
+    const ip = await ipCerere();
+    const idTranzactie = (data as { id_tranzactie?: string } | null)?.id_tranzactie;
+    if (ip && idTranzactie) {
+      await supabaseAdmin.from("tranzactii").update({ ip }).eq("id", idTranzactie);
+    }
+  } catch (exc) {
+    console.error("nu am putut nota IP-ul transferului:", exc);
   }
 
   revalidatePath("/dashboard");

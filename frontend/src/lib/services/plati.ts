@@ -1,3 +1,4 @@
+import { ipCerere } from "@/lib/ip-cerere";
 import { obtineProdus } from "@/lib/data/produse";
 import type { StarePlata } from "@/lib/plati";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -163,6 +164,21 @@ export async function creeazaPlata(input: {
   });
 
   if (error) return laEroare(error, "creeazaPlata");
+
+  // IP-ul se scrie separat, dupa creare, nu ca parametru al RPC-ului: functia
+  // `creeaza_plata` e a fluxului de plati si a fost rescrisa recent (0046), iar
+  // o semnatura in plus ar fi insemnat sa o rescriu din nou.
+  //
+  // Esecul nu atinge plata. Ea a reusit; ce se pierde e un semnal de detectie,
+  // si a intoarce eroare pentru atat ar fi disproportionat.
+  try {
+    const ip = await ipCerere();
+    if (ip && data?.id) {
+      await supabaseAdmin.from("payments").update({ ip }).eq("id", data.id);
+    }
+  } catch (exc) {
+    console.error("nu am putut nota IP-ul platii:", exc);
+  }
 
   return { ok: true, plata: mapeaza(data as RandPlata) };
 }

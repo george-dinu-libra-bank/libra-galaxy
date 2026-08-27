@@ -31,9 +31,27 @@ CONFIDENCE_LOW = "scazut"
 
 
 @dataclass(frozen=True)
+class ActiunePropusa:
+    """Ceva ce asistentul propune, dar nu face.
+
+    Agentii nu au voie sa schimbe nimic (docs/AGENTS.md): tool-urile lor sunt
+    read-only sau, cel mult, `PREPARES_MUTATION`. Cand un raspuns are nevoie de
+    o urmare — trimiterea unei sesizari catre banca, de exemplu — el pregateste
+    continutul si il descrie aici, iar interfata arata un buton. Apasarea e a
+    omului; asistentul doar ii pune lucrul la indemana.
+    """
+
+    tip: str
+    eticheta: str
+    rezumat: str
+    context: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class AgentAnswer:
     text: str
     citations: list[dict] = field(default_factory=list)
+    actiune: ActiunePropusa | None = None
     confidence: str | None = None
     tokens_in: int = 0
     tokens_out: int = 0

@@ -39,7 +39,11 @@ from app.infrastructure.supabase import create_auth_client, create_user_client
 from app.infrastructure.supabase_client import get_service_client
 from app.ml.neregularitati import DetectorNeregularitati
 from app.orchestration.orchestrator import Orchestrator
+from app.agents.caz import AnalistCaz, ExtractorCaz, RedactorCaz
 from app.providers.foundry import MicrosoftFoundryChatProvider, MicrosoftFoundryEmbeddingProvider
+from app.repositories.admin_repository import AdminRepository, AnalizaRepository
+from app.repositories.caz_repository import CazRepository
+from app.services.caz_service import CazService
 from app.providers.voice import MicrosoftVoiceProvider
 from app.rag.retrieval import RetrievalService
 from app.repositories.attachment_repository import AttachmentRepository
@@ -48,6 +52,7 @@ from app.repositories.card_repository import CardRepository
 from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.credit_ai_repository import CreditAiRepository
 from app.repositories.credit_repository import CreditRepository
+from app.repositories.notificare_repository import NotificareRepository
 from app.repositories.embedding_cache_repository import EmbeddingCacheRepository
 from app.repositories.knowledge_repository import KnowledgeRepository
 from app.repositories.memory_repository import MemoryRepository
@@ -58,6 +63,7 @@ from app.repositories.telemetry_repository import TelemetryRepository
 from app.services.transaction_export_service import TransactionExportService
 from app.tools.banking_tools import build_banking_tools
 from app.tools.card_tools import build_card_tools
+from app.tools.notificari_tools import build_notificari_tools
 from app.tools.credit_tools import build_credit_tools
 from app.tools.knowledge_tools import build_knowledge_tools
 from app.tools.registry import ToolRegistry
@@ -115,6 +121,10 @@ def get_orchestrator() -> Orchestrator:
         # respinsa cererea" cadea pe RAG si primea brosura produsului, nu dosarul
         # omului. Tool-urile sunt read-only; deciziile raman in CreditService.
         *build_credit_tools(CreditRepository(client)),
+        # Fara mesajele bancii, un om caruia tocmai i s-a blocat contul intreaba
+        # "de ce?" si primeste o generalitate: get_accounts spune CA e blocat,
+        # dar motivul e in notificarea scrisa de analist.
+        *build_notificari_tools(NotificareRepository(client)),
     ])
 
     agents = {
@@ -203,6 +213,40 @@ def get_credit_ai_pipeline() -> CreditAiPipeline:
         price_per_million_in=settings.chat_price_per_million_input,
         price_per_million_out=settings.chat_price_per_million_output,
         max_semnale=settings.credit_ai_max_semnale,
+    )
+
+
+
+@lru_cache
+def get_caz_service() -> CazService:
+    """Investigatia de frauda, cu cei trei agenti ai ei (app/agents/caz/).
+
+    Primeste clientul de service_role: `caz_investigatie`, `caz_tranzactie` si
+    `caz_mesaj` au din 0051 doar politici de SELECT, deci nicio scriere nu poate
+    veni de la un client, oricat ar avea tokenul lui valid.
+
+    Agentii sunt None cand Foundry nu e configurat, si atunci fluxul merge fara
+    ei: administratorul scrie singur mesajul catre client si citeste raspunsul
+    cu ochii lui. Investigatia e o procedura a bancii, nu o functie a modelului
+    — daca ar cadea odata cu providerul, ar fi construita gresit.
+    """
+    settings = get_settings()
+    client = get_service_client()
+
+    redactor = extractor = analist = None
+    if settings.foundry_configured:
+        provider = MicrosoftFoundryChatProvider(settings)
+        redactor = RedactorCaz(provider)
+        extractor = ExtractorCaz(provider)
+        analist = AnalistCaz(provider)
+
+    return CazService(
+        CazRepository(client),
+        AnalizaRepository(client),
+        AdminRepository(client),
+        redactor=redactor,
+        extractor=extractor,
+        analist=analist,
     )
 
 

@@ -133,6 +133,11 @@ class QuickActionResult:
     # find_transaction_for_receipt/categorizeaza), niciodata scrise de model.
     transaction_id: str | None = None
     suggested_category: str | None = None
+    # Pentru kind="sesizare": textul care ar pleca la banca si eticheta butonului.
+    # Nu se trimite nimic de aici — cardul din chat arata continutul si asteapta
+    # apasarea clientului (vezi agents/transaction_intelligence.py).
+    rezumat: str = ""
+    eticheta: str = ""
 
 
 @dataclass(frozen=True)
@@ -374,6 +379,18 @@ class Orchestrator:
                     "kind": quick_action.kind, "accounts": [], "url": quick_action.url,
                     "transaction_id": quick_action.transaction_id, "suggested_category": quick_action.suggested_category,
                 }
+        elif answer.actiune is not None and answer.actiune.tip == "sesizare_suport":
+            # Sesizarea pregatita de agent devine un card cu buton. Continutul e
+            # cel produs de tool, nu o repovestire a modelului: ce vede clientul
+            # in card e exact ce pleaca la banca daca apasa.
+            quick_action = QuickActionResult(
+                kind="sesizare", accounts=(), url="",
+                rezumat=answer.actiune.rezumat, eticheta=answer.actiune.eticheta,
+            )
+            quick_action_data = {
+                "kind": quick_action.kind, "accounts": [], "url": "",
+                "rezumat": quick_action.rezumat, "eticheta": quick_action.eticheta,
+            }
 
         assistant_message = await self._messages.append(
             conversation.id, principal.user_id, "assistant", redacted_text, answer.citations,

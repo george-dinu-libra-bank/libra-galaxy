@@ -1,13 +1,31 @@
 "use client";
 
 import { useTransition } from "react";
-import { AlertTriangle, Check, Info, Lock, Unlock } from "lucide-react";
+import { AlertTriangle, Check, Info, LifeBuoy, Lock, MessageCircle, Unlock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { marcheazaCitita } from "@/lib/actions/notificari";
 import type { Notificare } from "@/lib/data/notificari";
 import Link from "next/link";
 import { dataLunga } from "@/lib/momente";
-import { idCerereDinNotificare, textFaraMarcaj } from "@/lib/notificari-credit";
+import {
+  idCerereDinNotificare,
+  idInvestigatieDinNotificare,
+  textFaraMarcaj,
+} from "@/lib/notificari-credit";
+
+/**
+ * Ce intrebare se scrie in asistent cand omul apasa "Intreaba asistentul".
+ *
+ * Se pre-completeaza, nu se trimite: omul o poate schimba sau sterge inainte de
+ * a apasa. Un mesaj trimis in locul lui ar fi o conversatie pe care n-a
+ * inceput-o el.
+ */
+const INTREBARI: Record<string, string> = {
+  blocare: "De ce mi-a fost blocat contul și ce trebuie să fac ca să-l deblochez?",
+  deblocare: "Contul meu a fost deblocat — ce s-a întâmplat și ce urmează?",
+  atentionare: "Am primit o atenționare de la bancă. Poți să-mi explici ce înseamnă?",
+  info: "Am primit un mesaj de la bancă. Poți să-mi explici ce înseamnă?",
+};
 
 const STIL = {
   blocare: { icoana: Lock, chenar: "border-danger/30", fundal: "bg-danger/5", ton: "text-danger" },
@@ -42,6 +60,14 @@ function Mesaj({ notificare }: { notificare: Notificare }) {
   const stil = STIL[notificare.tip] ?? STIL.info;
   const Icoana = stil.icoana;
 
+  const idCerere = idCerereDinNotificare(notificare.mesaj);
+  const idInvestigatie = idInvestigatieDinNotificare(notificare.mesaj);
+  // Cand mesajul are deja un loc al lui, acolo se duce omul. Un al doilea drum
+  // (asistentul) i-ar imparti atentia intre doua raspunsuri — iar la o
+  // investigatie l-ar trimite sa intrebe un model despre ceva ce banca tocmai
+  // l-a intrebat pe el, direct.
+  const areLocPropriu = idCerere !== null || idInvestigatie !== null;
+
   return (
     <article className={cn("rounded-card border p-4", stil.chenar, stil.fundal)}>
       <div className="flex items-start gap-3">
@@ -54,17 +80,49 @@ function Mesaj({ notificare }: { notificare: Notificare }) {
                 tehnic de la final in clar. */}
             {textFaraMarcaj(notificare.mesaj)}
           </p>
-          {idCerereDinNotificare(notificare.mesaj) ? (
+          {idCerere ? (
             <Link
-              href={"/credite?discutie=" + idCerereDinNotificare(notificare.mesaj)}
+              href={`/credite?discutie=${idCerere}`}
               className="mt-2 inline-block text-[12.5px] font-semibold text-primary-600 hover:underline"
             >
               Deschide discutia
             </Link>
           ) : null}
+          {idInvestigatie ? (
+            <Link
+              href={`/investigatii/${idInvestigatie}`}
+              className="mt-2 inline-block text-[12.5px] font-semibold text-primary-600 hover:underline"
+            >
+              Vezi mesajul băncii
+            </Link>
+          ) : null}
           <p className="mt-2 text-[12px] text-ink-faint">
             {dataLunga(notificare.creat_la)}
           </p>
+
+          {areLocPropriu ? null : (
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+              <Link
+                href={`/asistent?nou=1&intrebare=${encodeURIComponent(
+                  INTREBARI[notificare.tip] ?? INTREBARI.info,
+                )}`}
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary-600 hover:underline"
+              >
+                <MessageCircle size={15} strokeWidth={1.75} aria-hidden />
+                Întreabă asistentul
+              </Link>
+
+              {/* A doua cale, care nu depinde de nimeni: cine vrea sa scrie
+                  direct nu trebuie sa treaca printr-o conversatie. */}
+              <Link
+                href={`/sesizari?subiect=${encodeURIComponent(notificare.titlu)}`}
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink-soft hover:underline"
+              >
+                <LifeBuoy size={15} strokeWidth={1.75} aria-hidden />
+                Scrie băncii
+              </Link>
+            </div>
+          )}
         </div>
 
         <button

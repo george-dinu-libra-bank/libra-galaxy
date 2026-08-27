@@ -62,6 +62,8 @@ export async function trimiteMesaj(
       url: string;
       transaction_id?: string | null;
       suggested_category?: string | null;
+      rezumat?: string;
+      eticheta?: string;
     } | null;
     audio_base64: string | null;
   }>("/assistant/messages", {
@@ -92,6 +94,8 @@ export async function trimiteMesaj(
           url: date.quick_action.url,
           idTranzactie: date.quick_action.transaction_id,
           categorieSugerata: date.quick_action.suggested_category,
+          rezumat: date.quick_action.rezumat ?? "",
+          eticheta: date.quick_action.eticheta ?? "",
         }
       : null,
     audioBase64: date.audio_base64 ?? undefined,

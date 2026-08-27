@@ -45,10 +45,12 @@ function etichetaCard(card: CardAfisat, intors: boolean): string {
  * din aplicatie, desi e doar unul dintre mai multe. Aici latimea e plafonata, iar
  * ecranul lat aduce mai multe carduri in cadru, nu unul mai mare.
  *
- * Apasarea cardului il INTOARCE. Inainte deschidea un drawer cu detalii, si
- * cardul devenise un buton care ducea in alta parte — desi lucrul pe care omul
- * vrea sa-l vada e chiar pe el. Tot ce era in drawer se vede acum in panoul de
- * dedesubt, permanent, fara sa fie nevoie sa deschizi nimic (`panou-card.tsx`).
+ * Apasarea cardului il INTOARCE, si atat — in ambele sensuri, oricand, fara
+ * consecinte. Inainte deschidea un drawer cu detalii, si cardul devenise un
+ * buton care ducea in alta parte, desi lucrul pe care omul vrea sa-l vada e
+ * chiar pe el. Detaliile stau acum permanent in panoul de dedesubt
+ * (`panou-card.tsx`), iar numarul complet si CCV-ul apar pe spatele cardului
+ * dupa confirmarea ceruta de butonul din acelasi panou.
  *
  * Un card de pe lateral nu se intoarce la prima apasare: prima apasare il aduce
  * in centru. Altfel ar trebui sa nimeresti un card rotit si pe jumatate iesit
@@ -120,6 +122,7 @@ export function CaruselCarduri({
         {carduri.map((card, i) => {
           const inCentru = i === activ;
           const intors = intorsId === card.id;
+          const dezvaluit = intors && Boolean(dateSensibile);
 
           return (
             // Fara `style` si fara clasa de tranzitie: transformarea o scrie
@@ -133,13 +136,27 @@ export function CaruselCarduri({
                 intoarsa={intors}
                 ccv={intors ? dateSensibile?.ccv : undefined}
                 numarComplet={intors ? dateSensibile?.numar : undefined}
+                // Intoarcerea trece la spatele cardului cat timp datele sunt pe
+                // el, fiindca tinta de mai jos se retrage atunci.
+                onIntoarce={inCentru ? () => onIntoarce(card) : undefined}
                 // Cardurile de pe laturi nu se inclina: sunt deja rotite de
                 // carusel, iar a doua rotatie peste prima arata a defectiune.
                 inert={!inCentru}
               >
+                {/* Tinta care acopera tot cardul: intoarce cardul din centru,
+                    aduce in centru un card de pe lateral.
+
+                    Se retrage — `pointer-events-none`, si iese si din arborele
+                    de accesibilitate — cat timp numarul si CCV-ul sunt pe
+                    spate. Altfel ar sta peste butoanele de copiere de pe card
+                    si le-ar manca apasarile, fiindca ea e in afara stratului 3D
+                    si se deseneaza mereu deasupra lui. Intoarcerea nu se pierde
+                    in rastimpul asta: si-o ia spatele cardului, pe dedesubtul
+                    propriului continut (`fata-card.tsx`). */}
                 <button
                   type="button"
                   onClick={() => (inCentru ? onIntoarce(card) : centreaza(i))}
+                  {...(dezvaluit ? { tabIndex: -1, "aria-hidden": true } : {})}
                   // Focusul din tastatura aduce cardul in centru. Fara asta,
                   // Tab ar muta focusul pe un card lasat pe jumatate in afara
                   // cadrului, iar `scroll-snap` l-ar trage inapoi imediat.
@@ -154,7 +171,8 @@ export function CaruselCarduri({
                     "absolute inset-0 rounded-card transition-transform duration-150 ease-soft",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset",
                     INEL_FOCUS_CARD[card.stil],
-                    inCentru && "active:scale-[0.99]",
+                    inCentru && !dezvaluit && "active:scale-[0.99]",
+                    dezvaluit && "pointer-events-none",
                   )}
                 />
               </FataCard>

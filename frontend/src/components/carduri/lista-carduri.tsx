@@ -18,15 +18,19 @@ import type { ContBancar } from "@/lib/data/conturi";
 import { ETICHETE_STIL_CARD } from "@/lib/stil-card";
 
 /**
- * Dupa cat timp se ascund singure numarul si CCV-ul, in milisecunde.
+ * Cat stau pe ecran numarul si CCV-ul inainte ca ele sa dispara si cardul sa se
+ * intoarca singur la loc, in milisecunde.
  *
- * Dezvaluirea a ajuns la o apasare distanta — se intampla intorcand cardul, nu
- * cautand un buton intr-un drawer. Cu cat gestul e mai usor, cu atat conteaza
- * mai mult sa nu ramana datele pe ecran dupa ce omul a terminat cu ele: un
- * telefon lasat pe masa cu CCV-ul vizibil e exact ce incearca sa evite
- * confirmarea de dinainte.
+ * Un telefon lasat pe masa cu CCV-ul vizibil e exact ce incearca sa evite
+ * confirmarea de dinainte de afisare. Confirmarea pazeste clipa in care apar
+ * datele; ceasul asta pazeste tot restul timpului — si nu doar ascunde cifrele,
+ * ci pune cardul inapoi pe fata, ca ecranul sa arate din nou ca inainte sa fi
+ * cerut ceva.
+ *
+ * Un minut: cat sa apuci sa copiezi un numar intr-un formular, nu cat sa uiti
+ * ecranul deschis.
  */
-const DURATA_DEZVALUIRE = 30_000;
+const DURATA_DEZVALUIRE = 60_000;
 
 export function ListaCarduri({
   carduri,
@@ -64,37 +68,38 @@ export function ListaCarduri({
 
   useEffect(() => {
     if (!dateSensibile) return;
-    const ceas = setTimeout(() => setDateSensibile(null), DURATA_DEZVALUIRE);
+    const ceas = setTimeout(() => {
+      setDateSensibile(null);
+      setIntorsId(null);
+    }, DURATA_DEZVALUIRE);
     return () => clearTimeout(ceas);
   }, [dateSensibile]);
 
   /**
-   * Apasarea cardului il intoarce — si, daca datele nu sunt deja pe ecran,
-   * cere confirmarea in aceeasi miscare.
+   * Apasarea cardului doar il intoarce, in ambele sensuri. Nu dezvaluie nimic.
    *
-   * Confirmarea a ramas. Ea nu e o formalitate: e singurul lucru care sta intre
-   * o atingere din greseala si numarul cardului afisat in fata cuiva. Fara ea,
-   * intoarcerea ar fi devenit un gest care publica date sensibile fara ca omul
-   * sa ceara asta. Asa, gestul e unul singur, iar intrebarea apare o data.
+   * A fost, o vreme, si gestul care afisa datele: a doua apasare pe cardul
+   * intors le scotea la vedere. Suna economic, dar lasa omul fara iesire —
+   * odata cardul intors, ORICE apasare pe el ar fi afisat datele, deci nu mai
+   * puteai sa-l intorci inapoi fara sa treci prin ele. Un gest care nu poate fi
+   * anulat cu acelasi gest e o capcana, nu o scurtatura.
+   *
+   * Acum intoarcerea e reversibila si nu are consecinte, iar afisarea are drum
+   * propriu: butonul din panou, cu confirmare (`ceriDezvaluirea`).
    */
   function intoarce(card: CardAfisat) {
-    if (intorsId === card.id) {
-      setIntorsId(null);
-      setDateSensibile(null);
-      setConfirmareDeschisa(false);
-      return;
-    }
-
-    setIntorsId(card.id);
-    if (!dateSensibile) {
-      setEroare(null);
-      setConfirmareDeschisa(true);
-    }
+    setIntorsId(intorsId === card.id ? null : card.id);
   }
 
+  /**
+   * Butonul de afisare din panou: intreaba intai.
+   *
+   * Cardul NU se intoarce acum. Se intoarce dupa confirmare, odata cu datele —
+   * altfel omul ar vedea spatele gol cat tine intrebarea si ar crede ca aia e
+   * tot ce primeste.
+   */
   function ceriDezvaluirea() {
     if (!cardActiv) return;
-    setIntorsId(cardActiv.id);
     setEroare(null);
     setConfirmareDeschisa(true);
   }
@@ -105,10 +110,14 @@ export function ListaCarduri({
     startDezvaluire(async () => {
       const rezultat = await obtineDateSensibileCard(cardActiv.id);
       if (rezultat.eroare || !rezultat.date) {
-        setEroare(rezultat.eroare ?? "Nu am putut afisa datele cardului.");
+        setEroare(rezultat.eroare ?? "Nu am putut afișa datele cardului.");
         return;
       }
+      // Intai datele, apoi intoarcerea: cardul se roteste cu ele deja pe el,
+      // intr-o singura miscare, in loc sa se intoarca gol si sa se completeze
+      // dupa aceea.
       setDateSensibile(rezultat.date);
+      setIntorsId(cardActiv.id);
       setConfirmareDeschisa(false);
     });
   }
@@ -196,7 +205,8 @@ export function ListaCarduri({
             {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}
             <p className="text-[15px] leading-[22px] text-ink-soft">
               Cardul {ETICHETE_STIL_CARD[cardActiv?.stil ?? "standard"]} —{" "}
-              {cardActiv?.numarMascat ?? ""}. Se ascund singure după 30 de secunde.
+              {cardActiv?.numarMascat ?? ""}. După un minut se ascund singure, iar cardul
+              se întoarce la loc.
             </p>
           </div>
         </DrawerContent>

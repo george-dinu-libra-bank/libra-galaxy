@@ -171,3 +171,126 @@ def test_biometria_activata_ajunge_la_comparatie(monkeypatch):
     monkeypatch.setattr(identity_service, "verifica_fete", lambda *a: _Rezultat())
 
     assert identity_service.verifica_login_fata("costin@exemplu.ro", b"poza") is True
+
+
+# ---------------------------------------------------------------------------
+# Alegerea CNP-ului dintre mai multi candidati
+# ---------------------------------------------------------------------------
+
+from app.infrastructure.ocr import _candidati_din_text, cifra_control_valida
+
+
+def test_cifra_de_control():
+    assert cifra_control_valida("5030805132808") is True
+    assert cifra_control_valida("5030805132809") is False
+    assert cifra_control_valida("123") is False
+    assert cifra_control_valida("abcdefghijklm") is False
+
+
+def test_banda_mrz_nu_trece_drept_zona_vizuala():
+    """
+    Randul de jos de pe un buletin vechi, asa cum il vede Tesseract cu
+    whitelist doar pe cifre: MX6419944ROU6409029M7709025222034296.
+    Are 30 de cifre, deci e MRZ, nu campul CNP.
+    """
+    text = "1640902220342\n64199446409029770902522203429"
+
+    candidati = _candidati_din_text(text)
+    dupa_cnp = {cnp: vizuala for cnp, vizuala in candidati}
+
+    assert dupa_cnp["1640902220342"] is True
+    # Tot ce s-a extras din randul lung e marcat ca venind din MRZ.
+    assert any(not vizuala for _, vizuala in candidati)
+
+
+def test_randul_scurt_ramane_zona_vizuala():
+    candidati = _candidati_din_text("CNP 5030805132808")
+
+    assert candidati == [("5030805132808", True)]
+
+
+def test_cnp_ul_din_zona_vizuala_bate_mrz_ul_mai_frecvent(monkeypatch):
+    """
+    Cazul buletinelor vechi: banda MRZ produce constant un sir de 13 cifre,
+    mai des decat e citit campul CNP. Inainte castiga MRZ-ul, pentru ca
+    alegerea se facea doar pe frecventa.
+
+    CNP-ul de pe buletinul din exemplu (un model fals) n-are nici el cifra de
+    control valida, deci diferenta o face strict zona din care provine.
+    """
+    from app.infrastructure import ocr
+
+    def fals(imagine, config=""):
+        # Randul de jos (MRZ, 30+ cifre) apare la fiecare incercare; campul CNP
+        # se citeste mai greu, dar e pe un rand scurt.
+        return "1640902220342\n64199446409029770902522203429\n64199446409029770902522203429"
+
+    monkeypatch.setattr(ocr.pytesseract, "image_to_string", fals)
+    monkeypatch.setattr(ocr, "_variante_preprocesare", lambda img: [img])
+    monkeypatch.setattr(ocr.Image, "open", lambda b: _ImagineFalsa())
+
+    cnp, _ = ocr.extrage_cnp(b"oricare")
+
+    assert cnp == "1640902220342"
+
+
+class _ImagineFalsa:
+    size = (1200, 800)
+    width, height = 1200, 800
+
+    def load(self):
+        return None
+
+
+def test_cifra_de_control_departajeaza_in_zona_vizuala(monkeypatch):
+    """
+    Doua citiri ale aceluiasi camp, una gresita. Amandoua din zona vizuala,
+    deci decide cifra de control — chiar daca cea gresita apare mai des.
+    """
+    from app.infrastructure import ocr
+
+    monkeypatch.setattr(
+        ocr.pytesseract, "image_to_string",
+        lambda imagine, config="": "5030805132809\n5030805132809\n5030805132808",
+    )
+    monkeypatch.setattr(ocr, "_variante_preprocesare", lambda img: [img])
+    monkeypatch.setattr(ocr.Image, "open", lambda b: _ImagineFalsa())
+
+    cnp, _ = ocr.extrage_cnp(b"oricare")
+
+    assert cnp == "5030805132808"
+
+
+def test_eticheta_cnp_bate_toate_capcanele_de_pe_buletin(monkeypatch):
+    """
+    Cazul din poza reala, cu toate sursele de fals pozitiv de pe un buletin
+    vechi: banda MRZ, datele de valabilitate lipite si numarul documentului.
+    Toate au castigat, pe rand, in fata CNP-ului adevarat.
+    """
+    from app.infrastructure import ocr
+
+    CU_LITERE = (
+        "ROUMANIE ROMANIA\n"
+        "CNP 1640902220342 SERIA MX NR 641994\n"
+        "WICK JOHN\n"
+        "Valabilitate 06.01.17-02.09.2077\n"
+        "MX6419944ROU6409029M7709025222034296\n"
+    )
+    # Trecerea cu whitelist vede doar cifre, deci pierde eticheta.
+    DOAR_CIFRE = (
+        "1640902220342641994\n"
+        "06011702092077\n"
+        "64199446409029770902522203429\n"
+        "06011702092077\n"
+    )
+
+    def ocr_fals(imagine, lang=None, config=""):
+        return CU_LITERE if "whitelist" not in config else DOAR_CIFRE
+
+    monkeypatch.setattr(ocr.pytesseract, "image_to_string", ocr_fals)
+    monkeypatch.setattr(ocr, "_variante_preprocesare", lambda img: [img])
+    monkeypatch.setattr(ocr.Image, "open", lambda b: _ImagineFalsa())
+
+    cnp, _ = ocr.extrage_cnp(b"oricare")
+
+    assert cnp == "1640902220342"
