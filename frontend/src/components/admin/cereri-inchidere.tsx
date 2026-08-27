@@ -107,6 +107,11 @@ function Cerere({ cerere }: { cerere: CerereInchidere }) {
               blocat
             </span>
           ) : null}
+          {cont.inchis ? (
+            <span className="rounded-full bg-ink-faint/15 px-1.5 py-0.5 text-[10.5px] font-medium text-ink-faint">
+              închis
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -235,24 +240,35 @@ function Cerere({ cerere }: { cerere: CerereInchidere }) {
       ) : null}
 
       {/* „Inchis, nu sters" nu inseamna nimic daca nimeni nu poate da inapoi.
-          Banii NU se intorc singuri — scrie si in notificarea catre client. */}
-      {cerere.status === "aprobata" ? (
-        <div className="mt-4">
-          <Button
-            varianta="secondary"
-            marime="sm"
-            loading={seLucreaza}
-            iconaStanga={
-              !seLucreaza ? <RotateCcw size={15} strokeWidth={1.75} aria-hidden /> : undefined
-            }
-            onClick={() => ruleaza(() => redeschideContul(cerere.id_cont))}
-          >
-            Redeschide contul
-          </Button>
-          <p className="mt-1.5 text-[12px] leading-[17px] text-ink-faint">
-            Banii mutați la închidere nu se întorc automat — se transferă înapoi separat.
+          Banii NU se intorc singuri — scrie si in notificarea catre client.
+
+          Butonul se uita la CONT (`cont.inchis`, adica `conturi_bancare.inchis_la`),
+          nu la statusul cererii: cererea ramane „aprobata" pentru totdeauna, dar
+          contul poate fi redeschis intre timp — de altcineva, sau de tine. Cand cele
+          doua nu mai spun acelasi lucru, adevarul e al contului. */}
+      {cerere.status === "aprobata" && cont ? (
+        cont.inchis ? (
+          <div className="mt-4">
+            <Button
+              varianta="secondary"
+              marime="sm"
+              loading={seLucreaza}
+              iconaStanga={
+                !seLucreaza ? <RotateCcw size={15} strokeWidth={1.75} aria-hidden /> : undefined
+              }
+              onClick={() => ruleaza(() => redeschideContul(cerere.id_cont))}
+            >
+              Redeschide contul
+            </Button>
+            <p className="mt-1.5 text-[12px] leading-[17px] text-ink-faint">
+              Banii mutați la închidere nu se întorc automat — se transferă înapoi separat.
+            </p>
+          </div>
+        ) : (
+          <p className="mt-4 text-[12.5px] leading-[18px] text-ink-faint">
+            Contul a fost redeschis între timp.
           </p>
-        </div>
+        )
       ) : null}
     </article>
   );

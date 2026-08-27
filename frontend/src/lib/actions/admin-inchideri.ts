@@ -35,8 +35,10 @@ export async function decideInchidereaContului(
       }),
     });
   } catch (eroare) {
-    // Mesajele vin din RPC (0040): CONT_PRINCIPAL, CONT_BLOCAT, SOLD_NEGATIV,
-    // DESTINATIE_INVALIDA. Se arata ca atare — spun exact ce s-a oprit si de ce.
+    // Codurile ridicate de RPC (0040-0042) — CONT_PRINCIPAL, CONT_BLOCAT,
+    // SOLD_NEGATIV, DESTINATIE_INVALIDA, CERERE_DECISA — sunt traduse in mesaje
+    // de ruta de admin (`MESAJE_INCHIDERE`), asa ca ajung aici gata scrise: spun
+    // exact ce s-a oprit si de ce, in loc de „eroare neasteptata" cu 500.
     return {
       eroare:
         eroare instanceof BackendError
@@ -58,6 +60,8 @@ export async function redeschideContul(idCont: string): Promise<RezultatInchider
       method: "POST",
     });
   } catch (eroare) {
+    // La fel ca mai sus: CONT_NEINCHIS („contul nu e inchis") vine deja tradus,
+    // cu 409, nu ca 500.
     return {
       eroare:
         eroare instanceof BackendError

@@ -408,6 +408,47 @@ async def cereri_inchidere_cont(
     ]
 
 
+#: Codul ridicat de RPC-urile din 0040-0042 -> ce vede analistul si cu ce status.
+#
+# Acelasi tipar ca `MESAJE_POPRIRE` de mai jos, si din acelasi motiv: fara
+# traducere, orice refuz asteptat al bazei (cererea e deja decisa, contul nu e
+# inchis) ajunge 500 si in panou scrie „a aparut o eroare neasteptata". Un refuz
+# prevazut nu e o defectiune a serverului.
+MESAJE_INCHIDERE: dict[str, tuple[int, str]] = {
+    "CERERE_INEXISTENTA": (404, "Cererea nu mai exista."),
+    "CERERE_DECISA": (409, "Cererea a fost deja decisa."),
+    "CONT_INEXISTENT": (404, "Contul nu mai exista."),
+    "CONT_DEJA_INCHIS": (409, "Contul e deja inchis."),
+    "CONT_NEINCHIS": (409, "Contul nu e inchis — nu e nimic de redeschis."),
+    "CONT_PRINCIPAL": (
+        409,
+        "E contul principal al clientului; acesta nu se poate inchide.",
+    ),
+    "CONT_BLOCAT": (409, "Contul e blocat administrativ."),
+    "SOLD_NEGATIV": (409, "Contul are sold negativ; se acopera inainte de inchidere."),
+    "FARA_DESTINATIE": (
+        409,
+        "Contul are sold, dar clientul nu mai are alt cont deschis in care sa fie mutat.",
+    ),
+    "DESTINATIE_INVALIDA": (400, "Contul de destinatie nu e valid."),
+    "DESTINATIE_BLOCATA": (409, "Contul de destinatie e blocat administrativ."),
+}
+
+
+def _eroare_inchidere(exc: Exception) -> HTTPException:
+    """Codul din exceptia RPC devine mesaj pentru analist.
+
+    `postgrest` pune codul ridicat de `raise exception` in `message`, iar textul
+    lung in `details`. Ce nu e in dictionar ramane 500: o eroare pe care n-am
+    prevazut-o nu trebuie sa arate ca una prevazuta.
+    """
+    cod = getattr(exc, "message", None) or str(exc)
+    stare, mesaj = MESAJE_INCHIDERE.get(cod, (500, "Nu am putut duce operatiunea la capat."))
+    if stare == 500:
+        logger.exception("Inchidere cont: eroare netradusa")
+    return HTTPException(status_code=stare, detail=mesaj)
+
+
 @router.post(
     "/cereri-inchidere-cont/{id_cerere}/decizie",
     response_model=CerereInchidereContResponse,
@@ -425,13 +466,16 @@ async def decide_inchidere_cont(
     de RPC, intr-o singura tranzactie cu mutarea banilor. Ruta doar transmite.
     """
     depozit = AdminRepository(client)
-    rezultat = await depozit.decide_inchidere_cont(
-        id_cerere,
-        administrator.user_id,
-        cerere.aproba,
-        id_destinatie=cerere.id_cont_destinatie,
-        motiv=cerere.motiv,
-    )
+    try:
+        rezultat = await depozit.decide_inchidere_cont(
+            id_cerere,
+            administrator.user_id,
+            cerere.aproba,
+            id_destinatie=cerere.id_cont_destinatie,
+            motiv=cerere.motiv,
+        )
+    except Exception as exc:  # noqa: BLE001 — codul RPC devine mesaj pentru analist
+        raise _eroare_inchidere(exc) from exc
     return CerereInchidereContResponse(**rezultat)
 
 
@@ -448,7 +492,10 @@ async def redeschide_cont(
     obisnuit; asta scrie si in notificarea catre client.
     """
     depozit = AdminRepository(client)
-    await depozit.redeschide_cont(id_cont, administrator.user_id)
+    try:
+        await depozit.redeschide_cont(id_cont, administrator.user_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _eroare_inchidere(exc) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
