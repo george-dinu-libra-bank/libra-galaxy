@@ -25,6 +25,10 @@ dependencies = [
   "anyio>=4,<5",
   # Extractia de text din atasamentele PDF (app/attachments/extraction.py).
   "pypdf>=5.1,<6",
+  # Importat direct in providers/voice.py si providers/document_intelligence.py
+  # (REST catre Azure Speech si Document Intelligence), nu doar tras de supabase
+  # — deci declarat explicit, ca anyio mai sus.
+  "httpx>=0.28,<1",
   # Sursele RAG (app/rag/registry.py).
   "PyYAML>=6.0,<7",
   # Provider-ul OpenAI-compatible pentru Azure AI Foundry (app/providers/foundry.py).

@@ -24,7 +24,9 @@ from app.api.dependencies import (
     get_credit_service,
     get_current_user,
 )
-from app.core.errors import ValidationError
+from app.core.config import get_settings
+from app.core.errors import PermissionDeniedError, ValidationError
+from app.infrastructure.rate_limit import limiteaza
 from app.credit.ai.contracte import ALL_ETAPE_SPECS
 from app.credit.ai.pipeline import CreditAiPipeline
 from app.repositories.credit_ai_repository import CreditAiRepository
@@ -69,6 +71,25 @@ from app.schemas.credit_ai import (
 from app.services.credit_service import CreditService
 
 logger = logging.getLogger(__name__)
+
+# Mediile in care uneltele de demo au voie sa existe. Lista alba, nu
+# `!= "production"`: cu negatie, un mediu nou nebotezat porneste deschis.
+MEDII_CU_DEMO = ("local", "test", "demo")
+
+
+def _limiteaza_scump(user_id: str, actiune: str, *, maxim: int) -> None:
+    """Limita pe utilizator pentru rutele care costa bani sau timp.
+
+    `credite.py` era singurul router fara nicio limita, desi are cele mai scumpe
+    rute din aplicatie: `documente` cheama Azure Document Intelligence (bani
+    reali, per pagina) si `evalueaza` cheama un LLM. Cheia e utilizatorul, nu
+    IP-ul: rutele sunt autentificate, deci avem ceva mai bun decat un IP.
+
+    Pragurile sunt generoase pentru un om real — cine incarca a unsprezecea
+    adeverinta in cinci minute nu depune o cerere de credit.
+    """
+    limiteaza(f"credite-{actiune}:user:{user_id}", max_incercari=maxim, fereastra_secunde=300)
+
 
 router = APIRouter(prefix="/credite", tags=["credite"])
 
@@ -159,6 +180,8 @@ async def evalueaza(
     task de fundal: nu au ce cauta pe drumul critic al unei decizii care
     trebuie sa ramana reproductibila indiferent cat de repede raspunde Foundry.
     """
+    _limiteaza_scump(user.user_id, "evalueaza", maxim=10)
+
     rezultat = await serviciu.evalueaza(id_cerere, user.user_id)
     background.add_task(pipeline.ruleaza, id_cerere, "evalueaza")
     return DecizieResponse(**asdict(rezultat))
@@ -183,6 +206,10 @@ async def incarca_document(
     coreleaza cu tranzactiile (etapa 'coerenta') — pentru analistul care va
     deschide dosarul, nu pentru raspunsul asta.
     """
+    # Inaintea lui `read()`: cine a depasit limita nu mai are de ce sa-si urce
+    # fisierul in memoria serverului ca sa afle asta.
+    _limiteaza_scump(user.user_id, "documente", maxim=10)
+
     document = await serviciu.incarca_document(
         id_cerere, user.user_id, await fisier.read(), fisier.content_type
     )
@@ -222,6 +249,8 @@ async def scrie_mesaj(
 ) -> MesajResponse:
     """Raspunsul clientului — exista ca sa aiba unde intreba cand nu intelege
     ce act i se cere."""
+    _limiteaza_scump(user.user_id, "mesaje", maxim=30)
+
     mesaj = await serviciu.scrie_mesaj_client(id_cerere, user.user_id, cerere.text)
     return MesajResponse(**_mesaj_public(mesaj))
 
@@ -343,7 +372,21 @@ async def avanseaza_timp(
     Exista ca sa poata fi verificat fluxul de rambursare fara sa astepti luni
     intregi. Nu falsifica nimic: foloseste exact acelasi RPC ca procesarea
     obisnuita, doar cu alta data limita.
+
+    Tocmai fiindca nu falsifica nimic, are nevoie de o poarta: statea pe
+    `router`, nu pe `router_admin`, si cerea doar o sesiune valida — orice
+    utilizator autentificat isi putea muta "azi"-ul cu 120 de luni si declansa
+    incasari adevarate. E o unealta de demo, si trebuie sa fie DOAR atat.
     """
+    if get_settings().environment not in MEDII_CU_DEMO:
+        # PermissionDeniedError (403), nu OperatiuneRefuzata: aceea e 422 cu cod
+        # de stare a creditului, iar aici creditul n-are nicio vina — ruta pur si
+        # simplu nu exista in mediul asta.
+        raise PermissionDeniedError(
+            "Avansarea timpului e disponibila doar in mediile de demonstratie."
+        )
+    _limiteaza_scump(user.user_id, "avanseaza-timp", maxim=20)
+
     rezultat = await serviciu.avanseaza_timp(id_credit, user.user_id, luni)
     return DetaliuCreditResponse(
         credit=CreditResponse(**_credit_public(rezultat["credit"])),

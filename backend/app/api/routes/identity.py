@@ -31,14 +31,26 @@ async def _citeste_imagine(fisier: UploadFile) -> bytes:
 
 
 @router.post("/extract-cnp", response_model=ExtrageCnpResponse)
-async def extract_cnp(buletin: UploadFile) -> ExtrageCnpResponse:
+async def extract_cnp(request: Request, buletin: UploadFile) -> ExtrageCnpResponse:
     """
     Fara autentificare — se apeleaza inainte de signUp(), cand nu exista inca
     un cont. Imaginea nu se persista: se citeste, se proceseaza prin OCR si se
     arunca la finalul cererii.
+
+    Limita de rata pe IP, ca la /check-photo, dar din alt motiv: citirea trece
+    prin Azure Document Intelligence, deci **fiecare apel costa bani**. O ruta
+    neautentificata si nelimitata care cheama un API platit e o gaura in
+    portofel, nu doar o resursa de calcul irosita. Cat OCR-ul era local si
+    gratis, lipsa limitei nu se vedea.
+
+    Pragul e mai strans decat la /check-photo (60): acolo omul chiar reia poza
+    de multe ori pana iese bine, aici o trimite o data ce a iesit.
     """
+    ip = request.client.host if request.client else "necunoscut"
+    limiteaza(f"extract-cnp:ip:{ip}", max_incercari=20, fereastra_secunde=300)
+
     date = await _citeste_imagine(buletin)
-    cnp, incredere = identity_service.extrage_cnp_din_buletin(date)
+    cnp, incredere = await identity_service.extrage_cnp_din_buletin(date, buletin.content_type)
 
     return ExtrageCnpResponse(cnp=cnp, confidence=incredere, raw_text_found=cnp is not None)
 

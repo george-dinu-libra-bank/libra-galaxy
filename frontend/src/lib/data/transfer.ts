@@ -24,6 +24,8 @@ export type ContSursa = {
   sold: number;
   valuta: string;
   blocat: boolean;
+  /** Contul deschis odata cu profilul. Fals mereu la grupuri. */
+  estePrincipal: boolean;
   tip: "cont" | "grup";
 };
 
@@ -57,7 +59,11 @@ export async function obtineConturiTransfer(): Promise<ContSursa[]> {
       // Contul isi are propria valuta de la 0019_schimb_valutar_suma.sql; suma
       // introdusa in formular se interpreteaza in valuta sursei.
       valuta: cont.valuta,
-      blocat: false,
+      // Din `cont.blocatDeBanca`, nu `false`: un cont inghetat administrativ
+      // aparea aici ca oricare altul, iar omul afla ca nu poate trimite abia
+      // cand RPC-ul raspundea CONT_BLOCAT, dupa ce completase tot formularul.
+      blocat: cont.blocatDeBanca,
+      estePrincipal: cont.estePrincipal,
       tip: "cont" as const,
     })),
     ...grupuri.map((grup) => ({
@@ -68,6 +74,7 @@ export async function obtineConturiTransfer(): Promise<ContSursa[]> {
       // Punga comuna a unui grup ramane in RON, oricare ar fi conturile membrilor.
       valuta: VALUTA_IMPLICITA,
       blocat: false,
+      estePrincipal: false,
       tip: "grup" as const,
     })),
   ];

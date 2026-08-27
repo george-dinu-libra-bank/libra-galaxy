@@ -99,6 +99,19 @@ def build_system_prompt(spec: AgentSpec, context: AssembledContext) -> str:
         f"proprie initiativa o sectiune care enumera tot ce 'nu e documentat'/'nu este precizat' "
         f"despre subiect — daca nimeni nu a intrebat acel lucru, nu il mentionezi deloc. Nu propui "
         f"alternative imaginate.\n"
+        # EXCEPTIE la regula de mai sus, nu o slabire a ei. Regula e scrisa pentru
+        # cunoastere: nu inventa sectiuni despre ce nu scrie in documente. Dar un tool
+        # ca `prepare_credit_application` intoarce `missing` TOCMAI ca modelul sa ceara
+        # datele care lipsesc — e pasul urmator al unei actiuni cerute de om, nu o lacuna
+        # de documentare. Fara randurile astea, regula il trimitea la operatorul uman in
+        # loc sa intrebe „ce venit net ai?" — regresia din df9499d, prinsa abia cand
+        # formularul de credit a incetat sa se mai completeze.
+        f"EXCEPTIE, si singura: cand un tool iti intoarce explicit datele care ii lipsesc "
+        f"ca sa pregateasca un formular pe care utilizatorul TOCMAI a cerut sa il pregatesti "
+        f"(camp 'missing', sau 'ready': false), NU spui ca nu ai informatii si NU trimiti la "
+        f"operator — ceri tu acele date, firesc, in propozitii legate, cate una-doua pe rand, "
+        f"si spui pe scurt la ce iti trebuie. Nu e o lacuna de documentare, e pasul urmator "
+        f"al unei actiuni pe care omul a cerut-o. Ce a primit tool-ul deja nu mai ceri o data.\n"
         f"Scrii intr-un limbaj natural, cursiv, ca intr-o conversatie reala — nu copiezi formatul "
         f"brut al fragmentelor regasite (liste numerotate, tabele, titluri de sectiuni). Rescrii "
         f"pasii sau etapele dintr-un document ca o explicatie fluenta, in propozitii legate intre "

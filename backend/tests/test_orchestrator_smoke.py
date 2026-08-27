@@ -17,7 +17,7 @@ from uuid import uuid4
 import pytest
 
 from app.agents.base import AgentAnswer
-from app.agents.specs import DOCUMENT_INTELLIGENCE, FINANCIAL_ADVISOR
+from app.agents.specs import CREDIT_ADVISOR, DOCUMENT_INTELLIGENCE, FINANCIAL_ADVISOR
 from app.context.builder import AssembledContext
 from app.core.security import Principal
 from app.orchestration.input_guardrail import REFUSAL_TEXT
@@ -437,8 +437,12 @@ async def test_credit_intent_still_reaches_the_agent_but_gets_a_quick_action() -
     """Spre deosebire de export/transfer: cererea de credit are un aspect
     informativ real (conditii de eligibilitate, acoperite de RAG), deci NU se
     scurtcircuiteaza — agentul e apelat normal. Doar link-ul de start al
-    cererii e determinist, atasat dupa raspunsul agentului."""
-    agent = AgentFals(spec=DOCUMENT_INTELLIGENCE, text="Venitul minim pentru Galaxy Mortgage e 4.500 RON.")
+    cererii e determinist, atasat dupa raspunsul agentului.
+
+    Agentul e `credit_advisor`, nu `document_intelligence`: el are si tool-urile
+    de dosar, si cautarea in cunostinte, deci poate raspunde si la conditii, si
+    la „completeaza-mi cererea" din aceeasi fraza."""
+    agent = AgentFals(spec=CREDIT_ADVISOR, text="Venitul minim pentru Galaxy Mortgage e 4.500 RON.")
     chemat = False
 
     async def spy(*args, **kwargs):
@@ -447,12 +451,12 @@ async def test_credit_intent_still_reaches_the_agent_but_gets_a_quick_action() -
         return AgentAnswer(text="Venitul minim pentru Galaxy Mortgage e 4.500 RON.", confidence=None)
 
     agent.respond = spy
-    orchestrator = _construieste_orchestrator(agents={"document_intelligence": agent})
+    orchestrator = _construieste_orchestrator(agents={"credit_advisor": agent})
 
     result = await orchestrator.handle_message(UTILIZATOR, None, "As vrea sa fac un credit, ce conditii trebuie sa indeplinesc")
 
     assert chemat is True
-    assert result.agent_id == "document_intelligence"
+    assert result.agent_id == "credit_advisor"
     assert result.text == "Venitul minim pentru Galaxy Mortgage e 4.500 RON."
     assert result.quick_action is not None
     assert result.quick_action.kind == "credit"

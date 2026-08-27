@@ -1,6 +1,8 @@
+from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ContSemnalatResponse(BaseModel):
@@ -106,3 +108,90 @@ class StareConturiResponse(BaseModel):
     id_utilizator: str
     total: int
     blocate: int
+
+
+class ContClientResponse(BaseModel):
+    nume: str | None = None
+    sold: str
+    valuta: str | None = None
+    blocat: bool = False
+
+
+class CerereStergereAdminResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: UUID
+    id_utilizator: UUID
+    nume: str | None = None
+    email: str | None = None
+    motiv: str | None = None
+    status: str
+    creat_la: datetime
+    decis_la: datetime | None = None
+    motiv_refuz: str | None = None
+    conturi: list[ContClientResponse] = []
+    credite_in_derulare: int = 0
+
+
+class DecizieStergereRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    aproba: bool
+    motiv: str | None = Field(default=None, max_length=500)
+
+
+# -----------------------------------------------------------------------------
+# Inchiderea unui CONT BANCAR (nu a relatiei cu banca)
+# -----------------------------------------------------------------------------
+
+
+class ContAdminResponse(BaseModel):
+    """Un cont, asa cum il vede analistul: si cel care se inchide, si cele care
+    pot primi banii. O singura forma pentru amandoua, ca sa arate la fel."""
+
+    id: UUID
+    nume: str | None = None
+    sold: str
+    valuta: str | None = None
+    blocat: bool = False
+    inchis: bool = False
+    este_principal: bool = False
+
+
+class CardInchisResponse(BaseModel):
+    id: UUID
+    ultimele4: str
+    tip: str | None = None
+
+
+class CerereInchidereContResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: UUID
+    id_utilizator: UUID
+    id_cont: UUID
+    id_cont_destinatie: UUID | None = None
+    nume: str | None = None
+    email: str | None = None
+    motiv: str | None = None
+    status: str
+    creat_la: datetime
+    decis_la: datetime | None = None
+    motiv_refuz: str | None = None
+
+    cont: ContAdminResponse | None = None
+    # Doar conturile deschise, altele decat cel care se inchide. Lista vine gata
+    # filtrata din depozit: mai bine lipsesc optiunile imposibile decat sa fie
+    # afisate dezactivate.
+    destinatii: list[ContAdminResponse] = []
+    carduri: list[CardInchisResponse] = []
+
+
+class DecizieInchidereRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    aproba: bool
+    # Lipsa inseamna „automat": RPC-ul cade pe propunerea clientului, iar daca
+    # nici ea nu exista, pe contul principal.
+    id_cont_destinatie: UUID | None = None
+    motiv: str | None = Field(default=None, max_length=500)

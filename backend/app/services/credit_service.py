@@ -19,7 +19,6 @@ import asyncio
 import calendar
 import logging
 
-from anyio import to_thread
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -29,11 +28,10 @@ from uuid import UUID, uuid4
 
 from app.core.errors import ResourceNotFoundError, ValidationError
 from app.credit import amortizare, reguli, scorecard
-from app.credit.adeverinta import citeste_adeverinta
 from app.credit import contract as contract_credit
 from app.credit.ai.contracte import DatePipelineCredit
 from app.credit.venit import VenitConstatat, detecteaza_venit
-from app.infrastructure.document_text import text_din_document
+from app.infrastructure import citire_adeverinta
 from app.ml.caracteristici import normalizeaza
 from app.ml.neregularitati import DetectorNeregularitati
 from app.repositories.credit_repository import CreditRepository
@@ -982,14 +980,9 @@ class CreditService:
         cale = f"{user_id}/{id_cerere}/{uuid4().hex}.{extensie}"
         await self._depozit.urca_document(cale, continut, content_type)
 
-        # Pe un thread, nu pe event loop: `text_din_document` poate ajunge la
-        # Tesseract (PDF scanat sau poza), adica secunde de CPU in care tot
-        # backendul ar sta blocat pentru toata lumea, nu doar pentru cel care
-        # incarca. Restul repository-ului foloseste deja `to_thread.run_sync`;
-        # aici era singurul loc unde munca grea ramasese sincrona.
-        date = await to_thread.run_sync(
-            lambda: citeste_adeverinta(text_din_document(continut, content_type))
-        )
+        # Citirea isi poarta singura greutatea: Azure e I/O asincron, iar
+        # rezervele locale (pypdf, Tesseract) se muta pe thread inauntru.
+        date = await citire_adeverinta.citeste(continut, content_type)
 
         document = await self._depozit.salveaza_document({
             "id_cerere": str(id_cerere),
@@ -1005,6 +998,9 @@ class CreditService:
                 "angajator": date.angajator,
                 "vechime_luni": date.vechime_luni,
                 "incredere": date.incredere,
+                # "tabel" sau "text" — vezi DateAdeverinta.sursa. Pipeline-ul AI
+                # sare peste etapa de citire cand scrie "tabel".
+                "sursa": date.sursa,
                 # Textul brut ramane ca sa se poata verifica de ce a iesit cifra
                 # aia, dupa ce fisierul e sters. Taiat, ca sa nu umple randul.
                 "text": date.text_brut[:4000],
