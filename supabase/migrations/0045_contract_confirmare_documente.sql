@@ -7,7 +7,7 @@
 -- de venit: acolo "confirmat" chiar inseamna ca un analist s-a uitat la hartie
 -- si a hotarat o cifra.
 --
--- De la 0037 in tabela intra si contractul semnat (tip='contract'), pus acolo
+-- De la 0044 in tabela intra si contractul semnat (tip='contract'), pus acolo
 -- ca dosarul sa arate contractul in aceeasi lista cu adeverintele. Contractul
 -- nu are venit de confirmat si nu il valideaza niciun analist — il semneaza
 -- clientul, iar dovada semnaturii sta in `extras` (semnat_la, ip) si in

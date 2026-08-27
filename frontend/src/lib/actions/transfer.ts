@@ -129,7 +129,7 @@ export async function trimiteTransfer(input: {
   // Doua functii, aceleasi garantii: banii din punga comuna pleaca prin
   // core_banking_groups, care verifica in plus ca esti membru al grupului.
   // Cand descrierea a fost semnalata, ambele drumuri trec prin
-  // transfer_semnalat: debiteaza sursa si lasa suma in asteptare (0036).
+  // transfer_semnalat: debiteaza sursa si lasa suma in asteptare (0043).
   const { error } = cuvinteGasite.length
     ? await supabaseAdmin.rpc("transfer_semnalat", {
         p_id_user: user.id,

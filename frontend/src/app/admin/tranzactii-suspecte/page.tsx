@@ -17,7 +17,7 @@ export default async function PaginaTranzactiiSuspecte() {
   } catch (exc) {
     console.error("ERROR PaginaTranzactiiSuspecte:", exc);
     eroare =
-      "Nu am putut încărca transferurile oprite. Verifică dacă migrația 0036 a fost aplicată.";
+      "Nu am putut încărca transferurile oprite. Verifică dacă migrația 0043 a fost aplicată.";
   }
 
   return (

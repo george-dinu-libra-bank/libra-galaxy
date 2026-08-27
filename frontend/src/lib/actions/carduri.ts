@@ -102,7 +102,7 @@ export async function adaugaCard(
  * Limita zilnica a unui card propriu, in valuta contului.
  *
  * `null` sterge limita. Verificarea se face in `aproba_plata` (0031, mutata
- * acolo de 0044), nu aici: o limita aparata doar de interfata n-ar fi o limita.
+ * acolo de 0046), nu aici: o limita aparata doar de interfata n-ar fi o limita.
  */
 export async function seteazaLimitaCard(
   id: string,
@@ -177,7 +177,7 @@ export async function obtineDateSensibileCard(id: string): Promise<RezultatDateS
  * celui vizat de ea.
  *
  * Verificarea de mai jos e o comoditate, ca omul sa primeasca un mesaj clar.
- * Bariera adevarata e in `aproba_plata` (0032, mutata acolo de 0044), care
+ * Bariera adevarata e in `aproba_plata` (0032, mutata acolo de 0046), care
  * refuza orice plata pe un card blocat de banca, indiferent ce scrie in
  * `is_blocked`.
  */

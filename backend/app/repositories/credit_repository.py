@@ -33,7 +33,7 @@ CAMPURI_CERERE = (
     "dti,scor,motive,explicatie,rata_lunara,dae,oferta_expira_la,status,creat_la,"
     "contract_html,contract_actualizat_la,contract_actualizat_de,contract_trimis_la"
 )
-# De cand `credit_cereri` are si `contract_actualizat_de` (0037_contract_credit),
+# De cand `credit_cereri` are si `contract_actualizat_de` (0044_contract_credit),
 # tabela are doua chei straine catre `profiles`, iar un embed scris simplu
 # "profiles(...)" e ambiguu si PostgREST raspunde cu PGRST201. Numim explicit
 # cheia clientului; in raspuns cheia ramane tot "profiles", hintul se pierde.

@@ -6,7 +6,7 @@ import { creeazaPlata } from "@/lib/services/plati";
  *
  * Ruta ramane subtire: identificarea cardului si suma din catalog sunt treaba
  * serviciului (lib/services/plati.ts), iar regulile bancare stau in SQL — de la
- * 0044, verificate abia dupa ce posesorul autorizeaza. Raspunsul e cel asteptat
+ * 0046, verificate abia dupa ce posesorul autorizeaza. Raspunsul e cel asteptat
  * de checkout: { paymentId, status }.
  */
 export async function POST(request: Request) {

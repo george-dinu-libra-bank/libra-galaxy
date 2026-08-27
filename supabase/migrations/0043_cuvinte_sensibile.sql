@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0036 — Cuvinte sensibile: transferul suspect se opreste, nu se reporteaza
+-- 0043 — Cuvinte sensibile: transferul suspect se opreste, nu se reporteaza
 --
 -- Administratorul tine o lista de cuvinte-cheie (spalare de bani, droguri,
 -- mita...). Aplicatia scaneaza descrierea transferului inainte sa cheme

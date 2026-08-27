@@ -44,7 +44,7 @@ export const SECUNDE_CONFIRMARE = 120;
  * Mesajele de card vorbesc despre card, nu despre „tine": de la 0035 incoace,
  * cine plateste in magazin nu e neaparat posesorul cardului.
  *
- * Lista e scurta pentru ca de la 0044 incoace deschiderea platii nu mai judeca
+ * Lista e scurta pentru ca de la 0046 incoace deschiderea platii nu mai judeca
  * nimic despre card, cont sau sold — alea se verifica dupa autorizare, in
  * `aproba_plata`, si ajung la magazin ca plata terminata in FAILED cu `motiv`,
  * nu ca eroare la creare.
@@ -119,7 +119,7 @@ async function idUtilizatorCurent() {
  * apoi si singurul care o poate autoriza. Cine cumpara poate fi oricine.
  *
  * Cautarea cardului e tot ce se intampla aici: daca e blocat, daca a expirat si
- * daca are bani in cont se afla abia dupa ce posesorul autorizeaza (0044). Cine
+ * daca are bani in cont se afla abia dupa ce posesorul autorizeaza (0046). Cine
  * sta la casa nu poate afla starea contului altcuiva tastand un numar de card.
  *
  * Suma nu vine niciodata din formular: se citeste din catalog dupa slug, ca un

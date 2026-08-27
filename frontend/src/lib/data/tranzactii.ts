@@ -38,7 +38,7 @@ export type TranzactieAfisata = {
   /** Setat doar la miscarile care ating soldul unui grup. */
   grup: GrupTranzactie | null;
   /**
-   * Starea din 0036. `normala` acopera tot ce trece prin core_banking; celelalte
+   * Starea din 0043. `normala` acopera tot ce trece prin core_banking; celelalte
    * apar doar la transferurile oprite de scanerul de cuvinte sensibile.
    */
   status: StatusTranzactie;
@@ -76,7 +76,7 @@ export async function obtineTranzactiiUtilizator(
   }
 
   // Coloanele vin din migratii aplicate manual pe Supabase cloud, deci pot lipsi
-  // una cate una. Se coboara treapta cu treapta, ca lipsa lui `status` (0036) sa
+  // una cate una. Se coboara treapta cu treapta, ca lipsa lui `status` (0043) sa
   // nu arunce si marcajele de cont sters (0034) — nu e un motiv sa pice
   // dashboardul si istoricul.
   const lipsesteColoana = (cod?: string) => cod === "42703" || cod === "PGRST204";

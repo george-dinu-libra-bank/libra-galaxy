@@ -9,7 +9,7 @@ const SECTIUNI = [
   { href: "/admin", eticheta: "Verificări identitate", icoana: ScanFace },
   // Doua lucruri diferite, cu nume care se cereau despartite: aici sunt CONTURI
   // scoase in evidenta de statistica, iar in „Tranzacții suspecte" sunt plati
-  // individuale oprite de scanerul de cuvinte (0036).
+  // individuale oprite de scanerul de cuvinte (0043).
   { href: "/admin/tranzactii", eticheta: "Conturi semnalate", icoana: TrendingUp },
   { href: "/admin/tranzactii-suspecte", eticheta: "Tranzacții suspecte", icoana: ShieldAlert },
   { href: "/admin/securitate", eticheta: "Securitate", icoana: SpellCheck },

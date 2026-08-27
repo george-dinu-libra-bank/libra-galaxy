@@ -68,7 +68,7 @@ const TITLURI: Record<Pas, string> = {
  * Nu cere nicio sesiune. Ca la orice comerciant, tot ce se da sunt datele
  * cardului; banca gaseste posesorul si il intreaba pe el, oricine ar fi cel de
  * la casa. Formularul nu decide nimic, dar nici POST /api/payments nu mai
- * decide mare lucru: de la 0044 acolo se afla doar cine e posesorul, iar cardul,
+ * decide mare lucru: de la 0046 acolo se afla doar cine e posesorul, iar cardul,
  * contul si soldul se verifica abia dupa ce el autorizeaza. Un card blocat sau
  * un cont fara bani se vede deci aici ca plata terminata in „esuata", cu motivul
  * venit prin Realtime, nu ca eroare in formular.

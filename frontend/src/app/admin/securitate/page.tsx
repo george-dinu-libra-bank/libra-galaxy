@@ -16,7 +16,7 @@ export default async function PaginaSecuritate() {
   } catch (exc) {
     console.error("ERROR PaginaSecuritate:", exc);
     eroare =
-      "Nu am putut încărca lista de cuvinte. Verifică dacă migrația 0036 a fost aplicată.";
+      "Nu am putut încărca lista de cuvinte. Verifică dacă migrația 0043 a fost aplicată.";
   }
 
   return (

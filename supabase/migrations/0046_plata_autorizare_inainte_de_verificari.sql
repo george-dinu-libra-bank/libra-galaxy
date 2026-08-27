@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0044 — intai autorizarea posesorului, apoi verificarea cardului si a soldului
+-- 0046 — intai autorizarea posesorului, apoi verificarea cardului si a soldului
 --
 -- Pana acum `creeaza_plata` verifica tot inainte sa intrebe pe cineva: cardul
 -- blocat, cardul expirat, contul lipsa sau blocat, soldul, limita zilnica. Abia

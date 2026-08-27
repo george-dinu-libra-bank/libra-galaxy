@@ -43,7 +43,7 @@ function despartCuvinte(text: string): string[] {
 /**
  * Salveaza lista de cuvinte sensibile, inlocuind-o pe cea veche.
  *
- * Tabela are un singur rand (index unic pe o expresie constanta, 0036), deci
+ * Tabela are un singur rand (index unic pe o expresie constanta, 0043), deci
  * salvarea inseamna „update daca exista, altfel insert". Dupa scriere, cache-ul
  * scanerului e aruncat, ca urmatorul transfer sa foloseasca lista noua fara sa
  * astepte expirarea.
@@ -90,7 +90,7 @@ export async function salveazaCuvinteSensibile(
 }
 
 /**
- * Mesajele pentru codurile ridicate de `decide_transfer_semnalat` (0036).
+ * Mesajele pentru codurile ridicate de `decide_transfer_semnalat` (0043).
  * Aceeasi conventie ca la transfer: codul in `message`, textul lung in `detail`.
  */
 const MESAJE_DECIZIE: Record<string, string> = {
