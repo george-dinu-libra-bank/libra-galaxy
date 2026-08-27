@@ -138,8 +138,8 @@ export type DateSensibileCard = { numar: string; ccv: string };
 export type RezultatDateSensibile = { date?: DateSensibileCard; eroare?: string };
 
 /**
- * Numarul complet si CCV-ul unui card propriu. Se cer doar dupa ce
- * utilizatorul confirma explicit in drawer — nu ajung niciodata in lista.
+ * Numarul complet si CCV-ul unui card propriu. Se cer doar dupa ce omul apasa
+ * „Arata datele" si confirma in drawer — nu ajung niciodata in lista.
  */
 export async function obtineDateSensibileCard(id: string): Promise<RezultatDateSensibile> {
   const supabase = await createClient();

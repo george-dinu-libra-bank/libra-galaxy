@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { Lock } from "lucide-react";
+import { useState } from "react";
+import { Check, Copy, Lock } from "lucide-react";
 import { useInclinareCard, type StareInclinare } from "@/hooks/use-inclinare-card";
 import type { StilCard, TipCard } from "@/lib/data/carduri";
 import {
@@ -65,6 +66,7 @@ export function FataCard({
   intoarsa = false,
   ccv,
   numarComplet,
+  onIntoarce,
   inert = false,
   className,
   children,
@@ -77,7 +79,7 @@ export function FataCard({
   /** Arata spatele (banda magnetica si CCV). */
   intoarsa?: boolean;
   /**
-   * CCV-ul, daca a fost deja dezvaluit prin fluxul de confirmare din detalii.
+   * CCV-ul, daca a fost deja dezvaluit prin butonul cu confirmare din panou.
    * Lipsa lui inseamna `•••` — intoarcerea cardului e un gest vizual, nu o
    * portita prin care datele sensibile apar fara confirmare.
    */
@@ -91,6 +93,15 @@ export function FataCard({
    * copieze un singur formular.
    */
   numarComplet?: string;
+  /**
+   * Intoarce cardul inapoi pe fata.
+   *
+   * Il primeste doar cardul din centru. Cat timp datele sunt pe spate, tinta de
+   * atins a caruselului se retrage (vezi `carusel-carduri.tsx`) ca sa lase
+   * butoanele de copiere sa primeasca apasarile; spatele isi ia atunci singur
+   * intoarcerea, ca sa nu ramana un card din care nu mai poti iesi.
+   */
+  onIntoarce?: () => void;
   /**
    * Opreste inclinarea, fara sa schimbe nimic altceva.
    *
@@ -137,11 +148,18 @@ export function FataCard({
       >
         {/* Muchia cardului.
 
-            Placi identice, tot mai in spate pe Z si tot mai inchise la culoare.
-            Stau in acelasi spatiu 3D ca fetele, deci cand cardul se inclina se
-            ivesc pe latura dinspre care vine miscarea — exact ca marginea unui
-            card adevarat. Nu e un truc de umbra: daca ar fi fost `box-shadow`,
-            ar fi ramas lipita de contur la orice unghi.
+            Placi identice, esalonate pe Z si tot mai inchise la culoare. Stau
+            in acelasi spatiu 3D ca fetele, deci cand cardul se inclina se ivesc
+            pe latura dinspre care vine miscarea — exact ca marginea unui card
+            adevarat. Nu e un truc de umbra: daca ar fi fost `box-shadow`, ar fi
+            ramas lipita de contur la orice unghi.
+
+            Stau INTRE cele doua fete, nu in spatele lor. Prima varianta le
+            impingea la Z negativ, sub fata: mergea cat timp cardul statea pe
+            fata, dar la intoarcere rotatia de 180° schimba semnul axei Z, iar
+            placile — opace si de latimea cardului — ajungeau in fata spatelui
+            si il acopereau complet. Se vedea un dreptunghi gol, in culoarea
+            celei mai inchise placi, si nimic din ce scrie pe spate.
 
             Pe miniatura nu are rost: la 24 px latime, 16 px de adancime ar
             arata ca o eroare de desen, nu ca grosime. */}
@@ -157,7 +175,11 @@ export function FataCard({
                   // ajunge la ea — asa muchia are un degrade, nu o culoare
                   // plata care ar arata ca un chenar desenat.
                   filter: `brightness(${0.72 - (i / PLACI) * 0.34})`,
-                  transform: `translateZ(-${((i + 1) / PLACI) * GROSIME}px)`,
+                  // Esalonate strict intre fete: niciuna nu ajunge la ±GROSIME/2,
+                  // unde stau fetele, deci nu pot acoperi niciuna din ele.
+                  transform: `translateZ(${
+                    GROSIME / 2 - ((i + 1) / (PLACI + 1)) * GROSIME
+                  }px)`,
                 }}
               />
             ))
@@ -167,6 +189,7 @@ export function FataCard({
           date={date}
           posesor={posesor}
           miniatura={miniatura}
+          z={miniatura ? 0 : GROSIME / 2}
           inchis={inchis}
           oprit={oprit}
           stare={viu}
@@ -175,10 +198,12 @@ export function FataCard({
           date={date}
           posesor={posesor}
           miniatura={miniatura}
+          z={miniatura ? 0 : GROSIME / 2}
           inchis={inchis}
           oprit={oprit}
           ccv={ccv}
           numarComplet={numarComplet}
+          onIntoarce={onIntoarce}
           stare={viu}
         />
       </div>
@@ -202,25 +227,34 @@ export function FataCard({
   );
 }
 
-/** Invelisul comun al celor doua fete: aceeasi raza, acelasi fundal, aceeasi stare oprita. */
+/**
+ * Invelisul comun al celor doua fete: aceeasi raza, acelasi fundal, aceeasi
+ * stare oprita, si aceeasi ridicare pe Z.
+ *
+ * `z` e jumatate din grosimea cardului: fata urca spre privitor, spatele — dupa
+ * ce s-a rotit cu 180°, deci pe propria lui normala — coboara tot atat in
+ * cealalta directie. Asa fiecare fata sta la suprafata muchiei ei, iar placile
+ * dintre ele nu pot ajunge in fata vreuneia, in nicio pozitie a cardului.
+ * Miniatura primeste 0: acolo nu se deseneaza muchie.
+ */
 function Invelis({
   stil,
   oprit = false,
   spate = false,
+  z = 0,
   children,
 }: {
   stil: StilCard;
   oprit?: boolean;
   spate?: boolean;
+  z?: number;
   children: React.ReactNode;
 }) {
   return (
     <div
-      className={cn(
-        "absolute inset-0 overflow-hidden rounded-card [backface-visibility:hidden]",
-        spate && "[transform:rotateY(180deg)]",
-      )}
+      className="absolute inset-0 overflow-hidden rounded-card [backface-visibility:hidden]"
       style={{
+        transform: `${spate ? "rotateY(180deg) " : ""}translateZ(${z}px)`,
         background: GRADIENTE_STIL_CARD[stil],
         // Cardul oprit se stinge prin desaturare, nu prin `opacity`. Opacitatea
         // ridica fundalul paginii peste text si cobora contrastul sub pragul din
@@ -273,6 +307,7 @@ function Fata({
   miniatura,
   inchis,
   oprit,
+  z,
   stare,
 }: {
   date: DateFataCard;
@@ -280,13 +315,14 @@ function Fata({
   miniatura: boolean;
   inchis: boolean;
   oprit: boolean;
+  z: number;
   stare: StareInclinare | null;
 }) {
   const tonTare = inchis ? "text-ink" : "text-white";
   const tonSlab = inchis ? "text-ink/70" : "text-white/75";
 
   return (
-    <Invelis stil={date.stil} oprit={oprit}>
+    <Invelis stil={date.stil} oprit={oprit} z={z}>
       <Lucire stare={stare} inchis={inchis} />
 
       <div
@@ -380,6 +416,8 @@ function Spate({
   oprit,
   ccv,
   numarComplet,
+  onIntoarce,
+  z,
   stare,
 }: {
   date: DateFataCard;
@@ -389,6 +427,8 @@ function Spate({
   oprit: boolean;
   ccv?: string;
   numarComplet?: string;
+  onIntoarce?: () => void;
+  z: number;
   stare: StareInclinare | null;
 }) {
   const tonTare = inchis ? "text-ink" : "text-white";
@@ -396,23 +436,47 @@ function Spate({
   const dezvaluit = Boolean(numarComplet);
 
   return (
-    <Invelis stil={date.stil} oprit={oprit} spate>
+    <Invelis stil={date.stil} oprit={oprit} spate z={z}>
       <Lucire stare={stare} inchis={inchis} oglindit />
 
-      <div className="relative flex h-full flex-col">
+      {/* Intoarcerea, cand tinta caruselului s-a retras ca sa lase butoanele
+          de copiere sa functioneze. Sta SUB continut si e strapunsa de el:
+          textul de deasupra are `pointer-events-none`, deci o apasare pe numar
+          sau pe banda ajunge tot aici si intoarce cardul. Doar butoanele de
+          copiere isi opresc apasarea la ele. */}
+      {dezvaluit && onIntoarce ? (
+        <button
+          type="button"
+          onClick={onIntoarce}
+          aria-label="Întoarce cardul pe față"
+          className="absolute inset-0 rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/70"
+        />
+      ) : null}
+
+      <div
+        className={cn(
+          "relative flex h-full flex-col",
+          dezvaluit && onIntoarce && "pointer-events-none",
+        )}
+      >
         {/* Banda magnetica */}
         <div className={cn("w-full bg-ink/85", miniatura ? "mt-2 h-4" : "mt-4 h-10")} />
 
         {!miniatura ? (
           <div className="flex min-h-0 flex-1 flex-col px-5 pb-3 pt-3">
-            <p
-              className={cn(
-                "tabular text-[16px] tracking-[0.08em]",
-                dezvaluit ? tonTare : tonSlab,
-              )}
-            >
-              {numarComplet ?? date.numarMascat}
-            </p>
+            <div className="flex items-center gap-2">
+              <p
+                className={cn(
+                  "tabular text-[16px] tracking-[0.08em]",
+                  dezvaluit ? tonTare : tonSlab,
+                )}
+              >
+                {numarComplet ?? date.numarMascat}
+              </p>
+              {numarComplet ? (
+                <ButonCopiere valoare={numarComplet} eticheta="numărul" inchis={inchis} />
+              ) : null}
+            </div>
 
             <p className={cn("mt-1.5 truncate text-[11px] uppercase tracking-wide", tonTare)}>
               {posesor ?? "Posesor card"}
@@ -424,7 +488,14 @@ function Spate({
             <div className="mt-auto flex items-end justify-between gap-3">
               <div className="flex items-end gap-5">
                 <CampSpate eticheta="Expiră" valoare={date.dataExpirare} ton={tonTare} tonSlab={tonSlab} />
-                <CampSpate eticheta="CCV" valoare={ccv ?? "•••"} ton={tonTare} tonSlab={tonSlab} />
+                <CampSpate
+                  eticheta="CCV"
+                  valoare={ccv ?? "•••"}
+                  ton={tonTare}
+                  tonSlab={tonSlab}
+                  deCopiat={ccv}
+                  inchis={inchis}
+                />
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
@@ -453,17 +524,84 @@ function CampSpate({
   valoare,
   ton,
   tonSlab,
+  deCopiat,
+  inchis = false,
 }: {
   eticheta: string;
   valoare: string;
+  /** Valoarea adevarata, cand exista una de copiat. */
+  deCopiat?: string;
+  inchis?: boolean;
   ton: string;
   tonSlab: string;
 }) {
   return (
     <div>
       <p className={cn("text-[8px] uppercase tracking-[0.12em]", tonSlab)}>{eticheta}</p>
-      <p className={cn("tabular text-[13px] font-medium", ton)}>{valoare}</p>
+      <span className="flex items-center gap-1.5">
+        <p className={cn("tabular text-[13px] font-medium", ton)}>{valoare}</p>
+        {deCopiat ? (
+          <ButonCopiere valoare={deCopiat} eticheta={eticheta.toLowerCase()} inchis={inchis} />
+        ) : null}
+      </span>
     </div>
+  );
+}
+
+/**
+ * Copiaza o valoare de pe spatele cardului, de langa cifrele ei.
+ *
+ * Butoanele astea stateau in panoul de sub carusel, langa niste valori scrise a
+ * doua oara acolo. Acum numarul si CCV-ul se vad intr-un singur loc — pe card —
+ * si se copiaza din acelasi loc, deci nu mai e nevoie ca ochiul sa verifice ca
+ * cele doua copii chiar spun acelasi lucru.
+ *
+ * `pointer-events-auto` il scoate din indiferenta pe care spatele o are cat
+ * timp datele sunt afisate: restul suprafetei lasa apasarile sa treaca la
+ * butonul de intoarcere de dedesubt, butonul asta si le opreste la el.
+ */
+function ButonCopiere({
+  valoare,
+  eticheta,
+  inchis,
+}: {
+  valoare: string;
+  eticheta: string;
+  inchis: boolean;
+}) {
+  const [copiat, setCopiat] = useState(false);
+
+  async function copiaza() {
+    try {
+      await navigator.clipboard.writeText(valoare.replace(/\s+/g, ""));
+      setCopiat(true);
+      setTimeout(() => setCopiat(false), 1500);
+    } catch {
+      // clipboard indisponibil (ex. context non-securizat) — nu blocam UI-ul
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copiaza}
+      aria-label={copiat ? "Copiat" : `Copiază ${eticheta}`}
+      // 24 px vizual, 40 px de tinta prin captuseala negativa — cat incape pe un
+      // card de 292 px fara sa impinga cifrele de langa (DESIGN.md #10).
+      className={cn(
+        "pointer-events-auto -m-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-full p-2",
+        "transition-colors focus-visible:outline-none focus-visible:ring-2",
+        inchis
+          ? "text-ink/65 hover:bg-ink/10 hover:text-ink focus-visible:ring-ink/40"
+          : "text-white/75 hover:bg-white/20 hover:text-white focus-visible:ring-white/70",
+      )}
+    >
+      {copiat ? (
+        <Check size={13} strokeWidth={2} aria-hidden />
+      ) : (
+        <Copy size={13} strokeWidth={2} aria-hidden />
+      )}
+    </button>
   );
 }
 

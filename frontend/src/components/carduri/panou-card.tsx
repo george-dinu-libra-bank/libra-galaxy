@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Copy, Eye, EyeOff, Lock, Unlock } from "lucide-react";
+import { Eye, EyeOff, Lock, Unlock } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import type { DateSensibileCard } from "@/lib/actions/carduri";
@@ -9,7 +8,13 @@ import type { CardAfisat } from "@/lib/data/carduri";
 import { cn, formateazaSuma } from "@/lib/utils";
 
 /**
- * Tot ce se stie despre cardul din centrul caruselului, sub el, permanent.
+ * Ce se stie despre cardul din centrul caruselului, sub el, permanent.
+ *
+ * Tot ce scrie AICI se poate citi oricand, fara sa ceri nimic: cont, sold,
+ * expirare, tip, limita, stare. Numarul complet si CCV-ul nu sunt pe lista —
+ * ele apar doar pe spatele cardului, dupa confirmare, si tot de acolo se
+ * copiaza. Asa datele sensibile au un singur loc in care pot fi vazute, iar
+ * acela e chiar cel pe care omul il intoarce cu mana lui.
  *
  * Inainte, informatiile astea stateau intr-un drawer care se deschidea apasand
  * cardul. Doua lucruri nu mergeau: apasarea cardului te ducea in ALTA parte,
@@ -19,6 +24,11 @@ import { cn, formateazaSuma } from "@/lib/utils";
  *
  * Blocarea a coborat si ea aici, langa restul. In drawer statea in subsol si se
  * vedea doar cat era drawerul deschis.
+ *
+ * Butonul „Arata datele" e SINGURUL drum catre numarul complet si CCV. Apasarea
+ * pe card nu-l ocoleste: aceea doar intoarce cardul, in ambele sensuri. Butonul
+ * cere confirmarea intr-un drawer (DESIGN.md #8.1), iar dupa ea cardul se
+ * intoarce singur, cu datele deja pe spate.
  */
 export function PanouCard({
   card,
@@ -48,14 +58,28 @@ export function PanouCard({
         </p>
       </div>
 
+      {/* Butonul sta imediat sub sold, inaintea randurilor de detalii — nu in
+          subsolul panoului. E singurul drum catre numarul complet si CCV, deci
+          n-are ce cauta dupa o lista pe care omul trebuie sa o parcurga intai;
+          iar pe ecran mic, in subsol, cadea sub marginea de jos. */}
+      <Button
+        varianta="secondary"
+        className="mt-4 w-full"
+        loading={seDezvaluie}
+        aria-busy={seDezvaluie}
+        iconaStanga={
+          dateSensibile ? (
+            <EyeOff size={18} strokeWidth={1.75} aria-hidden />
+          ) : (
+            <Eye size={18} strokeWidth={1.75} aria-hidden />
+          )
+        }
+        onClick={dateSensibile ? onAscunde : onDezvaluie}
+      >
+        {dateSensibile ? "Ascunde datele" : "Arată datele"}
+      </Button>
+
       <div className="mt-3 border-t border-line">
-        <Rand
-          eticheta="Număr"
-          valoare={dateSensibile?.numar ?? card.numarMascat}
-          mono
-          copiabil={Boolean(dateSensibile)}
-        />
-        <Rand eticheta="CCV" valoare={dateSensibile?.ccv ?? "•••"} mono copiabil={Boolean(dateSensibile)} />
         <Rand eticheta="Expiră" valoare={card.dataExpirare} mono />
         <Rand eticheta="Tip" valoare={card.tip === "virtual" ? "Virtual" : "Fizic"} />
         <Rand
@@ -84,24 +108,7 @@ export function PanouCard({
         </div>
       ) : null}
 
-      <div className="mt-4 flex flex-col gap-2">
-        <Button
-          varianta="secondary"
-          className="w-full"
-          loading={seDezvaluie}
-          aria-busy={seDezvaluie}
-          iconaStanga={
-            dateSensibile ? (
-              <EyeOff size={18} strokeWidth={1.75} aria-hidden />
-            ) : (
-              <Eye size={18} strokeWidth={1.75} aria-hidden />
-            )
-          }
-          onClick={dateSensibile ? onAscunde : onDezvaluie}
-        >
-          {dateSensibile ? "Ascunde datele sensibile" : "Arată datele sensibile"}
-        </Button>
-
+      <div className="mt-4">
         <Button
           varianta={card.blocat ? "primary" : "danger"}
           className="w-full"
@@ -124,51 +131,24 @@ export function PanouCard({
   );
 }
 
+/**
+ * Un rand de detaliu. Nu mai are buton de copiere: singurele valori pe care
+ * cineva chiar le copiaza — numarul si CCV-ul — nu mai trec pe aici, ci se
+ * copiaza de pe spatele cardului, de langa cifrele pe care omul le vede.
+ */
 function Rand({
   eticheta,
   valoare,
   mono,
-  copiabil,
 }: {
   eticheta: string;
   valoare: string;
   mono?: boolean;
-  copiabil?: boolean;
 }) {
-  const [copiat, setCopiat] = useState(false);
-
-  async function copiaza() {
-    try {
-      await navigator.clipboard.writeText(valoare.replace(/\s+/g, ""));
-      setCopiat(true);
-      setTimeout(() => setCopiat(false), 1500);
-    } catch {
-      // clipboard indisponibil (ex. context non-securizat) — nu blocam UI-ul
-    }
-  }
-
   return (
     <div className="flex items-center justify-between gap-4 border-b border-line py-2.5 last:border-0">
       <span className="text-[13px] text-ink-faint">{eticheta}</span>
-      <span className="flex items-center gap-2">
-        <span className={cn("text-right text-[15px] text-ink", mono && "tabular")}>{valoare}</span>
-        {copiabil ? (
-          <button
-            type="button"
-            onClick={copiaza}
-            aria-label={copiat ? "Copiat" : `Copiază ${eticheta.toLowerCase()}`}
-            // 28 px vizual, dar tinta de atingere ajunge la 44 px prin padding
-            // negativ — cerinta din DESIGN.md #10, fara sa creasca iconita.
-            className="-m-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full p-2 text-ink-faint transition-colors hover:bg-primary-50 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
-          >
-            {copiat ? (
-              <Check size={14} strokeWidth={1.75} aria-hidden className="text-success" />
-            ) : (
-              <Copy size={14} strokeWidth={1.75} aria-hidden />
-            )}
-          </button>
-        ) : null}
-      </span>
+      <span className={cn("text-right text-[15px] text-ink", mono && "tabular")}>{valoare}</span>
     </div>
   );
 }
