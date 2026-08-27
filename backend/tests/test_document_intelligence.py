@@ -27,28 +27,35 @@ class ChatProviderFals:
 
 
 @pytest.mark.anyio
-async def test_no_hits_refuses_in_romanian_for_ro_locale():
+async def test_no_hits_still_calls_the_model_with_the_off_topic_rule():
     """Raportat live: 'poti sa imi zici un banc despre bani?' (o gluma, nu o
-    intrebare bancara) trebuie sa primeasca un refuz clar de scop, nu un
-    raspuns confuz construit dintr-un fragment regasit intamplator."""
+    intrebare bancara) trebuie sa primeasca un refuz clar de scop. Inainte se
+    scurtcircuita cu un text fix, fara niciun apel de model — acum modelul e
+    apelat intotdeauna, ghidat de regula de refuz off-topic deja prezenta in
+    build_system_prompt() (comuna tuturor agentilor), plus grounding_rule-ul
+    explicit pentru cazul "nicio potrivire" adaugat aici."""
     agent = DocumentIntelligenceAgent()
     provider = ChatProviderFals()
 
-    answer = await agent.respond(UTILIZATOR_RO, "poti sa imi zici un banc despre bani?", CONTEXT_GOL, [], provider)
+    await agent.respond(UTILIZATOR_RO, "poti sa imi zici un banc despre bani?", CONTEXT_GOL, [], provider)
 
-    assert "domeniul bancar" in answer.text
-    assert provider.mesaje_primite == []  # zero apeluri LLM cand nu exista niciun hit
+    assert len(provider.mesaje_primite) == 1
+    system_prompt = provider.mesaje_primite[0][0].content
+    assert "domeniul bancar" in system_prompt
+    assert "Nu exista fragmente din baza de cunostinte pentru aceasta intrebare" in system_prompt
 
 
 @pytest.mark.anyio
-async def test_no_hits_refuses_in_english_for_en_locale():
+async def test_no_hits_in_english_still_calls_the_model():
     agent = DocumentIntelligenceAgent()
     provider = ChatProviderFals()
 
-    answer = await agent.respond(UTILIZATOR_EN, "tell me a joke about money", CONTEXT_GOL, [], provider)
+    await agent.respond(UTILIZATOR_EN, "tell me a joke about money", CONTEXT_GOL, [], provider)
 
-    assert "banking-related questions" in answer.text
-    assert provider.mesaje_primite == []
+    assert len(provider.mesaje_primite) == 1
+    system_prompt = provider.mesaje_primite[0][0].content
+    assert "banking-related questions" not in system_prompt  # asta era doar in vechiul text fix, sters
+    assert "domeniul bancar" in system_prompt  # regula de refuz off-topic ramane, in prompt, indiferent de locale
 
 
 @pytest.mark.anyio
@@ -73,10 +80,10 @@ async def test_system_prompt_warns_against_off_topic_answers_from_loose_hits():
 
 
 def test_credit_intent_narrows_search_to_credite_category():
-    """credit_intent e singura intentie care ajunge la document_intelligence
-    prin fallback-ul router-ului (routing.py::DEFAULT_AGENT_ID) fara sa fie
-    o intrebare generica — deci e singura unde ingustarea pe categorie
-    (migratia 0033) e sigur justificata."""
+    """credit_intent e eticheta care garanteaza cel mai clar subiectul, chiar
+    daca ajunge la document_intelligence (nu la credit_advisor) pentru partea
+    informativa — deci e singura unde ingustarea pe categorie (migratia 0033)
+    e sigur justificata."""
     selections = DocumentIntelligenceAgent().select_tools("vreau un credit ipotecar", "credit_intent")
 
     assert len(selections) == 1

@@ -1,55 +1,49 @@
 """Drumul de la o notificare de blocare pana la un raspuns care chiar explica.
 
-Un om caruia i s-a blocat contul apasa "Intreaba asistentul" si ajunge aici cu
-intrebarea scrisa. Daca intentia nu e recunoscuta, sau daca agentului nu i se
-dau mesajele bancii, raspunsul e o generalitate politicoasa — exact cand omul
-are nevoie de un fapt.
+Un om caruia i s-a blocat contul apasa „Intreaba asistentul" si ajunge aici cu
+intrebarea scrisa. Daca intentia nu ajunge la agentul potrivit, sau daca
+agentului nu i se dau mesajele bancii, raspunsul e o generalitate politicoasa —
+exact cand omul are nevoie de un fapt.
+
+Testele astea verificau initial tabela de fraze din `orchestration/intent.py`,
+stearsa intre timp: rutarea o face acum un model (`orchestration/llm_router.py`),
+iar vocabularul de intentii se construieste din `spec.intents`. Nu se mai poate
+verifica in test ce eticheta alege modelul pentru o propozitie anume — dar se
+poate verifica exact ce l-a facut pe cel vechi sa functioneze: ca eticheta
+exista in vocabular, ca duce la agentul potrivit, si ca agentul stie ce sa faca
+la primirea ei. Aceea e veriga care s-ar rupe in tacere la un refactor.
 """
 
-import pytest
-
-from app.agents.specs import TRANSACTION_INTELLIGENCE
+from app.agents.specs import ALL_AGENT_SPECS, TRANSACTION_INTELLIGENCE
 from app.agents.transaction_intelligence import TransactionIntelligenceAgent
-from app.orchestration.intent import classify_intent
-from app.orchestration.routing import AgentRouter
+
+INTENTIA = "cont_blocat"
 
 
-@pytest.mark.parametrize(
-    "intrebare",
-    [
-        "De ce mi-a fost blocat contul și ce trebuie să fac ca să-l deblochez?",
-        "Contul meu a fost deblocat — ce s-a întâmplat și ce urmează?",
-        "de ce nu pot plati cu cardul?",
-        "nu pot face transfer, de ce?",
-        "why is my account blocked",
-        "cardul meu e blocat",
-    ],
-)
-def test_intrebarile_despre_blocare_sunt_recunoscute(intrebare: str) -> None:
-    assert classify_intent(intrebare) == "cont_blocat"
+def test_eticheta_exista_in_vocabularul_routerului() -> None:
+    """`llm_router.INTENT_LABELS` se compune din intentiile tuturor specificatiilor.
+
+    Daca eticheta dispare de acolo, modelul nu o mai poate alege — schema lui de
+    iesire o respinge — si intrebarea „de ce mi-a fost blocat contul" cade pe o
+    intentie generica, unde agentul nu mai cere mesajele bancii.
+    """
+    from app.orchestration.llm_router import INTENT_LABELS
+
+    assert INTENTIA in INTENT_LABELS
 
 
-@pytest.mark.parametrize(
-    ("intrebare", "asteptat"),
-    [
-        ("cat am cheltuit luna asta", "spending_analysis"),
-        ("ce carduri am", "card_question"),
-    ],
-)
-def test_intentia_noua_nu_le_fura_pe_celelalte(intrebare: str, asteptat: str) -> None:
-    """„blocat" apare si in intrebari despre carduri; ordinea din tabel conteaza."""
-    assert classify_intent(intrebare) == asteptat
+def test_eticheta_apartine_unui_singur_agent() -> None:
+    """Doi agenti cu aceeasi eticheta ar face rutarea ambigua."""
+    detinatori = [spec.agent_id for spec in ALL_AGENT_SPECS if INTENTIA in spec.intents]
 
-
-def test_intrebarea_ajunge_la_agentul_potrivit() -> None:
-    assert AgentRouter().select("cont_blocat") == "transaction_intelligence"
+    assert detinatori == [TRANSACTION_INTELLIGENCE.agent_id]
 
 
 def test_agentul_cere_mesajele_bancii_nu_doar_starea_conturilor() -> None:
     """`get_accounts` spune CA e blocat; motivul e in mesajul scris de analist."""
     unelte = [
         t.name
-        for t in TransactionIntelligenceAgent().select_tools("de ce e blocat contul", "cont_blocat")
+        for t in TransactionIntelligenceAgent().select_tools("de ce e blocat contul", INTENTIA)
     ]
 
     assert "get_bank_messages" in unelte
@@ -60,7 +54,7 @@ def test_uneltele_cerute_sunt_si_declarate_in_spec() -> None:
     """Un tool cerut dar nedeclarat e refuzat la executie — vezi docs/AGENTS.md."""
     cerute = {
         t.name
-        for t in TransactionIntelligenceAgent().select_tools("de ce e blocat contul", "cont_blocat")
+        for t in TransactionIntelligenceAgent().select_tools("de ce e blocat contul", INTENTIA)
     }
 
     assert cerute <= TRANSACTION_INTELLIGENCE.tool_names

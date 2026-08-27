@@ -8,6 +8,7 @@ import { contEsteBlocat, MESAJ_CONT_BLOCAT } from "@/lib/cont-blocat";
 import { ipCerere } from "@/lib/ip-cerere";
 import { scaneazaTransfer } from "@/lib/cuvinte-sensibile";
 import { createClient } from "@/lib/supabase/server";
+import { formateazaSuma } from "@/lib/utils";
 
 export type RezultatCautareBeneficiar = { beneficiar?: BeneficiarTransfer; eroare?: string };
 export type RezultatTransfer = {
@@ -71,12 +72,56 @@ const MESAJE_CORE_BANKING: Record<string, string> = {
   CONT_SURSA_STRAIN: "Nu poti plati dintr-un cont care nu este al tau.",
   AUTOTRANSFER: "Nu poti trimite bani in acelasi cont din care platesti.",
   FONDURI_INSUFICIENTE: "Nu ai fonduri suficiente in cont.",
+  // Ridicat de trigger-ul din 0047. Nu e acelasi lucru cu FONDURI_INSUFICIENTE:
+  // banii SUNT in cont, dar o parte din ei sunt indisponibilizati printr-o
+  // poprire. Un mesaj de „fonduri insuficiente" ar trimite omul sa-si caute
+  // banii care se vad pe ecran.
+  POPRIRE_ACTIVA:
+    "O parte din banii tăi sunt indisponibilizați printr-o poprire, iar suma cerută îi depășește pe cei disponibili.",
   // Ridicate de core_banking_groups (0009_core_banking_groups.sql).
   GRUP_INEXISTENT: "Grupul nu exista.",
   NU_ESTI_MEMBRU: "Nu faci parte din acest grup.",
   FONDURI_INSUFICIENTE_GRUP: "Grupul nu are fonduri suficiente.",
   DIRECTIE_INVALIDA: "Nu am putut trimite banii. Incearca din nou.",
 };
+
+/**
+ * Cat tine poprirea blocat, scos din `details`-ul refuzului.
+ *
+ * core_banking scrie acolo o propozitie intreaga, in limbaj de banca ("...din
+ * conturile acestui client"), din care clientului ii foloseste doar cifra.
+ * Fara potrivire, apelantul cade pe mesajul fix — niciodata pe textul brut.
+ */
+function sumaBlocata(detalii: string | null | undefined) {
+  const gasit = /([0-9]+(?:[.,][0-9]{1,2})?)\s*([A-Z]{3})/.exec(detalii ?? "");
+
+  if (!gasit) return null;
+
+  const suma = Number(gasit[1].replace(",", "."));
+
+  return Number.isFinite(suma) ? formateazaSuma(suma, gasit[2]) : null;
+}
+
+/**
+ * Mesajul pentru un refuz venit din core_banking.
+ *
+ * Popririle se trateaza aparte, din doua motive: suma blocata difera de la un
+ * client la altul, deci merita spusa (altfel omul vede soldul intreg pe ecran
+ * si un refuz care pare arbitrar), iar familia de coduri poate creste in baza
+ * fara ca aplicatia sa fie redeployata — orice `POPRIRE_*` nou primeste macar
+ * explicatia corecta, nu „incearca din nou".
+ */
+function mesajCoreBanking(error: { message: string; details?: string | null }) {
+  if (error.message?.startsWith("POPRIRE")) {
+    const blocat = sumaBlocata(error.details);
+
+    return blocat
+      ? `O poprire tine indisponibila suma de ${blocat}. Poti trimite doar ce ramane peste ea.`
+      : MESAJE_CORE_BANKING.POPRIRE_ACTIVA;
+  }
+
+  return MESAJE_CORE_BANKING[error.message];
+}
 
 /**
  * Muta bani din contul propriu in contul beneficiarului (dupa IBAN) si scrie
@@ -159,7 +204,7 @@ export async function trimiteTransfer(input: {
         });
 
   if (error) {
-    const mesaj = MESAJE_CORE_BANKING[error.message];
+    const mesaj = mesajCoreBanking(error);
 
     // Orice altceva (functia lipseste, deadlock, retea) — log si mesaj generic.
     if (!mesaj) console.error("ERROR trimiteTransfer:", error);

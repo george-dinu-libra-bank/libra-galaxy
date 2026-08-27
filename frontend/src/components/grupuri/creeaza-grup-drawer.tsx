@@ -7,7 +7,9 @@ import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
 import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
+import { InviteazaDinContraparti } from "@/components/grupuri/invita-din-contraparti";
 import { creeazaGrup } from "@/lib/actions/grupuri";
+import type { Contraparte } from "@/lib/data/tranzactii";
 
 /** Sugestii uzuale, ca sa nu ramana campul gol la prima deschidere. */
 const SUGESTII = ["Colegi", "Familie", "Vacanță", "Chirie"];
@@ -17,9 +19,12 @@ type GrupNou = { id: number; nume: string; token: string };
 /**
  * Crearea unui grup nou. Codul de acces se genereaza in baza de date; dupa
  * creare drawerul arata codul si linkul de invitatie, ca sa poata fi trimise
- * imediat celorlalti.
+ * imediat celorlalti — plus, dedesubt, opțiunea de a invita direct persoane cu
+ * care ai mai facut tranzactii (InviteazaDinContraparti, reutilizata si din
+ * pagina grupului — vezi InviteazaDinContrapartiDrawer — pentru ca invitatul
+ * nu se limiteaza la momentul crearii).
  */
-export function CreeazaGrupDrawer() {
+export function CreeazaGrupDrawer({ contraparti }: { contraparti: Contraparte[] }) {
   const router = useRouter();
   const [deschis, setDeschis] = useState(false);
   const [nume, setNume] = useState("");
@@ -130,6 +135,18 @@ export function CreeazaGrupDrawer() {
               >
                 {copiat ? "Link copiat" : "Copiază linkul de invitație"}
               </Button>
+
+              <div>
+                <p className="text-[12.5px] font-medium text-ink-soft">Invită direct</p>
+                <p className="mt-0.5 text-[12px] text-ink-faint">
+                  Persoane cu care ai mai făcut tranzacții. Primesc o invitație pe care o acceptă
+                  sau o refuză singuri. Poți invita și mai târziu, din pagina grupului.
+                </p>
+
+                <div className="mt-2">
+                  <InviteazaDinContraparti idGrup={creat.id} contraparti={contraparti} />
+                </div>
+              </div>
             </>
           ) : (
             <>

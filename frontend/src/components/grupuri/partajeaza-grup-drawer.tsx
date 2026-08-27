@@ -101,7 +101,7 @@ export function PartajeazaGrupDrawer({ nume, token }: { nume: string; token: str
             </Button>
 
             <Button
-              varianta="ghost"
+              varianta="secondary"
               className="w-full"
               onClick={() => copiaza("link")}
               iconaStanga={

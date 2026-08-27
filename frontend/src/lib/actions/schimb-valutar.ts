@@ -24,6 +24,10 @@ const MESAJE: Record<string, string> = {
   SUMA_INVALIDA: "Suma introdusă nu este validă.",
   SUMA_PREA_MICA: "Suma e prea mică pentru a fi convertită în această valută.",
   FONDURI_INSUFICIENTE: "Nu ai fonduri suficiente pentru această sumă.",
+  // Schimbul valutar scade soldul contului sursa, deci trece si el pe la
+  // trigger-ul de poprire (0047).
+  POPRIRE_ACTIVA:
+    "O parte din banii tăi sunt indisponibilizați printr-o poprire și nu pot fi schimbați.",
   CONTURI_LIMITA: "Ai atins numărul maxim de conturi.",
   CURS_INDISPONIBIL:
     "Nu am cursul BNR pentru această valută. Încearcă din nou în câteva minute.",
