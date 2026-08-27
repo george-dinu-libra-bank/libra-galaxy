@@ -1,10 +1,21 @@
 import logging
 
-from app.core.errors import IdentityImageDownloadError, IdentityResultWriteError, ValidationError
+from anyio import to_thread
+
+from app.core.config import get_settings
+from app.core.errors import (
+    AiProviderError,
+    AiProviderUnavailableError,
+    IdentityImageDownloadError,
+    IdentityResultWriteError,
+    ValidationError,
+)
 from app.core.logging import log_event
 from app.infrastructure.calitate_poza import RaportCalitate, analizeaza_document, analizeaza_selfie
+from app.infrastructure.cnp import candidati_din_text, din_cuvinte
 from app.infrastructure.face_match import verifica_fete
 from app.infrastructure.ocr import extrage_cnp
+from app.providers.document_intelligence import MODEL_DOAR_TEXT, AzureDocumentIntelligence
 from app.repositories import identity_repository
 from app.schemas.identity import VerificaIdentitateRequest, VerificaIdentitateResponse
 
@@ -14,8 +25,55 @@ BUCKET_BULETINE = "buletine"
 BUCKET_SELFIE = "selfie-uri"
 
 
-def extrage_cnp_din_buletin(imagine_bytes: bytes) -> tuple[str | None, float]:
-    return extrage_cnp(imagine_bytes)
+async def extrage_cnp_din_buletin(
+    imagine_bytes: bytes, content_type: str | None = None
+) -> tuple[str | None, float]:
+    """CNP-ul de pe poza buletinului, si cat de sigura e citirea.
+
+    Azure intai, Tesseract ca rezerva — aceeasi ordine ca la adeverinte, si din
+    acelasi motiv: opt incercari de preprocesare lipite laolalta erau un semn ca
+    niciuna nu era de incredere singura.
+
+    **Increderea isi schimba intelesul, in bine.** Pe Tesseract, ea masoara cat
+    de des au cazut de acord cele opt incercari — adica stabilitatea motorului,
+    nu lizibilitatea buletinului. Azure raporteaza incredere pe fiecare cuvant,
+    deci se poate spune cat de clar s-au citit chiar cifrele CNP-ului.
+
+    Se cere `prebuilt-read`, nu modelul din config: un buletin n-are tabele de
+    citit, iar diferenta de pret e de sapte ori.
+    """
+    settings = get_settings()
+
+    if settings.document_intelligence_configured:
+        try:
+            citit = await AzureDocumentIntelligence(settings).citeste(
+                imagine_bytes, content_type or "image/jpeg", model=MODEL_DOAR_TEXT
+            )
+        except (AiProviderError, AiProviderUnavailableError):
+            logger.warning("extrage_cnp: Azure a esuat, trec pe Tesseract", exc_info=True)
+        else:
+            cnp, incredere = din_cuvinte([(c.text, c.incredere) for c in citit.cuvinte])
+            if cnp is not None:
+                return cnp, incredere
+
+            # Azure a raspuns, dar CNP-ul nu era un cuvant intreg (rupt ciudat,
+            # sau lipit de altceva). Textul e tot bun, deci se cauta in el —
+            # fara sa mai platim un tur de Tesseract pe aceeasi poza.
+            candidati = candidati_din_text(citit.text)
+            if candidati:
+                # O singura citire, deci nu exista "acord intre incercari": se
+                # ia increderea medie a paginii, care e ce stim despre ea.
+                medie = (
+                    sum(c.incredere for c in citit.cuvinte) / len(citit.cuvinte)
+                    if citit.cuvinte
+                    else 0.0
+                )
+                return candidati[0], medie
+
+            return None, 0.0
+
+    # Tesseract e CPU-bound: pe un thread, ca sa nu blocheze tot backendul.
+    return await to_thread.run_sync(extrage_cnp, imagine_bytes)
 
 
 def evalueaza_calitate_poza(imagine_bytes: bytes, tip: str) -> RaportCalitate:

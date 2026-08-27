@@ -7,10 +7,9 @@ import numpy as np
 import pytesseract
 from PIL import Image, ImageOps
 
-logger = logging.getLogger(__name__)
+from app.infrastructure.cnp import CNP_REGEX, DOAR_CIFRE
 
-# CNP romanesc: prima cifra 1-8 (sex+secol), urmata de 12 cifre.
-CNP_REGEX = re.compile(r"[1-8]\d{12}")
+logger = logging.getLogger(__name__)
 
 # Moduri de segmentare Tesseract incercate pe rand: buletinul are text
 # imprastiat (poza, etichete, cifre), nu un bloc uniform, deci un singur PSM
@@ -128,7 +127,7 @@ def _candidati_langa_eticheta(imagine: Image.Image) -> set[str]:
                 vecinatate.append(linii[i + 1])
 
             for rand in vecinatate:
-                gasite.update(CNP_REGEX.findall(re.sub(r"[^0-9]", "", rand)))
+                gasite.update(CNP_REGEX.findall(DOAR_CIFRE.sub("", rand)))
 
     return gasite
 
@@ -147,7 +146,7 @@ def _candidati_din_text(text: str) -> list[tuple[str, bool]]:
     candidati: list[tuple[str, bool]] = []
 
     for linie in text.splitlines():
-        linie_compacta = re.sub(r"[^0-9]", "", linie)
+        linie_compacta = DOAR_CIFRE.sub("", linie)
         din_zona_vizuala = len(linie_compacta) <= MAX_CIFRE_PE_RAND
 
         for potrivire in CNP_REGEX.findall(linie_compacta):

@@ -19,10 +19,16 @@ ID_CERERE = uuid4()
 CREAT_LA = datetime(2026, 6, 15, 10, 0, tzinfo=timezone.utc).isoformat()
 
 
-def _date_pipeline(status: str = "analiza_manuala", cu_document: bool = True) -> DatePipelineCredit:
+def _date_pipeline(
+    status: str = "analiza_manuala", cu_document: bool = True, sursa: str = "text"
+) -> DatePipelineCredit:
     documente = [{
         "id": str(uuid4()), "hash_fisier": "abc123", "status": "procesat", "creat_la": CREAT_LA,
-        "extras": {"text": "Adeverinta de venit, salariu net 5000 lei.", "venit_net": "5000"},
+        "extras": {
+            "text": "Adeverinta de venit, salariu net 5000 lei.",
+            "venit_net": "5000",
+            "sursa": sursa,
+        },
     }] if cu_document else []
     return DatePipelineCredit(
         cerere={
@@ -145,6 +151,46 @@ async def test_fara_provider_coerenta_ruleaza_restul_sar() -> None:
     assert repo.etapa("documente")["status"] == "sarit"
     assert repo.etapa("coerenta")["status"] == "reusit"
     assert repo.etapa("brief")["status"] == "sarit"
+
+
+async def test_documentul_citit_din_tabel_nu_mai_trece_pe_la_model() -> None:
+    """Cand Azure a citit direct coloana „Venit Net", modelul n-are ce adauga.
+
+    Nu e o optimizare de tokeni, ci de claritate: pana acum analistul primea
+    doua panouri cu aceeasi cifra, iar cifra modelului o BATEA pe cea din
+    coloana in `coerenta._venit_document` — o parafraza care castiga in fata
+    unui antet de tabel. Motivul se scrie in etapa, ca sa se vada in pagina de
+    observabilitate ca a fost o decizie, nu o pana.
+    """
+    provider = _ProviderFals(_RASPUNSURI_VALIDE)
+    pipeline, repo = _pipeline(
+        provider=provider,
+        credit_service=_CreditServiceFals(_date_pipeline(sursa="tabel")),
+        retrieval=_RetrievalFals(),
+    )
+
+    rulare = await pipeline.ruleaza(ID_CERERE, "evalueaza")
+
+    assert repo.etapa("documente")["status"] == "sarit"
+    assert repo.etapa("documente")["cod_eroare"] == "citit_din_tabel"
+    # Restul pipeline-ului merge mai departe pe cifra din `extras`.
+    assert repo.etapa("coerenta")["status"] == "reusit"
+    assert rulare["status"] == "finalizat"
+
+
+async def test_documentul_citit_din_text_trece_pe_la_model() -> None:
+    """Pe adeverintele scrise curgator prima citire e o potrivire de
+    vecinatate, deci a doua parere inca merita platita."""
+    provider = _ProviderFals(_RASPUNSURI_VALIDE)
+    pipeline, repo = _pipeline(
+        provider=provider,
+        credit_service=_CreditServiceFals(_date_pipeline(sursa="text")),
+        retrieval=_RetrievalFals(),
+    )
+
+    await pipeline.ruleaza(ID_CERERE, "evalueaza")
+
+    assert repo.etapa("documente")["status"] == "reusit"
 
 
 async def test_cu_provider_documente_si_brief_reusesc() -> None:

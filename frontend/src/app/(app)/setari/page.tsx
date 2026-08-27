@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SetariClient } from "@/components/setari/setari-client";
+import { obtineStareStergere } from "@/lib/actions/stergere-cont";
 import { checkAdmin } from "@/lib/admin";
 import { inregistreazaDispozitiv, obtineDispozitiveUtilizator } from "@/lib/data/dispozitive";
 import { createClient } from "@/lib/supabase/server";
@@ -22,7 +23,7 @@ export default async function SetariPage() {
 
   const { data: profil } = await supabase
     .from("profiles")
-    .select("nume, cnp, telefon, email, avatar_url, verification_status")
+    .select("nume, cnp, telefon, email, iban_cont, creat_la, avatar_url, verification_status")
     .eq("id", user.id)
     .single();
 
@@ -56,6 +57,11 @@ export default async function SetariPage() {
   await inregistreazaDispozitiv();
   const dispozitive = await obtineDispozitiveUtilizator();
 
+  // Starea cererii de inchidere, adusa pe server: ecranul stie din prima ce
+  // poate face omul, nu dupa ce apasa. Un backend picat n-are de ce sa darame
+  // setarile — sectiunea isi arata singura banda de eroare.
+  const { stare: stareStergere } = await obtineStareStergere();
+
   return (
     <SetariClient
       profil={profil}
@@ -63,6 +69,7 @@ export default async function SetariPage() {
       esteAdmin={esteAdmin}
       biometrieActivata={biometrieActivata}
       dispozitive={dispozitive}
+      stareStergere={stareStergere ?? null}
     />
   );
 }

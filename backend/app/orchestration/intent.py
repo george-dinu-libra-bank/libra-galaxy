@@ -156,6 +156,16 @@ _INTENT_PHRASES: list[tuple[str, tuple[str, ...]]] = [
             "cat platesc", "cand am rata", "de plata luna asta",
             "scadent",  # scadenta/scadente/scadenta ratei
             "dae", "adeverint", "cerere de credit", "cererea mea",
+            # Verbele prin care omul trece de la vorbit la facut. Perechi
+            # verb+"cerere", nu radacina "cerere" singura (aia ar fura si
+            # cererile de plata catre comerciant, vezi nota de mai jos).
+            # Fara ele, "vreau sa depun cerere pentru 30000 pe 4 ani" cadea pe
+            # "unknown" si ajungea la brosura, desi e cea mai clara cerere de
+            # credit posibila. Perechea lor din credit_advisor::_VREA_CERERE
+            # exista de la inceput; aici lipsea.
+            "depun cerere", "depun o cerere", "sa depun cererea", "depune cererea",
+            "completeaza cererea", "trimite cererea", "fa-mi cererea", "fa cererea",
+            "submit the application", "file an application",
             # "respins" prinde respins/respinsa/respingere — in aplicatie doar
             # creditarea respinge ceva. "cerere" simplu ar fura si cererile de
             # plata catre comerciant, deci nu e in lista.

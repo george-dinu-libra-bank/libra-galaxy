@@ -211,7 +211,12 @@ def build_credit_tools(repository: CreditRepository) -> list[ToolDefinition]:
             suma = Decimal(str(args.get("suma", "0")))
             luni = int(args.get("luni", 0))
             venit = Decimal(str(args.get("venit_declarat", "0")))
-            obligatii = Decimal(str(args.get("obligatii_declarate", "0")))
+            # Absent != zero. Daca omul n-a spus nimic despre ratele lui, nu
+            # putem presupune ca n-are: DTI-ul s-ar calcula pe o cifra pe care
+            # n-a dat-o nimeni, si iese exact genul de rezultat care se intoarce
+            # impotriva lui. `None` ajunge in `missing`, ca sa fie intrebat.
+            obligatii_brut = args.get("obligatii_declarate")
+            obligatii = None if obligatii_brut in (None, "") else Decimal(str(obligatii_brut))
             vechime = int(args.get("vechime_angajator_luni", 0))
         except (InvalidOperation, TypeError, ValueError):
             return {"error": "Una dintre valori nu e un numar valid."}
@@ -230,6 +235,8 @@ def build_credit_tools(repository: CreditRepository) -> list[ToolDefinition]:
             lipsesc.append("numele angajatorului")
         if vechime <= 0:
             lipsesc.append("vechimea la angajatorul actual, in luni")
+        if obligatii is None:
+            lipsesc.append("cat platesti lunar la alte rate sau credite (0 daca nu ai)")
 
         if lipsesc:
             return {"ready": False, "missing": lipsesc}

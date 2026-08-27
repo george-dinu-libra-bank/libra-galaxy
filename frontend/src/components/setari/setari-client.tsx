@@ -7,17 +7,22 @@ import { AvatarProfil } from "@/components/ui/avatar-profil";
 import { Button } from "@/components/ui/button";
 import { Comutator } from "@/components/ui/comutator";
 import { EditeazaTelefonDrawer } from "@/components/setari/editeaza-telefon-drawer";
+import { InchideContul } from "@/components/setari/inchide-contul";
 import { SecuritateDrawer } from "@/components/setari/securitate-drawer";
 import { deconecteaza } from "@/lib/actions/auth";
 import type { DispozitivAfisat } from "@/lib/data/dispozitive";
 import { aplicaTema, type Tema } from "@/lib/tema";
-import { cn, mascheazaCnp } from "@/lib/utils";
+import { Banda } from "@/components/ui/banda";
+import type { StareStergere } from "@/lib/actions/stergere-cont";
+import { cn, formateazaIban, mascheazaCnp } from "@/lib/utils";
 
 type Profil = {
   nume: string;
   cnp: string;
   telefon: string;
   email: string;
+  iban_cont: string;
+  creat_la: string;
   /** URL public din Supabase Storage (lib/actions/profil.ts), null fara poza. */
   avatar_url: string | null;
   verification_status: string;
@@ -60,12 +65,14 @@ export function SetariClient({
   esteAdmin = false,
   biometrieActivata,
   dispozitive,
+  stareStergere,
 }: {
   profil: Profil;
   tema: Tema;
   esteAdmin?: boolean;
   biometrieActivata: boolean;
   dispozitive: DispozitivAfisat[];
+  stareStergere: StareStergere | null;
 }) {
   const [telefon, setTelefon] = useState(profil.telefon);
   const [notificari, setNotificari] = useState(true);
@@ -81,6 +88,19 @@ export function SetariClient({
   return (
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
       <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Setări</h1>
+
+      {/* O cerere de inchidere e o stare importanta a relatiei cu banca, nu un
+          detaliu. Prima varianta o lasa ascunsa la doi taps sub o iconita fara
+          eticheta: omul depunea cererea si pe urma nu mai avea de unde sa stie
+          ca exista. */}
+      {stareStergere?.cerere ? (
+        <div className="mt-4">
+          <Banda ton="info">
+            Ai o cerere de închidere a contului în analiză. O poți retrage din secțiunea
+            „Închiderea contului", mai jos.
+          </Banda>
+        </div>
+      ) : null}
 
       <div className="mt-6 flex items-center gap-4 rounded-card bg-surface p-4 shadow-sm">
         {/* Cu poza incarcata din dashboard se arata poza; fara ea raman
@@ -102,12 +122,24 @@ export function SetariClient({
 
       <h2 className="mb-2 mt-8 text-[13px] font-medium text-ink-faint">Date personale</h2>
       <div className="rounded-card bg-surface px-4 shadow-sm">
+        <Rand eticheta="Titular" valoare={profil.nume} />
         <Rand eticheta="CNP" valoare={mascheazaCnp(profil.cnp)} mono />
         <Rand
           eticheta="Telefon"
           valoare={telefon}
           mono
           actiune={<EditeazaTelefonDrawer telefon={telefon} onSalvat={setTelefon} />}
+        />
+        <Rand eticheta="Email" valoare={profil.email} />
+        <Rand eticheta="IBAN cont curent" valoare={formateazaIban(profil.iban_cont)} mono />
+        <Rand
+          eticheta="Client din"
+          valoare={new Date(profil.creat_la).toLocaleDateString("ro-RO", {
+            day: "numeric",
+            month: "long",
+            timeZone: "Europe/Bucharest",
+            year: "numeric",
+          })}
         />
       </div>
 
@@ -171,6 +203,8 @@ export function SetariClient({
       >
         Deconectează-te
       </Button>
+
+      <InchideContul stare={stareStergere} />
     </div>
   );
 }

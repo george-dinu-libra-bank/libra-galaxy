@@ -2,11 +2,20 @@ import { Users } from "lucide-react";
 import { cereAdmin } from "@/lib/admin";
 import { obtineToateConturile } from "@/lib/data/admin-verificari";
 import { obtineStareConturiToti } from "@/lib/data/admin-tranzactii";
-import type { ProfilAdmin, StareConturi } from "@/lib/tipuri-admin";
+import type {
+  CerereInchidere,
+  CerereStergere,
+  ProfilAdmin,
+  StareConturi,
+} from "@/lib/tipuri-admin";
 import { BackendError } from "@/lib/backend";
 import { Banda } from "@/components/ui/banda";
 import { RestabilesteBiometrie } from "@/components/admin/restabileste-biometrie";
 import { BlocareCont } from "@/components/admin/blocare-cont";
+import { CereriStergere } from "@/components/admin/cereri-stergere";
+import { CereriInchidere } from "@/components/admin/cereri-inchidere";
+import { obtineCereriStergere } from "@/lib/data/admin-stergeri";
+import { obtineCereriInchidere } from "@/lib/data/admin-inchideri";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -27,11 +36,36 @@ export default async function ConturiPage() {
   // Starea conturilor vine separat si nu blocheaza lista: daca ruta cade,
   // lista se vede oricum, doar fara butoanele de blocare.
   let stariConturi: StareConturi[] = [];
+  // Cozile nu pot darama lista de conturi: daca o ruta cade, restul paginii se
+  // vede la fel. Dar caderea NU se mai inghite in tacere.
+  //
+  // Asa s-a ascuns o functie complet nefunctionala: metodele cozii ajunsesera pe
+  // alta clasa din depozit, ruta raspundea 500, iar `.catch(() => [])` transforma
+  // asta intr-o lista goala. Analistul vedea „nicio cerere" si credea ca nu e
+  // niciuna. O coada goala si o coada care nu s-a putut incarca arata acum diferit.
+  let cereriStergere: CerereStergere[] = [];
+  let cereriInchidere: CerereInchidere[] = [];
+  const cozicazute: string[] = [];
+
+  async function incarca<T>(
+    ce: string,
+    promisiune: Promise<T[]>,
+  ): Promise<T[]> {
+    try {
+      return await promisiune;
+    } catch (exc) {
+      console.error(`ERROR incarcare ${ce}:`, exc);
+      cozicazute.push(ce);
+      return [];
+    }
+  }
 
   try {
-    [conturi, stariConturi] = await Promise.all([
+    [conturi, stariConturi, cereriStergere, cereriInchidere] = await Promise.all([
       obtineToateConturile(admin.token),
-      obtineStareConturiToti(admin.token).catch(() => []),
+      incarca("starea conturilor", obtineStareConturiToti(admin.token)),
+      incarca("cererile de închidere a relației", obtineCereriStergere(admin.token)),
+      incarca("cererile de închidere a conturilor", obtineCereriInchidere(admin.token)),
     ]);
   } catch (exc) {
     eroare =
@@ -74,6 +108,18 @@ export default async function ConturiPage() {
           ))}
         </div>
       ) : null}
+
+      {cozicazute.length > 0 ? (
+        <Banda ton="eroare">
+          Nu am putut încărca {cozicazute.join(" și ")}. Ce vezi mai jos poate fi
+          incomplet — reîncarcă pagina sau verifică backendul.
+        </Banda>
+      ) : null}
+
+      {/* Inchiderea unui cont bancar sta inaintea plecarii din banca: e
+          operatiunea mai deasa, si cea reversibila. */}
+      <CereriInchidere cereri={cereriInchidere} />
+      <CereriStergere cereri={cereriStergere} />
     </div>
   );
 }

@@ -35,6 +35,23 @@ export type TranzactieAfisata = {
   numeContraparte: string;
   /** Mutare intre doua conturi ale aceleiasi persoane — nu a plecat niciun ban. */
   intreConturiProprii: boolean;
+  /**
+   * Contul TAU implicat: cel din care au plecat banii la o trimitere, cel in
+   * care au intrat la o primire.
+   *
+   * De cand un om poate avea mai multe conturi, „Trimis catre Andrei · 200 RON"
+   * nu spune din care buzunar. `null` cand miscarea n-a atins un cont al tau
+   * (depuneri in grup, miscari de sistem) sau cand contul a fost intre timp
+   * sters.
+   */
+  numeContPropriu: string | null;
+  /**
+   * Celalalt capat, dar tot al tau — completat DOAR la mutarile intre conturile
+   * proprii (consolidarea dinaintea inchiderii contului, migratia 0037). Acolo
+   * „Expeditor: tu / Beneficiar: tu" nu spune nimic, iar singura informatie
+   * reala a miscarii sunt cele doua conturi.
+   */
+  numeContCelalalt: string | null;
   /** Setat doar la miscarile care ating soldul unui grup. */
   grup: GrupTranzactie | null;
 };
@@ -56,7 +73,7 @@ export async function obtineTranzactiiUtilizator(
 
   const COLOANE_DE_BAZA =
     "id, suma, valuta, descriere, creat_la, id_user_send, id_user_recieve, " +
-    "id_group_send, id_group_recieve";
+    "id_group_send, id_group_recieve, id_cont_send, id_cont_recieve";
 
   function interogheaza(coloane: string) {
     const cerere = supabase
@@ -126,6 +143,19 @@ export async function obtineTranzactiiUtilizator(
     ),
   ];
 
+  // Numele propriilor conturi, pentru „din contul / in contul". Sunt ale
+  // utilizatorului curent, deci RLS le da fara service_role.
+  const numeConturi = new Map<string, string>();
+
+  const { data: conturiProprii } = await supabase
+    .from("conturi_bancare")
+    .select("id, nume")
+    .eq("id_user", user.id);
+
+  for (const cont of conturiProprii ?? []) {
+    numeConturi.set(cont.id as string, cont.nume as string);
+  }
+
   const numeGrupuri = new Map<number, string>();
 
   if (idGrupuri.length) {
@@ -184,6 +214,14 @@ export async function obtineTranzactiiUtilizator(
       // dar nu e o mutare intre conturile tale: banii au venit din punga comuna.
       intreConturiProprii:
         !grup && tranzactie.id_user_send === tranzactie.id_user_recieve,
+      numeContPropriu:
+        numeConturi.get(
+          (trimisa ? tranzactie.id_cont_send : tranzactie.id_cont_recieve) as string,
+        ) ?? null,
+      numeContCelalalt:
+        numeConturi.get(
+          (trimisa ? tranzactie.id_cont_recieve : tranzactie.id_cont_send) as string,
+        ) ?? null,
       grup,
     };
   });
