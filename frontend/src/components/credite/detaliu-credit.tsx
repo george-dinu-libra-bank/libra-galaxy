@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, CheckCircle2, FastForward, TriangleAlert } from "lucide-react";
+import { CalendarClock, CheckCircle2, FastForward, FileText, TriangleAlert } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
@@ -87,6 +87,20 @@ export function DetaliuCreditVizual({
           {credit.dae ? <Rand eticheta="DAE" valoare={procent(credit.dae)} /> : null}
           <Rand eticheta="Acordat pe" valoare={dataRo(credit.dataAcordarii)} />
         </dl>
+
+        {/* Contractul semnat. Linkul e semnat si expira in cateva minute, deci
+            se deschide, nu se copiaza — de aceea nu il aratam ca text. */}
+        {credit.contractUrl ? (
+          <a
+            href={credit.contractUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-field border border-primary-100 bg-primary-50 text-[14px] font-semibold text-primary-700 transition-colors hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+          >
+            <FileText size={18} strokeWidth={1.75} aria-hidden />
+            Contractul semnat (PDF)
+          </a>
+        ) : null}
       </section>
 
       {urmatoareaRata && !inchis ? (

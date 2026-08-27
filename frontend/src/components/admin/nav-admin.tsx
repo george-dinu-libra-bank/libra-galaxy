@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Landmark, ScanFace, TrendingUp, Users } from "lucide-react";
+import { Landmark, ScanFace, ShieldAlert, SpellCheck, TrendingUp, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const SECTIUNI = [
   { href: "/admin", eticheta: "Verificări identitate", icoana: ScanFace },
-  { href: "/admin/tranzactii", eticheta: "Tranzacții suspecte", icoana: TrendingUp },
+  // Doua lucruri diferite, cu nume care se cereau despartite: aici sunt CONTURI
+  // scoase in evidenta de statistica, iar in „Tranzacții suspecte" sunt plati
+  // individuale oprite de scanerul de cuvinte (0036).
+  { href: "/admin/tranzactii", eticheta: "Conturi semnalate", icoana: TrendingUp },
+  { href: "/admin/tranzactii-suspecte", eticheta: "Tranzacții suspecte", icoana: ShieldAlert },
+  { href: "/admin/securitate", eticheta: "Securitate", icoana: SpellCheck },
   { href: "/admin/credite", eticheta: "Credite", icoana: Landmark },
   { href: "/admin/conturi", eticheta: "Toate conturile", icoana: Users },
 ];
@@ -16,14 +21,20 @@ export function NavAdmin() {
   const pathname = usePathname();
 
   return (
-    <nav className="flex gap-1 border-b border-line" aria-label="Secțiuni administrare">
+    <nav
+      className="flex gap-1 overflow-x-auto border-b border-line"
+      aria-label="Secțiuni administrare"
+    >
       {SECTIUNI.map(({ href, eticheta, icoana: Icoana }) => {
         // "/admin" ar fi prefix pentru tot; se compara exact, in afara de
         // sectiunile care au si pagini de detaliu sub ele.
+        //
+        // Prefixul se opreste la granita de segment: fara "/", "/admin/tranzactii"
+        // s-ar aprinde si pe "/admin/tranzactii-suspecte", care e alta sectiune.
         const activ =
           href === "/admin"
             ? pathname === "/admin" || pathname.startsWith("/admin/verificari")
-            : pathname.startsWith(href);
+            : pathname === href || pathname.startsWith(`${href}/`);
 
         return (
           <Link

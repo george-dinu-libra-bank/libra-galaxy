@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { AvatarProfil } from "@/components/ui/avatar-profil";
 import type { TranzactieAfisata } from "@/lib/data/tranzactii";
+import { ETICHETE_STARE } from "@/lib/stare-tranzactie";
 import { cn, formateazaSuma } from "@/lib/utils";
 
 /**
@@ -89,6 +90,11 @@ function Rand({
   // Contrapartea lipseste doar daca profilul celuilalt a fost sters intre timp.
   const nume = tranzactie.numeContraparte;
 
+  // Un transfer oprit sau anulat arata altfel decat unul dus la capat: fara
+  // asta, dashboardul spune „ai trimis banii" cand ei nu au plecat nicaieri.
+  const stare = ETICHETE_STARE[tranzactie.status];
+  const anulata = tranzactie.status === "anulata";
+
   return (
     <motion.div
       // O spalare care se stinge, ca sa se vada care rand tocmai a aparut:
@@ -126,15 +132,27 @@ function Rand({
       </span>
 
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] text-ink">
-          {tranzactie.intreConturiProprii ? (
-            "Între conturile tale"
-          ) : (
-            <>
-              {primita ? "Primit de la" : "Trimis către"}{" "}
-              <span className="font-semibold">{nume}</span>
-            </>
-          )}
+        <span className="flex items-center gap-2 truncate text-[15px] text-ink">
+          <span className="truncate">
+            {tranzactie.intreConturiProprii ? (
+              "Între conturile tale"
+            ) : (
+              <>
+                {primita ? "Primit de la" : anulata ? "Anulat către" : "Trimis către"}{" "}
+                <span className="font-semibold">{nume}</span>
+              </>
+            )}
+          </span>
+          {stare ? (
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                stare.stil,
+              )}
+            >
+              {stare.text}
+            </span>
+          ) : null}
         </span>
         <span className="block truncate text-[12.5px] text-ink-faint">
           {tranzactie.grup?.directie === "din"
@@ -152,7 +170,9 @@ function Rand({
       <span
         className={cn(
           "tabular shrink-0 text-[15px] font-semibold",
-          primita ? "text-success" : "text-ink",
+          // Suma anulata s-a intors in cont, deci nu mai e o iesire de bani:
+          // se taie, ca sa nu para ca lipseste din sold.
+          anulata ? "text-ink-faint line-through" : primita ? "text-success" : "text-ink",
         )}
       >
         {primita ? "+" : "−"} {formateazaSuma(tranzactie.suma, tranzactie.valuta)}

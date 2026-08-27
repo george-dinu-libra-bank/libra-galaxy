@@ -34,6 +34,8 @@ from app.schemas.credit import (
     CerereAdminResponse,
     CerereRequest,
     CerereResponse,
+    ContractRequest,
+    ContractResponse,
     ConfirmaDocumentRequest,
     CreditAdminResponse,
     CreditResponse,
@@ -236,6 +238,20 @@ async def documentele_cererii(
     ]
 
 
+@router.get("/cereri/{id_cerere}/contract", response_model=ContractResponse)
+async def contract_cerere(
+    id_cerere: UUID,
+    user: UserContext = Depends(get_current_user),
+    serviciu: CreditService = Depends(get_credit_service),
+) -> ContractResponse:
+    """Contractul pe care clientul trebuie sa-l citeasca inainte sa semneze.
+
+    404 cat timp banca nu l-a trimis: pana la aprobare textul e ciorna
+    analistului, nu un document al clientului.
+    """
+    return ContractResponse(**await serviciu.contract_client(id_cerere, user.user_id))
+
+
 @router.post("/cereri/{id_cerere}/accepta", response_model=AcordareResponse)
 async def accepta(
     id_cerere: UUID,
@@ -253,6 +269,10 @@ async def accepta(
         "ip": request.client.host if request.client else None,
         "user_agent": request.headers.get("user-agent"),
         "moment": _acum(),
+        # Ce a confirmat clientul despre contract. Ramane pe rand, in `credite`,
+        # ca sa se poata raspunde ulterior la "a apucat sa-l citeasca?".
+        "contract_citit": cerere.contract_citit,
+        "citit_pana_la_capat": round(cerere.contract_derulat, 3),
     }
     rezultat = await serviciu.accepta(id_cerere, user.user_id, UUID(cerere.id_cont), semnatura)
     return AcordareResponse(**rezultat)
@@ -457,6 +477,39 @@ async def dosar(
     return _dosar_response(date, ai_dosar)
 
 
+@router_admin.put("/cereri/{id_cerere}/contract", response_model=ContractResponse)
+async def salveaza_contract(
+    id_cerere: UUID,
+    date: ContractRequest,
+    admin: UserContext = Depends(cere_administrator),
+    serviciu: CreditService = Depends(get_credit_service),
+) -> ContractResponse:
+    """Salveaza contractul editat de analist.
+
+    HTML-ul vine dintr-un editor din browser, deci e continut neincrezut: trece
+    prin `credit/contract.py:sanitizeaza` inainte sa atinga baza.
+    """
+    return ContractResponse(
+        **await serviciu.salveaza_contract(id_cerere, admin.user_id, date.html)
+    )
+
+
+@router_admin.post("/cereri/{id_cerere}/contract/regenereaza", response_model=ContractResponse)
+async def regenereaza_contract(
+    id_cerere: UUID,
+    admin: UserContext = Depends(cere_administrator),
+    serviciu: CreditService = Depends(get_credit_service),
+) -> ContractResponse:
+    """Reface contractul din sablon, cu datele de acum.
+
+    Suprascrie ce a scris analistul, deci sta in spatele unei confirmari in
+    interfata. Dupa trimiterea catre client nu mai e permisa.
+    """
+    return ContractResponse(
+        **await serviciu.regenereaza_contract(id_cerere, admin.user_id)
+    )
+
+
 @router_admin.post("/cereri/{id_cerere}/ai", response_model=DosarResponse)
 async def ruleaza_ai(
     id_cerere: UUID,
@@ -571,6 +624,7 @@ def _dosar_response(date: dict, ai_dosar: dict | None) -> DosarResponse:
     semnale_rezumat = _conteaza_semnale(ai_dosar["semnale"]) if ai_dosar else None
     return DosarResponse(
         cerere=_cerere_admin(date["cerere"], semnale_rezumat),
+        contract=ContractResponse(**date["contract"]),
         verificari=[VerificareResponse(**_verificare_publica(v)) for v in date["verificari"]],
         documente=[DocumentResponse(**_document_public(d)) for d in date["documente"]],
         mesaje=[MesajResponse(**_mesaj_public(m)) for m in date.get("mesaje", [])],
@@ -650,7 +704,8 @@ def _cerere_publica(cerere: dict) -> dict:
 
 def _credit_public(credit: dict) -> dict:
     campuri = (
-        "id principal dobanda_anuala luni rata_lunara dae sold_ramas data_acordarii status inchis_la"
+        "id principal dobanda_anuala luni rata_lunara dae sold_ramas data_acordarii status "
+        "inchis_la contract_url"
     ).split()
     return {cheie: credit.get(cheie) for cheie in campuri}
 

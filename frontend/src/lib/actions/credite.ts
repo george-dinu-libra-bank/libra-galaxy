@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { apelBackend } from "@/lib/data/backend";
-import type { RataGrafic, Simulare } from "@/lib/data/credite";
+import type { ContractCerere, RataGrafic, Simulare } from "@/lib/data/credite";
 
 /**
  * Mutatiile de creditare. Convenția din proiect: nu se aruncă excepții, se
@@ -242,13 +242,27 @@ export async function incarcaAdeverinta(
   };
 }
 
+/**
+ * Semnarea ofertei.
+ *
+ * `contractCitit` nu e o formalitate de interfata: backendul refuza semnatura
+ * fara el (`AcceptaRequest`), deci un buton dezactivat in browser nu e singura
+ * plasa. `derulat` (0..1) spune cat a parcurs clientul din text si ramane in
+ * `semnatura`, pe randul din `credite`.
+ */
 export async function acceptaOferta(
   idCerere: string,
   idCont: string,
+  contractCitit: boolean,
+  derulat: number,
 ): Promise<RezultatActiune> {
   const { eroare } = await apelBackend(
     `/api/v1/credite/cereri/${idCerere}/accepta`,
-    json({ id_cont: idCont }),
+    json({
+      id_cont: idCont,
+      contract_citit: contractCitit,
+      contract_derulat: Math.min(1, Math.max(0, derulat)),
+    }),
     INDISPONIBIL,
   );
 
@@ -300,4 +314,30 @@ export async function avanseazaTimp(idCredit: string, luni: number): Promise<Rez
   revalidatePath(`/credite/${idCredit}`);
   revalidatePath("/dashboard");
   return {};
+}
+
+
+/**
+ * Contractul unei oferte, pentru wizard-ul de cerere.
+ *
+ * Ecranul lui e o componenta de client, deci nu poate chema direct citirile din
+ * `lib/data` — trece printr-o actiune de server, ca restul.
+ */
+export async function obtineContractPentruOferta(
+  idCerere: string,
+): Promise<{ contract?: ContractCerere; eroare?: string }> {
+  const { date, eroare } = await apelBackend<Record<string, unknown>>(
+    `/api/v1/credite/cereri/${encodeURIComponent(idCerere)}/contract`,
+    {},
+    INDISPONIBIL,
+  );
+  if (eroare || !date) return { eroare: eroare ?? INDISPONIBIL };
+
+  return {
+    contract: {
+      idCerere: String(date.id_cerere ?? idCerere),
+      html: String(date.html ?? ""),
+      trimisLa: (date.trimis_la as string | null) ?? null,
+    },
+  };
 }

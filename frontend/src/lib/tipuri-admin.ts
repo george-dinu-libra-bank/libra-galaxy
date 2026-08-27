@@ -330,8 +330,19 @@ export type EvenimentCerere = {
   creat_la: string;
 };
 
+/** Contractul unei cereri, in HTML restrans (backend/app/credit/contract.py). */
+export type ContractCerere = {
+  id_cerere: string;
+  /** Sanitizat de backend la fiecare scriere; se randeaza cu dangerouslySetInnerHTML. */
+  html: string;
+  actualizat_la: string | null;
+  /** null cat timp banca inca lucreaza la el — clientul nu l-a vazut inca. */
+  trimis_la: string | null;
+};
+
 export type DosarCredit = {
   cerere: CerereCredit;
+  contract: ContractCerere;
   verificari: VerificareVenit[];
   documente: DocumentCerere[];
   mesaje: MesajCerere[];

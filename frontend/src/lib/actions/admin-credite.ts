@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { checkAdmin } from "@/lib/admin";
 import { backendFetch, BackendError } from "@/lib/backend";
-import type { ActiuneAnalist, DosarCredit } from "@/lib/tipuri-admin";
+import type { ActiuneAnalist, ContractCerere, DosarCredit } from "@/lib/tipuri-admin";
 
 export type RezultatDecizieCredit = { eroare?: string; status?: string };
 
@@ -126,4 +126,55 @@ export async function ruleazaPipelineAi(idCerere: string): Promise<RezultatRular
   revalidatePath("/admin/credite");
   revalidatePath(`/admin/credite/${idCerere}`);
   return { dosar: rezultat.date };
+}
+
+
+export type RezultatContract = { eroare?: string; contract?: ContractCerere };
+
+/**
+ * Salveaza contractul editat de analist.
+ *
+ * HTML-ul pleaca asa cum l-a produs editorul; backendul il taie la lista de
+ * etichete permise inainte sa il scrie (`credit/contract.py:sanitizeaza`).
+ * Nu incercam sa sanitizam si aici: doua liste de etichete care trebuie tinute
+ * in acord sunt o promisiune pe care n-o poate respecta nimeni.
+ */
+export async function salveazaContract(
+  idCerere: string,
+  html: string,
+): Promise<RezultatContract> {
+  const rezultat = await cuAdmin((token) =>
+    backendFetch<ContractCerere>(
+      `api/v1/admin/credite/cereri/${encodeURIComponent(idCerere)}/contract`,
+      token,
+      { method: "PUT", body: JSON.stringify({ html }) },
+    ),
+  );
+
+  if (rezultat.eroare) return { eroare: rezultat.eroare };
+
+  revalidatePath(`/admin/credite/${idCerere}`);
+  return { contract: rezultat.date };
+}
+
+/**
+ * Reface contractul din sablon, cu datele de acum.
+ *
+ * Arunca ce a scris analistul, deci ecranul cere o confirmare inainte. Util mai
+ * ales dupa ce cererea primeste rata si DAE: sablonul generat la depunere avea
+ * liniute in locul lor.
+ */
+export async function regenereazaContract(idCerere: string): Promise<RezultatContract> {
+  const rezultat = await cuAdmin((token) =>
+    backendFetch<ContractCerere>(
+      `api/v1/admin/credite/cereri/${encodeURIComponent(idCerere)}/contract/regenereaza`,
+      token,
+      { method: "POST" },
+    ),
+  );
+
+  if (rezultat.eroare) return { eroare: rezultat.eroare };
+
+  revalidatePath(`/admin/credite/${idCerere}`);
+  return { contract: rezultat.date };
 }

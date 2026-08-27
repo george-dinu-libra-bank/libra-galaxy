@@ -5,6 +5,7 @@ import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { AvatarProfil } from "@/components/ui/avatar-profil";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import type { TranzactieAfisata } from "@/lib/data/tranzactii";
+import { ETICHETE_STARE, EXPLICATII_STARE } from "@/lib/stare-tranzactie";
 import { cn, etichetaZi, formateazaOra, formateazaSuma } from "@/lib/utils";
 import { FiltreDrawer, type Filtre } from "@/components/istoric/filtre-drawer";
 
@@ -81,7 +82,17 @@ export function ListaTranzactii({ tranzactii }: { tranzactii: TranzactieAfisata[
         }}
       >
         <DrawerContent
-          title={selectata ? (selectata.tip === "primita" ? "Bani primiți" : "Bani trimiși") : ""}
+          title={
+            selectata
+              ? selectata.status === "flagged"
+                ? "Transfer în verificare"
+                : selectata.status === "anulata"
+                  ? "Transfer anulat"
+                  : selectata.tip === "primita"
+                    ? "Bani primiți"
+                    : "Bani trimiși"
+              : ""
+          }
           description={selectata?.descriere || "Transfer între conturi Galaxy Bank."}
         >
           {selectata ? <DetaliuTranzactie tranzactie={selectata} /> : null}
@@ -103,6 +114,8 @@ function RandTranzactie({
   const primita = tranzactie.tip === "primita";
   const Icoana = primita ? ArrowDownLeft : ArrowUpRight;
   const nume = tranzactie.numeContraparte;
+  const stare = ETICHETE_STARE[tranzactie.status];
+  const anulata = tranzactie.status === "anulata";
 
   return (
     <button
@@ -133,15 +146,27 @@ function RandTranzactie({
       </span>
 
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] text-ink">
-          {tranzactie.intreConturiProprii ? (
-            "Între conturile tale"
-          ) : (
-            <>
-              {primita ? "Primit de la" : "Trimis către"}{" "}
-              <span className="font-semibold">{nume}</span>
-            </>
-          )}
+        <span className="flex items-center gap-2 truncate text-[15px] text-ink">
+          <span className="truncate">
+            {tranzactie.intreConturiProprii ? (
+              "Între conturile tale"
+            ) : (
+              <>
+                {primita ? "Primit de la" : anulata ? "Anulat către" : "Trimis către"}{" "}
+                <span className="font-semibold">{nume}</span>
+              </>
+            )}
+          </span>
+          {stare ? (
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                stare.stil,
+              )}
+            >
+              {stare.text}
+            </span>
+          ) : null}
         </span>
         <span className="block truncate text-[12.5px] text-ink-faint">
           {/* Banii au plecat din punga comuna, nu din contul tau — se spune. */}
@@ -156,7 +181,8 @@ function RandTranzactie({
       <span
         className={cn(
           "tabular shrink-0 text-[15px] font-semibold",
-          primita ? "text-success" : "text-ink",
+          // Suma anulata s-a intors in cont: se taie, ca sa nu para o iesire.
+          anulata ? "text-ink-faint line-through" : primita ? "text-success" : "text-ink",
         )}
       >
         {primita ? "+" : "−"} {formateazaSuma(tranzactie.suma, tranzactie.valuta)}
@@ -183,7 +209,11 @@ function DetaliuTranzactie({ tranzactie }: { tranzactie: TranzactieAfisata }) {
         <span
           className={cn(
             "tabular text-[32px] font-bold leading-[38px]",
-            primita ? "text-success" : "text-ink",
+            tranzactie.status === "anulata"
+              ? "text-ink-faint line-through"
+              : primita
+                ? "text-success"
+                : "text-ink",
           )}
         >
           {primita ? "+" : "−"} {formateazaSuma(tranzactie.suma, tranzactie.valuta)}
@@ -193,9 +223,22 @@ function DetaliuTranzactie({ tranzactie }: { tranzactie: TranzactieAfisata }) {
             ? "Mutare între conturile tale"
             : primita
               ? `Primit de la ${nume}`
-              : `Trimis către ${nume}`}
+              : tranzactie.status === "anulata"
+                ? `Anulat către ${nume}`
+                : `Trimis către ${nume}`}
         </span>
       </div>
+
+      {EXPLICATII_STARE[tranzactie.status] ? (
+        <p
+          className={cn(
+            "rounded-field px-4 py-3 text-[13px] leading-[18px]",
+            ETICHETE_STARE[tranzactie.status]?.stil,
+          )}
+        >
+          {EXPLICATII_STARE[tranzactie.status]}
+        </p>
+      ) : null}
 
       <div>
         <Rand eticheta={primita ? "Expeditor" : "Beneficiar"} valoare={nume} />

@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeftRight, Banknote, ChevronRight, CreditCard, Users } from "lucide-react";
+import { ArrowLeftRight, Banknote, ChevronRight, CreditCard } from "lucide-react";
 import { AvatarUtilizator } from "@/components/dashboard/avatar-utilizator";
 import { DetaliiContDrawer } from "@/components/dashboard/detalii-cont-drawer";
 import { ListaConturi } from "@/components/dashboard/lista-conturi";
+import { PrimesteQrDrawer } from "@/components/dashboard/primeste-qr-drawer";
 import { SchimbValutarDrawer } from "@/components/dashboard/schimb-valutar-drawer";
 import { SoldAnimat } from "@/components/dashboard/sold-animat";
 import { UltimeleTranzactii } from "@/components/dashboard/ultimele-tranzactii";
@@ -28,10 +29,13 @@ export const metadata: Metadata = {
 
 // Istoricul a iesit de aici in favoarea schimbului valutar: e la un tap distanta
 // in bara de jos, pe cand schimbul n-avea niciun drum catre el.
+//
+// „Beneficiari" a iesit in favoarea codului QR: lista beneficiarilor se deschide
+// oricum din ecranul de transfer, in timp ce a CERE bani n-avea niciun drum.
+// Pagina /beneficiari ramane, cu intrarea mutata in drawerul de beneficiari.
 const ACTIUNI = [
   { eticheta: "Transfer", href: "/transfer", icoana: ArrowLeftRight },
   { eticheta: "Carduri", href: "/carduri", icoana: CreditCard },
-  { eticheta: "Beneficiari", href: "/beneficiari", icoana: Users },
 ];
 
 /** Stilul unei dale din grila — impartit intre linkuri si declansatorul de drawer. */
@@ -197,7 +201,12 @@ export default async function DashboardPage() {
           </Link>
         ))}
 
-        {/* Singura dala care nu duce nicaieri: deschide un drawer peste ecran. */}
+        {/* Dalele care nu duc nicaieri: deschid cate un drawer peste ecran. */}
+        <PrimesteQrDrawer
+          conturi={conturi}
+          numeUtilizator={profil?.nume ?? ""}
+          className={DALA}
+        />
         <SchimbValutarDrawer conturi={conturi} cursuri={cursuri} className={DALA} />
       </div>
 

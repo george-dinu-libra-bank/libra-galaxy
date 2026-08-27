@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, Clock, FileSearch, FileUp, PenLine } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
+import { ContractDrawer } from "@/components/credite/contract-drawer";
 import { DiscutieDrawer } from "@/components/credite/discutie-drawer";
 import { IncarcaAdeverinta } from "@/components/credite/incarca-adeverinta";
 import { acceptaOferta, anuleazaCerere } from "@/lib/actions/credite";
 import type { ContBancar } from "@/lib/data/conturi";
-import type { CerereCredit, MesajCerere } from "@/lib/data/credite";
+import type { CerereCredit, ContractCerere, MesajCerere } from "@/lib/data/credite";
 import { formateazaSuma } from "@/lib/utils";
 
 /**
@@ -28,6 +29,7 @@ export function CereriInCurs({
   cereri,
   conturi,
   mesaje = {},
+  contracte = {},
   discutieDeschisa = null,
 }: {
   cereri: CerereCredit[];
@@ -35,6 +37,8 @@ export function CereriInCurs({
   /** Firul fiecarei cereri in curs, dupa id. Adus doar pentru ele — de obicei
    * zero sau una, deci fara N+1. */
   mesaje?: Record<string, MesajCerere[]>;
+  /** Contractul fiecarei oferte, dupa id de cerere. Exista doar dupa aprobare. */
+  contracte?: Record<string, ContractCerere | null>;
   /** Id-ul cererii al carei fir trebuie deschis din start (vine din notificare). */
   discutieDeschisa?: string | null;
 }) {
@@ -64,6 +68,7 @@ export function CereriInCurs({
           cerere={cerere}
           conturi={conturi}
           mesaje={mesaje[cerere.id] ?? []}
+          contract={contracte[cerere.id] ?? null}
           discutieDeschisa={discutieDeschisa === cerere.id}
         />
       ))}
@@ -194,11 +199,13 @@ function Oferta({
   cerere,
   conturi,
   mesaje,
+  contract,
   discutieDeschisa,
 }: {
   cerere: CerereCredit;
   conturi: ContBancar[];
   mesaje: MesajCerere[];
+  contract: ContractCerere | null;
   discutieDeschisa: boolean;
 }) {
   const router = useRouter();
@@ -206,6 +213,10 @@ function Oferta({
   const [eroare, setEroare] = useState<string | null>(null);
   const [gata, setGata] = useState(false);
   const [seTrimite, startTransition] = useTransition();
+  // Cat a parcurs clientul din contract, si daca a apasat „sunt de acord".
+  // `null` = inca n-a acceptat; numarul se pastreaza in semnatura.
+  const [derulatAcceptat, setDerulatAcceptat] = useState<number | null>(null);
+  const contractAcceptat = derulatAcceptat !== null;
 
   // Conturile pot fi in valute diferite, dar creditul se acorda in RON: un
   // disbursement intr-un cont in EUR ar cere o conversie pe care nimeni n-a
@@ -219,10 +230,14 @@ function Oferta({
       setEroare("Alege contul în care intră banii.");
       return;
     }
+    if (!contractAcceptat) {
+      setEroare("Citește contractul și acceptă-l înainte de a semna.");
+      return;
+    }
     setEroare(null);
 
     startTransition(async () => {
-      const rezultat = await acceptaOferta(cerere.id, idCont);
+      const rezultat = await acceptaOferta(cerere.id, idCont, true, derulatAcceptat ?? 0);
       if (rezultat.eroare) {
         setEroare(rezultat.eroare);
         return;
@@ -287,6 +302,28 @@ function Oferta({
 
       {!expirata ? (
         <>
+          {/* Contractul stă înaintea alegerii contului: e primul lucru de
+              făcut, nu un detaliu de lângă buton. */}
+          {contract ? (
+            <div className="mt-4">
+              <ContractDrawer
+                contract={contract}
+                acceptat={contractAcceptat}
+                onAccepta={(derulat) => {
+                  setDerulatAcceptat(derulat);
+                  setEroare(null);
+                }}
+              />
+            </div>
+          ) : (
+            <div className="mt-4">
+              <Banda ton="eroare">
+                Contractul nu s-a putut încărca. Reîmprospătează pagina — fără el nu se poate
+                semna.
+              </Banda>
+            </div>
+          )}
+
           <label className="mt-4 block text-[13px] text-ink-faint" htmlFor={`cont-${cerere.id}`}>
             Banii intră în
           </label>
@@ -306,11 +343,18 @@ function Oferta({
           <Button
             className="mt-4 w-full"
             loading={seTrimite}
+            disabled={!contractAcceptat}
             onClick={semneaza}
             iconaStanga={<PenLine size={18} strokeWidth={1.75} aria-hidden />}
           >
             Semnează și primește {formateazaSuma(cerere.sumaCeruta)}
           </Button>
+
+          {!contractAcceptat ? (
+            <p className="mt-2 text-center text-[12.5px] text-ink-faint">
+              Deschide contractul de mai sus ca să poți semna.
+            </p>
+          ) : null}
         </>
       ) : null}
 

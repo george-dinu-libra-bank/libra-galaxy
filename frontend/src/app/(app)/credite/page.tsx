@@ -6,11 +6,12 @@ import { Banda } from "@/components/ui/banda";
 import { obtineConturiUtilizator } from "@/lib/data/conturi";
 import {
   obtineCereri,
+  obtineContractCerere,
   obtineCredite,
   obtineMesajeCerere,
   obtineProdusCredit,
 } from "@/lib/data/credite";
-import type { MesajCerere } from "@/lib/data/credite";
+import type { ContractCerere, MesajCerere } from "@/lib/data/credite";
 import { cn, formateazaSuma } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -74,6 +75,16 @@ export default async function CreditePage({
     ),
   ) as Record<string, MesajCerere[]>;
 
+  // Contractul se cere doar pentru ofertele care asteapta semnatura: pentru
+  // orice alta stare backendul raspunde 404, iar clientul n-are ce citi.
+  const contracte = Object.fromEntries(
+    await Promise.all(
+      cereri
+        .filter((cerere) => cerere.status === "oferta")
+        .map(async (cerere) => [cerere.id, await obtineContractCerere(cerere.id)] as const),
+    ),
+  ) as Record<string, ContractCerere | null>;
+
   const active = credite.filter((credit) => credit.status === "activ" || credit.status === "restant");
   const inchise = credite.filter((credit) => credit.status !== "activ" && credit.status !== "restant");
 
@@ -91,6 +102,7 @@ export default async function CreditePage({
         cereri={cereri}
         conturi={conturi}
         mesaje={fire}
+        contracte={contracte}
         discutieDeschisa={discutie ?? null}
       />
 

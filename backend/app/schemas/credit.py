@@ -111,7 +111,24 @@ class DecizieResponse(BaseModel):
 
 
 class AcceptaRequest(BaseModel):
+    """Semnarea ofertei.
+
+    `contract_citit` nu e o formalitate de interfata: fara el, „Semneaza" ar
+    insemna din nou o apasare peste trei cifre. Serverul refuza semnatura daca
+    lipseste, ca sa nu depinda de un buton dezactivat in browser.
+    """
+
     id_cont: str
+    contract_citit: bool = False
+    # Cat a derulat clientul din contract, 0..1. Nu blocheaza semnatura de una
+    # singura — se pastreaza in `semnatura`, ca dovada a ce s-a intamplat.
+    contract_derulat: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _contractul_trebuie_citit(self) -> "AcceptaRequest":
+        if not self.contract_citit:
+            raise ValueError("Contractul trebuie citit si acceptat inainte de semnare.")
+        return self
 
 
 class AcordareResponse(BaseModel):
@@ -122,6 +139,24 @@ class AcordareResponse(BaseModel):
     luni: int
     sold_cont_nou: Decimal
     prima_scadenta: str
+    # Calea din bucket-ul privat, nu un link: se semneaza la citire.
+    contract_url: str | None = None
+
+
+class ContractResponse(BaseModel):
+    """Contractul unei cereri, in HTML restrans (credit/contract.py)."""
+
+    id_cerere: str
+    html: str
+    actualizat_la: str | None = None
+    # Null cat timp banca inca lucreaza la el; clientul nu vede nimic pana atunci.
+    trimis_la: str | None = None
+
+
+class ContractRequest(BaseModel):
+    """Textul venit din editorul analistului. Se sanitizeaza in serviciu."""
+
+    html: str = Field(max_length=100_000)
 
 
 class CreditResponse(BaseModel):
@@ -135,6 +170,9 @@ class CreditResponse(BaseModel):
     data_acordarii: str
     status: str
     inchis_la: datetime | None = None
+    # Link semnat catre PDF-ul contractului, valabil cateva minute. None pe
+    # creditele acordate inainte de introducerea contractelor.
+    contract_url: str | None = None
 
 
 class RataDetaliuResponse(BaseModel):
@@ -304,6 +342,7 @@ class DosarResponse(BaseModel):
     """Tot ce are nevoie un analist ca sa decida, intr-un singur raspuns."""
 
     cerere: CerereAdminResponse
+    contract: ContractResponse
     verificari: list[VerificareResponse]
     documente: list[DocumentResponse]
     mesaje: list[MesajResponse] = Field(default_factory=list)

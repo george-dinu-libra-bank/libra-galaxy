@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Check, FileText, Wallet } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Check, FileText, ShieldAlert, Wallet } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
@@ -12,31 +12,41 @@ import { AlegeContDrawer } from "@/components/transfer/alege-cont-drawer";
 import { ConfirmaTransferDrawer } from "@/components/transfer/confirma-transfer-drawer";
 import { trimiteTransfer } from "@/lib/actions/transfer";
 import type { BeneficiarTransfer, ContSursa } from "@/lib/data/transfer";
-import { formateazaSuma } from "@/lib/utils";
+import { cn, formateazaSuma } from "@/lib/utils";
 
 export function TransferForm({
   conturi,
   beneficiari,
   beneficiarInitial = null,
   contInitial = null,
+  sumaInitiala = "",
+  detaliiInitiale = "",
+  confirmaDirect = false,
 }: {
   conturi: ContSursa[];
   beneficiari: BeneficiarTransfer[];
   beneficiarInitial?: BeneficiarTransfer | null;
   /** Cont preselectat (ex. venit din cardul de transfer al asistentului, ?cont=<id>). */
   contInitial?: ContSursa | null;
+  /** Cele trei vin dintr-un cod QR scanat (lib/qr-plata.ts). */
+  sumaInitiala?: string;
+  detaliiInitiale?: string;
+  /** Sare peste formular si deschide direct confirmarea, cu datele din cod. */
+  confirmaDirect?: boolean;
 }) {
   const router = useRouter();
   const [contSursa, setContSursa] = useState<ContSursa | null>(
     contInitial ?? conturi.find((c) => !c.blocat) ?? conturi[0] ?? null,
   );
   const [beneficiar, setBeneficiar] = useState<BeneficiarTransfer | null>(beneficiarInitial);
-  const [suma, setSuma] = useState("");
-  const [detalii, setDetalii] = useState("");
+  const [suma, setSuma] = useState(sumaInitiala);
+  const [detalii, setDetalii] = useState(detaliiInitiale);
   const [eroare, setEroare] = useState<string | null>(null);
   const [eroareTrimitere, setEroareTrimitere] = useState<string | null>(null);
   const [confirmDeschis, setConfirmDeschis] = useState(false);
   const [trimis, setTrimis] = useState(false);
+  /** Transferul a fost oprit de banca pentru verificare, nu a plecat. */
+  const [semnalat, setSemnalat] = useState(false);
   const [seTrimite, startTransition] = useTransition();
 
   const sumaNumerica = Number(suma.replace(",", "."));
@@ -67,6 +77,21 @@ export function TransferForm({
     setConfirmDeschis(true);
   }
 
+  // Datele venite dintr-un cod QR au trecut deja prin ochii omului, pe ecranul
+  // celui care cerea banii: confirmarea se deschide singura, o data, la intrarea
+  // in pagina. Trece tot prin `continua`, deci verificarile (cont, sold, suma)
+  // raman aceleasi — un cod cu o suma mai mare decat soldul se opreste in
+  // formular, cu acelasi mesaj ca la scrierea de mana.
+  const pornit = useRef(false);
+
+  useEffect(() => {
+    if (!confirmaDirect || pornit.current) return;
+    pornit.current = true;
+    continua();
+    // Se ruleaza o singura data, la montare: `continua` citeste starea initiala.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function trimite() {
     if (!contSursa || !beneficiar) return;
 
@@ -89,6 +114,7 @@ export function TransferForm({
       }
 
       setConfirmDeschis(false);
+      setSemnalat(Boolean(rezultat.semnalat));
       setTrimis(true);
       // Solduri, istoric si beneficiari recenti — reincarcate din Supabase.
       router.refresh();
@@ -120,12 +146,33 @@ export function TransferForm({
   if (trimis && beneficiar) {
     return (
       <div className="mx-auto flex w-full max-w-[440px] flex-col items-center px-6 pb-6 pt-16 text-center sm:max-w-2xl">
-        <span className="flex h-16 w-16 animate-pop items-center justify-center rounded-full bg-success/10">
-          <Check size={30} strokeWidth={1.75} aria-hidden className="text-success" />
+        <span
+          className={cn(
+            "flex h-16 w-16 animate-pop items-center justify-center rounded-full",
+            semnalat ? "bg-warning/10" : "bg-success/10",
+          )}
+        >
+          {semnalat ? (
+            <ShieldAlert size={30} strokeWidth={1.75} aria-hidden className="text-warning" />
+          ) : (
+            <Check size={30} strokeWidth={1.75} aria-hidden className="text-success" />
+          )}
         </span>
-        <h1 className="mt-5 text-xl font-bold tracking-[-0.02em] text-ink">Transfer trimis</h1>
+        <h1 className="mt-5 text-xl font-bold tracking-[-0.02em] text-ink">
+          {semnalat ? "Transfer în verificare" : "Transfer trimis"}
+        </h1>
         <p className="mt-2 text-[15px] leading-[22px] text-ink-soft">
-          Ai trimis {formateazaSuma(sumaNumerica)} catre {beneficiar.nume}.
+          {semnalat ? (
+            <>
+              Suma de {formateazaSuma(sumaNumerica)} a fost reținută și nu a ajuns încă la{" "}
+              {beneficiar.nume}. Un coleg de la bancă verifică transferul și vei primi o
+              notificare cu decizia.
+            </>
+          ) : (
+            <>
+              Ai trimis {formateazaSuma(sumaNumerica)} catre {beneficiar.nume}.
+            </>
+          )}
         </p>
 
         <div className="mt-8 flex w-full flex-col gap-3">
@@ -137,6 +184,7 @@ export function TransferForm({
             className="w-full"
             onClick={() => {
               setTrimis(false);
+              setSemnalat(false);
               setBeneficiar(null);
               setSuma("");
               setDetalii("");

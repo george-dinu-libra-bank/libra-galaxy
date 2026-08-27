@@ -30,6 +30,7 @@ from uuid import UUID, uuid4
 from app.core.errors import ResourceNotFoundError, ValidationError
 from app.credit import amortizare, reguli, scorecard
 from app.credit.adeverinta import citeste_adeverinta
+from app.credit import contract as contract_credit
 from app.credit.ai.contracte import DatePipelineCredit
 from app.credit.venit import VenitConstatat, detecteaza_venit
 from app.infrastructure.document_text import text_din_document
@@ -358,7 +359,17 @@ class CreditService:
         if opreste_oferta:
             status = "analiza_manuala"
 
+        # O oferta pleaca intotdeauna cu contractul ei, si pe calea automata, nu
+        # doar prin `decide_manual`. Altfel o cerere aprobata de motor ar ajunge
+        # in 'oferta' cu un buton „Semneaza" si nimic de citit, iar RPC-ul ar
+        # refuza semnatura cu CONTRACT_LIPSA.
+        contract_trimis: dict[str, Any] = {}
+        if status == "oferta":
+            cerere = await self._asigura_contract(cerere)
+            contract_trimis = {"contract_trimis_la": datetime.now(timezone.utc).isoformat()}
+
         await self._depozit.actualizeaza_cerere(UUID(cerere["id"]), {
+            **contract_trimis,
             "status": status,
             "venit_folosit": str(venit),
             "obligatii_folosite": str(obligatii),
@@ -539,8 +550,17 @@ class CreditService:
             await self._depozit.marcheaza_mesaje_citite_analist(id_cerere)
 
         documente = await self._depozit.documente(id_cerere)
+
+        # Contractul vine odata cu dosarul, si se genereaza din sablon daca
+        # lipseste: analistul trebuie sa gaseasca un contract completat cand
+        # deschide dosarul, nu un buton „genereaza".
+        contract = await self.contract_dosar(id_cerere)
+        if contract["html"] != (cerere.get("contract_html") or ""):
+            cerere = {**cerere, "contract_html": contract["html"]}
+
         return {
             "cerere": cerere,
+            "contract": contract,
             "verificari": await self._depozit.verificari(id_cerere),
             "documente": [
                 {**document, "url": await self._url_document(document)} for document in documente
@@ -621,6 +641,14 @@ class CreditService:
         motivare = (nota or "").strip()
 
         if aproba:
+            # Aprobarea inseamna, de acum, si trimiterea contractului. Un dosar
+            # fara contract completat nu poate deveni oferta: clientul ar primi
+            # un buton de semnat si nimic de citit.
+            if not contract_credit.are_continut(cerere.get("contract_html")):
+                raise OperatiuneRefuzata(
+                    "Dosarul nu are un contract completat. Scrie contractul inainte de a aproba."
+                )
+
             produs = await self._produs_dupa_id(cerere["id_produs"])
             principal_bani = amortizare.bani_din_lei(cerere["suma_ceruta"])
             luni = int(cerere["luni"])
@@ -635,6 +663,7 @@ class CreditService:
                     datetime.now(timezone.utc) + timedelta(days=ZILE_VALABILITATE_OFERTA)
                 ).isoformat(),
                 "explicatie": _explicatie_manuala(True, motivare, cerere.get("scor")),
+                "contract_trimis_la": datetime.now(timezone.utc).isoformat(),
             }
         else:
             campuri = {
@@ -1226,6 +1255,11 @@ class CreditService:
             amortizare.genereaza_grafic(principal_bani, dobanda, luni), date.today()
         )
 
+        # Contractul se ingheata inainte de RPC, nu dupa: PDF-ul e ce a citit
+        # clientul, iar RPC-ul refuza semnatura fara calea lui. Daca urcarea
+        # cade, nu s-a mutat niciun ban — clientul reincearca.
+        cale_contract = await self._ingheata_contractul(cerere, semnatura)
+
         # RPC-ul face totul intr-o tranzactie: contract, grafic, virament, audit.
         return await _rpc(self._depozit.acorda(
             id_cerere=id_cerere,
@@ -1234,7 +1268,168 @@ class CreditService:
             dae=float(amortizare.dae(principal_bani, rata_bani, luni)),
             grafic=grafic,
             semnatura=semnatura,
+            contract_url=cale_contract,
         ))
+
+    async def _ingheata_contractul(self, cerere: dict, semnatura: dict) -> str:
+        """Randeaza contractul in PDF, il urca in bucket si intoarce calea.
+
+        Randul din `credit_documente` se scrie tot aici: dosarul trebuie sa
+        arate contractul in aceeasi lista cu adeverintele, nu doar prin coloana
+        din `credite`.
+        """
+        html = cerere.get("contract_html") or ""
+        if not contract_credit.are_continut(html):
+            raise OperatiuneRefuzata(
+                "Cererea nu are un contract de semnat. Ia legatura cu banca."
+            )
+        if not cerere.get("contract_trimis_la"):
+            raise OperatiuneRefuzata("Contractul nu a fost inca trimis de banca.")
+
+        id_user = str(cerere["id_user"])
+        profil = await self._depozit.profil(UUID(id_user)) or {}
+        acum = datetime.now(timezone.utc)
+
+        # reportlab e sincron si nu tocmai ieftin: pe event loop ar tine
+        # blocate toate celelalte cereri cat dureaza randarea.
+        pdf = await to_thread.run_sync(
+            lambda: contract_credit.pdf_din_html(
+                html,
+                nume_client=str(profil.get("nume") or "Client"),
+                semnat_la=acum,
+                referinta=str(cerere["id"]),
+            )
+        )
+
+        cale = contract_credit.cale_in_bucket(id_user, str(cerere["id"]), acum)
+        await self._depozit.urca_document(cale, pdf, "application/pdf")
+
+        await self._depozit.salveaza_document({
+            "id_cerere": str(cerere["id"]),
+            "id_user": id_user,
+            "tip": "contract",
+            "storage_path": cale,
+            "content_type": "application/pdf",
+            "marime_octeti": len(pdf),
+            "hash_fisier": sha256(pdf).hexdigest(),
+            "status": "confirmat",
+            "extras": {
+                "semnat_la": acum.isoformat(),
+                "ip": semnatura.get("ip"),
+                "citit_pana_la_capat": semnatura.get("citit_pana_la_capat"),
+            },
+        })
+
+        await self._depozit.eveniment({
+            "id_cerere": str(cerere["id"]), "tip": "contract_semnat", "actor": "client",
+            "id_actor": id_user,
+            "detalii": {"cale": cale, "octeti": len(pdf)},
+        })
+        return cale
+
+    # -- contractul ---------------------------------------------------------
+
+    async def _asigura_contract(self, cerere: dict) -> dict:
+        """Cererea, cu `contract_html` completat. Nu suprascrie ce exista deja."""
+        if contract_credit.are_continut(cerere.get("contract_html")):
+            return cerere
+        return await self._genereaza_contract(cerere, id_actor=None, actor="sistem")
+
+    async def contract_dosar(self, id_cerere: UUID) -> dict:
+        """Contractul asa cum il vede analistul.
+
+        Daca dosarul n-are inca text, il genereaza din sablon si il salveaza pe
+        loc: analistul trebuie sa gaseasca un contract completat cand deschide
+        dosarul, nu o pagina goala si un buton. De la prima salvare textul ii
+        apartine lui — sablonul nu se mai suprapune peste el niciodata singur.
+        """
+        cerere = await self._depozit.cerere(id_cerere)
+        if not cerere:
+            raise CreditNegasit("Cererea nu exista.")
+
+        return self._contract_public(await self._asigura_contract(cerere))
+
+    async def regenereaza_contract(self, id_cerere: UUID, id_admin: UUID) -> dict:
+        """Arunca textul curent si reface sablonul din datele de acum.
+
+        Util dupa ce cererea primeste rata si DAE: sablonul generat la depunere
+        avea liniute in locul lor. Suprascrie munca analistului, deci se cheama
+        numai la apasarea lui explicita.
+        """
+        cerere = await self._depozit.cerere(id_cerere)
+        if not cerere:
+            raise CreditNegasit("Cererea nu exista.")
+        if cerere.get("contract_trimis_la"):
+            raise OperatiuneRefuzata(
+                "Contractul a fost deja trimis clientului; nu se mai poate regenera."
+            )
+
+        cerere = await self._genereaza_contract(cerere, id_actor=id_admin, actor="administrator")
+        return self._contract_public(cerere)
+
+    async def salveaza_contract(self, id_cerere: UUID, id_admin: UUID, html: str) -> dict:
+        """Scrie textul editat de analist. Singura poarta catre coloana."""
+        cerere = await self._depozit.cerere(id_cerere)
+        if not cerere:
+            raise CreditNegasit("Cererea nu exista.")
+        if cerere.get("contract_trimis_la"):
+            raise OperatiuneRefuzata(
+                "Contractul a fost deja trimis clientului; nu se mai poate modifica."
+            )
+
+        curat = contract_credit.sanitizeaza(html)
+        if not contract_credit.are_continut(curat):
+            raise ValidationError("Contractul nu poate fi gol.")
+
+        actualizata = await self._depozit.actualizeaza_cerere(id_cerere, {
+            "contract_html": curat,
+            "contract_actualizat_la": datetime.now(timezone.utc).isoformat(),
+            "contract_actualizat_de": str(id_admin),
+        })
+        await self._depozit.eveniment({
+            "id_cerere": str(id_cerere), "tip": "contract_editat",
+            "actor": "administrator", "id_actor": str(id_admin),
+            "detalii": {"caractere": len(curat)},
+        })
+        return self._contract_public(actualizata)
+
+    async def contract_client(self, id_cerere: UUID, user_id: UUID) -> dict:
+        """Contractul asa cum il vede clientul.
+
+        Inainte de aprobare nu exista nimic de citit: textul e o ciorna a
+        bancii, iar clientul nu trebuie sa vada ce se lucreaza la el.
+        """
+        cerere = await self._cerere_proprie(id_cerere, user_id)
+        if not cerere.get("contract_trimis_la"):
+            raise CreditNegasit("Cererea nu are inca un contract de citit.")
+        return self._contract_public(cerere)
+
+    async def _genereaza_contract(self, cerere: dict, *, id_actor: UUID | None, actor: str) -> dict:
+        profil = await self._depozit.profil(UUID(str(cerere["id_user"]))) or {}
+        produs = await self._produs_dupa_id(cerere["id_produs"])
+        html = contract_credit.sanitizeaza(
+            contract_credit.sablon_din_date(profil=profil, cerere=cerere, produs=produs)
+        )
+        actualizata = await self._depozit.actualizeaza_cerere(UUID(str(cerere["id"])), {
+            "contract_html": html,
+            "contract_actualizat_la": datetime.now(timezone.utc).isoformat(),
+            "contract_actualizat_de": str(id_actor) if id_actor else None,
+        })
+        await self._depozit.eveniment({
+            "id_cerere": str(cerere["id"]), "tip": "contract_generat",
+            "actor": actor, "id_actor": str(id_actor) if id_actor else None,
+            "detalii": {"caractere": len(html)},
+        })
+        return actualizata
+
+    @staticmethod
+    def _contract_public(cerere: dict) -> dict:
+        return {
+            "id_cerere": str(cerere["id"]),
+            "html": cerere.get("contract_html") or "",
+            "actualizat_la": cerere.get("contract_actualizat_la"),
+            "trimis_la": cerere.get("contract_trimis_la"),
+        }
 
     # -- credite si rate ----------------------------------------------------
 
@@ -1254,7 +1449,16 @@ class CreditService:
         rate = await self._depozit.rate(id_credit)
         urmatoarea = next((r for r in rate if r["status"] in ("programata", "restanta")), None)
         return {
-            "credit": credit,
+            # `contract_url` din baza e o cale in bucket-ul privat, nu un link.
+            # Se semneaza la fiecare citire, ca la adeverinte (_url_document).
+            "credit": {
+                **credit,
+                "contract_url": (
+                    await self._depozit.url_document(credit["contract_url"])
+                    if credit.get("contract_url")
+                    else None
+                ),
+            },
             "rate": rate,
             "urmatoarea_rata": urmatoarea,
             "rate_platite": sum(1 for r in rate if r["status"] == "platita"),

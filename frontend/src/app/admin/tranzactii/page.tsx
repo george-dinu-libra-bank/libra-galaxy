@@ -44,7 +44,7 @@ export default async function PaginaTranzactii({
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-[26px] font-bold leading-8 tracking-[-0.02em] text-ink">
-          Tranzacții suspecte
+          Conturi semnalate
         </h1>
         <p className="mt-1.5 text-[15px] leading-[22px] text-ink-soft">
           Conturile cu plăți care ies din tiparul lor obișnuit. Sunt constatări statistice,
