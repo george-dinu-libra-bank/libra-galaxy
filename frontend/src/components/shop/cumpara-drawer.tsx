@@ -67,9 +67,11 @@ const TITLURI: Record<Pas, string> = {
  *
  * Nu cere nicio sesiune. Ca la orice comerciant, tot ce se da sunt datele
  * cardului; banca gaseste posesorul si il intreaba pe el, oricine ar fi cel de
- * la casa. Formularul nu decide nimic: validarea reala (cardul exista, e activ,
- * n-a expirat, contul lui are bani) se face in POST /api/payments. De acolo
- * incolo, starea platii vine prin Realtime, pe canalul acestei plati.
+ * la casa. Formularul nu decide nimic, dar nici POST /api/payments nu mai
+ * decide mare lucru: de la 0046 acolo se afla doar cine e posesorul, iar cardul,
+ * contul si soldul se verifica abia dupa ce el autorizeaza. Un card blocat sau
+ * un cont fara bani se vede deci aici ca plata terminata in „esuata", cu motivul
+ * venit prin Realtime, nu ca eroare in formular.
  *
  * Primeste doar slug-ul (nu produsul intreg): un obiect cu o componenta de
  * icoana nu poate trece ca prop dintr-o pagina server intr-un client
@@ -83,7 +85,7 @@ export function CumparaDrawer({ slug }: { slug: string }) {
   const [pas, setPas] = useState<Pas>("form");
   const [date, setDate] = useState(FORM_INITIAL);
   const [eroare, setEroare] = useState<string | null>(null);
-  const [seValideaza, setSeValideaza] = useState(false);
+  const [seTrimite, setSeTrimite] = useState(false);
   const [idPlata, setIdPlata] = useState<string | null>(null);
   const [expiraLa, setExpiraLa] = useState<string | null>(null);
 
@@ -119,7 +121,7 @@ export function CumparaDrawer({ slug }: { slug: string }) {
       setPas("form");
       setDate(FORM_INITIAL);
       setEroare(null);
-      setSeValideaza(false);
+      setSeTrimite(false);
       setIdPlata(null);
       setExpiraLa(null);
     }
@@ -133,7 +135,7 @@ export function CumparaDrawer({ slug }: { slug: string }) {
       return;
     }
 
-    setSeValideaza(true);
+    setSeTrimite(true);
 
     try {
       const raspuns = await fetch("/api/payments", {
@@ -166,7 +168,7 @@ export function CumparaDrawer({ slug }: { slug: string }) {
     } catch {
       setEroare("Nu am putut porni plata. Verifică conexiunea.");
     } finally {
-      setSeValideaza(false);
+      setSeTrimite(false);
     }
   }
 
@@ -194,8 +196,8 @@ export function CumparaDrawer({ slug }: { slug: string }) {
         cuInchidere={pas !== "asteptare"}
         footer={
           pas === "form" ? (
-            <Button className="w-full" loading={seValideaza} onClick={plateste}>
-              {seValideaza ? "Se validează cardul…" : `Plătește ${formateazaSuma(produs.pret)}`}
+            <Button className="w-full" loading={seTrimite} onClick={plateste}>
+              {seTrimite ? "Se trimite cererea…" : `Plătește ${formateazaSuma(produs.pret)}`}
             </Button>
           ) : pas === "asteptare" ? null : (
             <Button className="w-full" onClick={() => reseteaza(false)}>

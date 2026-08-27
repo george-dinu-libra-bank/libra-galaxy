@@ -13,6 +13,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
+import { ContractDrawer } from "@/components/credite/contract-drawer";
+import type { ContractCerere } from "@/lib/data/credite";
 import { IncarcaAdeverinta } from "@/components/credite/incarca-adeverinta";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
@@ -22,6 +24,7 @@ import {
   depuneCerere,
   evalueazaCerere,
   type Decizie,
+  obtineContractPentruOferta,
 } from "@/lib/actions/credite";
 import type { ContBancar } from "@/lib/data/conturi";
 import {
@@ -100,6 +103,12 @@ export function CerereWizard({
   const [idCerere, setIdCerere] = useState<string | null>(null);
   const [idCont, setIdCont] = useState(conturi[0]?.id ?? "");
   const [eroare, setEroare] = useState<string | null>(null);
+  // Contractul ofertei si acceptul clientului. Wizard-ul e singura cale prin
+  // care o cerere aprobata automat se semneaza in aceeasi sesiune, deci si aici
+  // contractul trebuie citit inainte.
+  const [contract, setContract] = useState<ContractCerere | null>(null);
+  const [derulatAcceptat, setDerulatAcceptat] = useState<number | null>(null);
+  const contractAcceptat = derulatAcceptat !== null;
   const [seTrimite, startTransition] = useTransition();
 
   function seteaza(camp: keyof Campuri, valoare: string) {
@@ -156,15 +165,24 @@ export function CerereWizard({
       setIdCerere(creata.id);
       setDecizie(evaluata.decizie);
       setPas("decizie");
+
+      if (evaluata.decizie.decizie === "aprobat") {
+        const citire = await obtineContractPentruOferta(creata.id);
+        if (citire.contract) setContract(citire.contract);
+      }
     });
   }
 
   function semneaza() {
     if (!idCerere || !idCont) return;
+    if (!contractAcceptat) {
+      setEroare("Citește contractul și acceptă-l înainte de a semna.");
+      return;
+    }
     setEroare(null);
 
     startTransition(async () => {
-      const rezultat = await acceptaOferta(idCerere, idCont);
+      const rezultat = await acceptaOferta(idCerere, idCont, true, derulatAcceptat ?? 0);
       if (rezultat.eroare) {
         setEroare(rezultat.eroare);
         return;
@@ -316,7 +334,24 @@ export function CerereWizard({
               ) : null}
             </dl>
 
-            <label className="mt-5 block text-[13px] text-ink-faint" htmlFor="cont-creditare">
+            {contract ? (
+              <div className="mt-5">
+                <ContractDrawer
+                  contract={contract}
+                  acceptat={contractAcceptat}
+                  onAccepta={(derulat) => {
+                    setDerulatAcceptat(derulat);
+                    setEroare(null);
+                  }}
+                />
+              </div>
+            ) : (
+              <p className="mt-5 text-[12.5px] leading-[18px] text-ink-faint">
+                Se încarcă contractul…
+              </p>
+            )}
+
+            <label className="mt-4 block text-[13px] text-ink-faint" htmlFor="cont-creditare">
               Banii intră în
             </label>
             <select
@@ -367,7 +402,12 @@ export function CerereWizard({
         {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}
 
         {aprobat ? (
-          <Button className="w-full" loading={seTrimite} onClick={semneaza}>
+          <Button
+            className="w-full"
+            loading={seTrimite}
+            disabled={!contractAcceptat}
+            onClick={semneaza}
+          >
             Semnează și primește {formateazaSuma(suma)}
           </Button>
         ) : (

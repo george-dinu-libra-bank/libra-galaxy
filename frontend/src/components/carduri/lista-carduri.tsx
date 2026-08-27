@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Check, Copy, Eye, EyeOff, Lock, Unlock } from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { AdaugaCardDrawer } from "@/components/carduri/adauga-card-drawer";
+import { CaruselCarduri } from "@/components/carduri/carusel-carduri";
+import { PanouCard } from "@/components/carduri/panou-card";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerContent, DrawerNested } from "@/components/ui/drawer";
+import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import {
   comutaBlocareCard,
   obtineDateSensibileCard,
@@ -14,25 +15,108 @@ import {
 } from "@/lib/actions/carduri";
 import type { CardAfisat } from "@/lib/data/carduri";
 import type { ContBancar } from "@/lib/data/conturi";
-import { ETICHETE_STIL_CARD, GRADIENTE_STIL_CARD } from "@/lib/stil-card";
-import { cn, formateazaSuma } from "@/lib/utils";
+import { ETICHETE_STIL_CARD } from "@/lib/stil-card";
+
+/**
+ * Dupa cat timp se ascund singure numarul si CCV-ul, in milisecunde.
+ *
+ * Dezvaluirea a ajuns la o apasare distanta — se intampla intorcand cardul, nu
+ * cautand un buton intr-un drawer. Cu cat gestul e mai usor, cu atat conteaza
+ * mai mult sa nu ramana datele pe ecran dupa ce omul a terminat cu ele: un
+ * telefon lasat pe masa cu CCV-ul vizibil e exact ce incearca sa evite
+ * confirmarea de dinainte.
+ */
+const DURATA_DEZVALUIRE = 30_000;
 
 export function ListaCarduri({
   carduri,
   conturi,
+  posesor,
 }: {
   carduri: CardAfisat[];
   conturi: ContBancar[];
+  /** Numele de pe card, din profil. */
+  posesor?: string | null;
 }) {
   const router = useRouter();
-  const [selectatId, setSelectatId] = useState<string | null>(null);
-  const [seActualizeaza, startTransition] = useTransition();
+  const [activ, setActiv] = useState(0);
+  const [intorsId, setIntorsId] = useState<string | null>(null);
+  const [dateSensibile, setDateSensibile] = useState<DateSensibileCard | null>(null);
+  const [confirmareDeschisa, setConfirmareDeschisa] = useState(false);
+  const [eroare, setEroare] = useState<string | null>(null);
+  const [seDezvaluie, startDezvaluire] = useTransition();
+  const [seBlocheaza, startBlocare] = useTransition();
 
-  const selectat = carduri.find((c) => c.id === selectatId) ?? null;
+  const cardActiv = carduri[activ] ?? carduri[0] ?? null;
 
-  function comutaBlocare(card: CardAfisat) {
-    startTransition(async () => {
-      await comutaBlocareCard(card.id, !card.blocat);
+  /**
+   * Cand alt card ajunge in centru, tot ce tinea de cel dinainte se inchide:
+   * se intoarce pe fata si isi ascunde datele. Altfel numarul complet al unui
+   * card ar ramane pe ecran in timp ce omul se uita la altul.
+   */
+  const laCardActiv = useCallback((index: number) => {
+    setActiv(index);
+    setIntorsId(null);
+    setDateSensibile(null);
+    setConfirmareDeschisa(false);
+    setEroare(null);
+  }, []);
+
+  useEffect(() => {
+    if (!dateSensibile) return;
+    const ceas = setTimeout(() => setDateSensibile(null), DURATA_DEZVALUIRE);
+    return () => clearTimeout(ceas);
+  }, [dateSensibile]);
+
+  /**
+   * Apasarea cardului il intoarce — si, daca datele nu sunt deja pe ecran,
+   * cere confirmarea in aceeasi miscare.
+   *
+   * Confirmarea a ramas. Ea nu e o formalitate: e singurul lucru care sta intre
+   * o atingere din greseala si numarul cardului afisat in fata cuiva. Fara ea,
+   * intoarcerea ar fi devenit un gest care publica date sensibile fara ca omul
+   * sa ceara asta. Asa, gestul e unul singur, iar intrebarea apare o data.
+   */
+  function intoarce(card: CardAfisat) {
+    if (intorsId === card.id) {
+      setIntorsId(null);
+      setDateSensibile(null);
+      setConfirmareDeschisa(false);
+      return;
+    }
+
+    setIntorsId(card.id);
+    if (!dateSensibile) {
+      setEroare(null);
+      setConfirmareDeschisa(true);
+    }
+  }
+
+  function ceriDezvaluirea() {
+    if (!cardActiv) return;
+    setIntorsId(cardActiv.id);
+    setEroare(null);
+    setConfirmareDeschisa(true);
+  }
+
+  function confirmaAfisarea() {
+    if (!cardActiv) return;
+    setEroare(null);
+    startDezvaluire(async () => {
+      const rezultat = await obtineDateSensibileCard(cardActiv.id);
+      if (rezultat.eroare || !rezultat.date) {
+        setEroare(rezultat.eroare ?? "Nu am putut afisa datele cardului.");
+        return;
+      }
+      setDateSensibile(rezultat.date);
+      setConfirmareDeschisa(false);
+    });
+  }
+
+  function comutaBlocare() {
+    if (!cardActiv) return;
+    startBlocare(async () => {
+      await comutaBlocareCard(cardActiv.id, !cardActiv.blocat);
       router.refresh();
     });
   }
@@ -43,13 +127,13 @@ export function ListaCarduri({
         <div>
           <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Carduri</h1>
           <p className="mt-1 text-[15px] text-ink-soft">
-            Fiecare card plătește din contul lui.
+            Apasă un card ca să-l întorci pe spate.
           </p>
         </div>
         {carduri.length > 0 ? <AdaugaCardDrawer compact conturi={conturi} /> : null}
       </div>
 
-      {carduri.length === 0 ? (
+      {carduri.length === 0 || !cardActiv ? (
         <section className="mt-6 flex flex-col items-center gap-4 rounded-card border border-dashed border-line bg-surface p-6 text-center shadow-sm">
           <p className="text-[15px] leading-[22px] text-ink-soft">
             Nu ai niciun card încă. Adaugă unul ca să poți trimite și primi bani.
@@ -57,174 +141,32 @@ export function ListaCarduri({
           <AdaugaCardDrawer conturi={conturi} />
         </section>
       ) : (
-        <div className="mt-6 flex flex-col gap-4">
-          {carduri.map((card) => (
-            <button
-              key={card.id}
-              type="button"
-              onClick={() => setSelectatId(card.id)}
-              className="animate-fade-up rounded-card p-5 text-left text-white shadow-lg transition-transform duration-150 ease-soft active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
-              style={{
-                background: GRADIENTE_STIL_CARD[card.stil],
-                opacity: card.blocat || card.blocatDeBanca ? 0.7 : 1,
-              }}
-            >
-              <div className="flex items-start justify-between">
-                <span className="text-[13px] text-white/80">
-                  {card.tip === "virtual" ? "Card virtual" : `Card ${ETICHETE_STIL_CARD[card.stil]}`}
-                </span>
-                {card.blocatDeBanca || card.blocat ? (
-                  <span className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-medium text-white">
-                    <Lock size={12} strokeWidth={1.75} aria-hidden />
-                    {card.blocatDeBanca ? "Blocat de bancă" : "Blocat"}
-                  </span>
-                ) : null}
-              </div>
+        // Caruselul iese din captuseala paginii: cardurile de pe laturi trebuie
+        // sa se vada pe jumatate iesite din cadru, altfel nu se intelege ca mai
+        // sunt si altele. Comenzile si panoul de dedesubt isi pun la loc marginea.
+        <div className="-mx-6 mt-4">
+          <CaruselCarduri
+            carduri={carduri}
+            posesor={posesor}
+            intorsId={intorsId}
+            onIntoarce={intoarce}
+            onActivChange={laCardActiv}
+            dateSensibile={dateSensibile}
+          />
 
-              <p className="tabular mt-6 text-[19px] tracking-[0.08em]">{card.numarMascat}</p>
-
-              <div className="mt-4 flex items-end justify-between">
-                <div className="min-w-0">
-                  <p className="truncate text-[10px] uppercase tracking-wide text-white/70">
-                    {card.numeCont ?? "Fără cont"}
-                  </p>
-                  <p className="tabular text-[13px]">
-                    {formateazaSuma(card.sold, card.valuta)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] uppercase tracking-wide text-white/70">Expira</p>
-                  <p className="tabular text-[13px]">{card.dataExpirare}</p>
-                </div>
-              </div>
-            </button>
-          ))}
+          <PanouCard
+            card={cardActiv}
+            dateSensibile={dateSensibile}
+            seDezvaluie={seDezvaluie}
+            seBlocheaza={seBlocheaza}
+            onDezvaluie={ceriDezvaluirea}
+            onAscunde={() => setDateSensibile(null)}
+            onComutaBlocare={comutaBlocare}
+          />
         </div>
       )}
 
       <Drawer
-        open={selectat !== null}
-        onOpenChange={(deschis) => {
-          if (!deschis) setSelectatId(null);
-        }}
-      >
-        <DrawerContent
-          title={selectat ? `Card ${ETICHETE_STIL_CARD[selectat.stil]}` : ""}
-          description={selectat?.numarMascat ?? ""}
-          footer={
-            selectat ? (
-              <Button
-                varianta={selectat.blocat ? "primary" : "danger"}
-                className="w-full"
-                loading={seActualizeaza}
-                iconaStanga={
-                  selectat.blocat ? (
-                    <Unlock size={18} strokeWidth={1.75} aria-hidden />
-                  ) : (
-                    <Lock size={18} strokeWidth={1.75} aria-hidden />
-                  )
-                }
-                disabled={selectat.blocatDeBanca}
-                onClick={() => comutaBlocare(selectat)}
-              >
-                {selectat.blocat ? "Deblochează cardul" : "Blochează cardul"}
-              </Button>
-            ) : undefined
-          }
-        >
-          {selectat ? <DetaliuCard key={selectat.id} card={selectat} /> : null}
-        </DrawerContent>
-      </Drawer>
-    </div>
-  );
-}
-
-function DetaliuCard({ card }: { card: CardAfisat }) {
-  const [dateSensibile, setDateSensibile] = useState<DateSensibileCard | null>(null);
-  const [confirmareDeschisa, setConfirmareDeschisa] = useState(false);
-  const [eroare, setEroare] = useState<string | null>(null);
-  const [seIncarca, startTransition] = useTransition();
-
-  function confirmaAfisarea() {
-    setEroare(null);
-    startTransition(async () => {
-      const rezultat = await obtineDateSensibileCard(card.id);
-      if (rezultat.eroare || !rezultat.date) {
-        setEroare(rezultat.eroare ?? "Nu am putut afisa datele cardului.");
-        return;
-      }
-      setDateSensibile(rezultat.date);
-      setConfirmareDeschisa(false);
-    });
-  }
-
-  return (
-    <div>
-      <Rand eticheta="Tematica" valoare={ETICHETE_STIL_CARD[card.stil]} />
-      <Rand
-        eticheta="Numar"
-        valoare={dateSensibile?.numar ?? card.numarMascat}
-        mono
-        copiabil={Boolean(dateSensibile)}
-      />
-      <Rand eticheta="CCV" valoare={dateSensibile?.ccv ?? "•••"} mono />
-      <Rand eticheta="Expira" valoare={card.dataExpirare} mono />
-      <Rand eticheta="Tip" valoare={card.tip === "virtual" ? "Virtual" : "Fizic"} />
-      <Rand eticheta="Cont" valoare={card.numeCont ?? "—"} />
-      <Rand eticheta="Sold cont" valoare={formateazaSuma(card.sold, card.valuta)} mono />
-      <Rand
-        eticheta="Limita zilnica"
-        valoare={
-          card.limitaZilnica === null
-            ? "Fără limită"
-            : formateazaSuma(card.limitaZilnica, card.valuta)
-        }
-        mono
-      />
-      <Rand
-        eticheta="Stare"
-        valoare={
-          card.blocatDeBanca
-            ? "Blocat de bancă"
-            : card.blocat
-              ? "Blocat de tine"
-              : "Activ"
-        }
-      />
-
-      {card.blocatDeBanca ? (
-        <div className="mt-4">
-          <Banda ton="eroare">
-            Cardul a fost blocat de bancă. Nu poate fi deblocat din aplicație — contactează
-            suportul pentru a afla motivul.
-          </Banda>
-        </div>
-      ) : null}
-
-      <Button
-        varianta="secondary"
-        marime="sm"
-        className="mt-4 w-full"
-        iconaStanga={
-          dateSensibile ? (
-            <EyeOff size={18} strokeWidth={1.75} aria-hidden />
-          ) : (
-            <Eye size={18} strokeWidth={1.75} aria-hidden />
-          )
-        }
-        onClick={() => {
-          if (dateSensibile) {
-            setDateSensibile(null);
-            return;
-          }
-          setEroare(null);
-          setConfirmareDeschisa(true);
-        }}
-      >
-        {dateSensibile ? "Ascunde datele sensibile" : "Afiseaza datele sensibile"}
-      </Button>
-
-      <DrawerNested
         open={confirmareDeschisa}
         onOpenChange={(deschis) => {
           setConfirmareDeschisa(deschis);
@@ -232,20 +174,20 @@ function DetaliuCard({ card }: { card: CardAfisat }) {
         }}
       >
         <DrawerContent
-          title="Afisezi datele sensibile?"
-          description="Numarul complet si CCV-ul vor fi vizibile pe ecran. Asigura-te ca nu te vede nimeni."
+          title="Afișezi datele sensibile?"
+          description="Numărul complet și CCV-ul vor fi vizibile pe spatele cardului. Asigură-te că nu te vede nimeni."
           footer={
             <div className="flex flex-col gap-2">
-              <Button className="w-full" loading={seIncarca} onClick={confirmaAfisarea}>
-                Da, afiseaza datele
+              <Button className="w-full" loading={seDezvaluie} onClick={confirmaAfisarea}>
+                Da, afișează datele
               </Button>
               <Button
                 varianta="ghost"
                 className="w-full"
-                disabled={seIncarca}
+                disabled={seDezvaluie}
                 onClick={() => setConfirmareDeschisa(false)}
               >
-                Renunta
+                Renunță
               </Button>
             </div>
           }
@@ -253,58 +195,12 @@ function DetaliuCard({ card }: { card: CardAfisat }) {
           <div className="flex flex-col gap-3">
             {eroare ? <Banda ton="eroare">{eroare}</Banda> : null}
             <p className="text-[15px] leading-[22px] text-ink-soft">
-              Cardul {ETICHETE_STIL_CARD[card.stil]} — {card.numarMascat}
+              Cardul {ETICHETE_STIL_CARD[cardActiv?.stil ?? "standard"]} —{" "}
+              {cardActiv?.numarMascat ?? ""}. Se ascund singure după 30 de secunde.
             </p>
           </div>
         </DrawerContent>
-      </DrawerNested>
-    </div>
-  );
-}
-
-function Rand({
-  eticheta,
-  valoare,
-  mono,
-  copiabil,
-}: {
-  eticheta: string;
-  valoare: string;
-  mono?: boolean;
-  copiabil?: boolean;
-}) {
-  const [copiat, setCopiat] = useState(false);
-
-  async function copiaza() {
-    try {
-      await navigator.clipboard.writeText(valoare.replace(/\s+/g, ""));
-      setCopiat(true);
-      setTimeout(() => setCopiat(false), 1500);
-    } catch {
-      // clipboard indisponibil (ex. context non-securizat) — nu blocam UI-ul
-    }
-  }
-
-  return (
-    <div className="flex items-center justify-between gap-4 border-b border-line py-3 last:border-0">
-      <span className="text-[13px] text-ink-faint">{eticheta}</span>
-      <span className="flex items-center gap-2">
-        <span className={cn("text-right text-[15px] text-ink", mono && "tabular")}>{valoare}</span>
-        {copiabil ? (
-          <button
-            type="button"
-            onClick={copiaza}
-            aria-label={copiat ? "Copiat" : `Copiaza ${eticheta.toLowerCase()}`}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-faint transition-colors hover:bg-primary-50 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
-          >
-            {copiat ? (
-              <Check size={14} strokeWidth={1.75} aria-hidden className="text-success" />
-            ) : (
-              <Copy size={14} strokeWidth={1.75} aria-hidden />
-            )}
-          </button>
-        ) : null}
-      </span>
+      </Drawer>
     </div>
   );
 }

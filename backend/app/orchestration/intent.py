@@ -22,6 +22,26 @@ def _normalize(text: str) -> str:
 # Ordine: cele mai specifice intentii primele.
 _INTENT_PHRASES: list[tuple[str, tuple[str, ...]]] = [
     (
+        # Trebuie inaintea lui "spending_analysis": fraze ca "leaga asta de o
+        # tranzactie" contin radacina "tranzact" de acolo, care ar prinde-o
+        # gresit ca o simpla intrebare de istoric. Nu se scurtcircuiteaza —
+        # transaction_intelligence tot ruleaza normal, doar cu tool-ul de
+        # potrivire suma->tranzactie (banking_tools.py::find_transaction_for_receipt)
+        # in plus fata de raspunsul obisnuit (orchestrator.py::handle_message).
+        "categorize_receipt_intent",
+        (
+            "ia la cunostinta aceasta plata", "ia la cunostiinta aceasta plata",
+            "ia la cunostinta plata asta", "ia la cunostiinta plata asta",
+            "noteaza aceasta plata", "noteaza plata asta",
+            "leaga asta de o tranzactie", "leaga aceasta poza de o tranzactie",
+            "leaga acest atasament de o tranzactie", "leaga documentul de o tranzactie",
+            "leaga poza asta de o tranzactie", "leaga chitanta de o tranzactie",
+            "categorizeaz-o ca", "categorizeaza-o ca", "categorizeaz asta ca",
+            "note this payment", "link this to a transaction", "link this receipt",
+            "categorize this as", "categorize this receipt",
+        ),
+    ),
+    (
         # Trebuie inaintea lui "spending_analysis": radacina "tranzact" de acolo
         # ar prinde gresit "exporta-mi tranzactiile" ca simpla intrebare de
         # cheltuieli, in loc sa declanseze scurtcircuitul determinist din

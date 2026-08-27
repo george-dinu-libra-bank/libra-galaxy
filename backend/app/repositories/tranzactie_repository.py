@@ -38,3 +38,23 @@ class TranzactieRepository:
             return raspuns.data or []
 
         return await to_thread.run_sync(interogare)
+
+    async def obtine(self, tranzactie_id: UUID) -> dict | None:
+        """O tranzactie, dupa id — sau None daca nu exista sau nu e a
+        utilizatorului curent al carui client a fost dat la construire. RLS
+        (0002: "tranzactii proprii: select") face verificarea de proprietate
+        aici, nu un filtru explicit pe user_id: daca randul vine inapoi, e al
+        lui — folosit de api/routes/analiza.py inainte de a seta o categorie
+        manuala, ca sa nu se poata suprascrie categoria unei tranzactii straine."""
+
+        def interogare() -> dict | None:
+            raspuns = (
+                self._client.table("tranzactii")
+                .select(CAMPURI)
+                .eq("id", str(tranzactie_id))
+                .maybe_single()
+                .execute()
+            )
+            return raspuns.data if raspuns else None
+
+        return await to_thread.run_sync(interogare)

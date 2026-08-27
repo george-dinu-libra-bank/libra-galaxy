@@ -33,7 +33,12 @@ from app.schemas.admin import (
     DecizieInchidereRequest,
     DecizieStergereRequest,
     ContSemnalatResponse,
+    IncaseazaPoprireRequest,
+    InstituiePoprireRequest,
     IstoricAnalizaResponse,
+    PoprireResponse,
+    RidicaPoprireRequest,
+    StorneazaPoprireRequest,
     StareConturiResponse,
     StareContResponse,
     RaportResponse,
@@ -445,3 +450,159 @@ async def redeschide_cont(
     depozit = AdminRepository(client)
     await depozit.redeschide_cont(id_cont, administrator.user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Popriri
+#
+# Se confunda usor cu blocarea contului, si nu e acelasi lucru: blocarea (0030)
+# opreste TOT ce pleaca dintr-un cont, poprirea (0047) indisponibilizeaza o SUMA
+# pe toate conturile clientului si se stinge cand suma s-a adunat.
+#
+# Toate garzile stau in RPC-uri, ca la inchiderea contului: cate mai are de
+# platit, ce se ia cand omul are mai putin decat suma poprita, si ce se scrie in
+# istoric. Rutele doar transmit si traduc exceptiile in coduri HTTP.
+# ---------------------------------------------------------------------------
+
+
+#: Codul ridicat de RPC-urile din 0047 -> ce vede analistul si cu ce status.
+#
+# Fara traducerea asta, orice refuz al bazei ajunge 500 si in panou scrie „a
+# aparut o eroare neasteptata" — exact tiparul pe care il repara commit-ul
+# „Deciziile din panoul de admin nu mai dau 500". Un refuz asteptat (poprirea e
+# deja stinsa, clientul n-are bani) nu e o defectiune a serverului.
+MESAJE_POPRIRE: dict[str, tuple[int, str]] = {
+    "POPRIRE_INEXISTENTA": (404, "Poprirea nu mai exista."),
+    "POPRIRE_INCHEIATA": (409, "Poprirea a fost deja stinsa sau ridicata."),
+    "CLIENT_INEXISTENT": (404, "Clientul nu exista."),
+    "FARA_CREDITOR": (400, "Scrie cine cere banii."),
+    "SUMA_INVALIDA": (400, "Suma poprita trebuie sa fie mai mare ca zero."),
+    "FONDURI_INSUFICIENTE": (
+        409,
+        "Clientul nu are bani in conturi. Poprirea ramane activa si se poate "
+        "incasa cand intra bani.",
+    ),
+    "PESTE_RESTUL_DE_PLATA": (400, "Suma ceruta depaseste restul de plata."),
+    "CONT_BLOCAT": (409, "Contul e blocat administrativ."),
+    # Stornarea (0048)
+    "NIMIC_DE_STORNAT": (409, "Din poprirea asta nu s-a virat inca nimic catre creditor."),
+    "PESTE_SUMA_INCASATA": (400, "Suma ceruta depaseste cat s-a virat din poprire."),
+    "FARA_CONT_DESCHIS": (
+        409,
+        "Clientul nu mai are niciun cont deschis in care sa se intoarca banii.",
+    ),
+}
+
+
+def _eroare_poprire(exc: Exception) -> HTTPException:
+    """Codul din exceptia RPC devine mesaj pentru analist.
+
+    `postgrest` pune codul ridicat de `raise exception` in `message`, iar textul
+    lung in `details` (vezi 0004_core_banking.sql). Ce nu e in dictionar ramane
+    500: o eroare pe care n-am prevazut-o nu trebuie sa arate ca una prevazuta.
+    """
+    cod = getattr(exc, "message", None) or str(exc)
+    stare, mesaj = MESAJE_POPRIRE.get(cod, (500, "Nu am putut duce operatiunea la capat."))
+    if stare == 500:
+        logger.exception("Poprire: eroare netradusa")
+    return HTTPException(status_code=stare, detail=mesaj)
+
+
+@router.get("/popriri", response_model=list[PoprireResponse])
+async def popriri(
+    doar_active: bool = Query(default=False),
+    administrator: UserContext = Depends(cere_administrator),
+    client: Client = Depends(get_admin_supabase),
+) -> list[PoprireResponse]:
+    """Coada popririlor, cu disponibilul clientului in fiecare rand."""
+    depozit = AdminRepository(client)
+    return [
+        PoprireResponse(**poprire) for poprire in await depozit.popriri(doar_active)
+    ]
+
+
+@router.post("/popriri", response_model=PoprireResponse, status_code=201)
+async def instituie_poprire(
+    cerere: InstituiePoprireRequest,
+    administrator: UserContext = Depends(cere_administrator),
+    client: Client = Depends(get_admin_supabase),
+) -> PoprireResponse:
+    """Instituie poprirea si anunta clientul, intr-o singura tranzactie."""
+    depozit = AdminRepository(client)
+    try:
+        rezultat = await depozit.instituie_poprire(
+            cerere.id_utilizator,
+            cerere.creditor,
+            cerere.suma,
+            administrator.user_id,
+            dosar=cerere.dosar,
+            observatie=cerere.observatie,
+        )
+    except Exception as exc:  # noqa: BLE001 — codul RPC devine mesaj pentru analist
+        raise _eroare_poprire(exc) from exc
+    return PoprireResponse(**rezultat)
+
+
+@router.post("/popriri/{id_poprire}/incaseaza", response_model=PoprireResponse)
+async def incaseaza_poprire(
+    id_poprire: UUID,
+    cerere: IncaseazaPoprireRequest,
+    administrator: UserContext = Depends(cere_administrator),
+    client: Client = Depends(get_admin_supabase),
+) -> PoprireResponse:
+    """Vireaza catre creditor. Fara suma, ia cat se poate acum.
+
+    Conturile blocate administrativ sunt sarite, nu tratate ca eroare: o poprire
+    nu trebuie sa cada in intregime fiindca omul are, pe langa, si un cont
+    inghetat pentru frauda.
+    """
+    depozit = AdminRepository(client)
+    try:
+        rezultat = await depozit.incaseaza_poprire(
+            id_poprire, administrator.user_id, cerere.suma
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _eroare_poprire(exc) from exc
+    return PoprireResponse(**rezultat)
+
+
+@router.post("/popriri/{id_poprire}/ridica", response_model=PoprireResponse)
+async def ridica_poprire(
+    id_poprire: UUID,
+    cerere: RidicaPoprireRequest,
+    administrator: UserContext = Depends(cere_administrator),
+    client: Client = Depends(get_admin_supabase),
+) -> PoprireResponse:
+    """Anuleaza poprirea. Banii deja virati NU se intorc — au plecat la creditor."""
+    depozit = AdminRepository(client)
+    try:
+        rezultat = await depozit.ridica_poprire(
+            id_poprire, administrator.user_id, cerere.motiv
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _eroare_poprire(exc) from exc
+    return PoprireResponse(**rezultat)
+
+
+@router.post("/popriri/{id_poprire}/storneaza", response_model=PoprireResponse)
+async def storneaza_poprire(
+    id_poprire: UUID,
+    cerere: StorneazaPoprireRequest,
+    administrator: UserContext = Depends(cere_administrator),
+    client: Client = Depends(get_admin_supabase),
+) -> PoprireResponse:
+    """Reverse-ul unei incasari: banii virati se intorc in contul clientului.
+
+    NU ridica poprirea. Daca ea ramane activa, banii intorsi sunt din nou
+    indisponibili pe loc — datoria a redevenit neplatita. O poprire pusa din
+    greseala si deja incasata se repara cu doua apasari, in ordinea asta:
+    intai `storneaza` (vin banii inapoi), apoi `ridica` (nu-i mai tine nimeni).
+    """
+    depozit = AdminRepository(client)
+    try:
+        rezultat = await depozit.storneaza_incasarea(
+            id_poprire, administrator.user_id, cerere.suma, cerere.motiv
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _eroare_poprire(exc) from exc
+    return PoprireResponse(**rezultat)

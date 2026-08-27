@@ -41,6 +41,7 @@ from app.repositories.telemetry_repository import TelemetryRepository
 from app.services.transaction_export_service import TransactionExportService
 from app.telemetry.metrics import estimate_chat_cost
 from app.tools.base import SelectedTool, ToolResult
+from app.tools.categorii_tranzactii import CATEGORIE_IMPLICITA
 from app.tools.executor import execute_tools
 from app.tools.registry import ToolRegistry
 
@@ -145,6 +146,11 @@ class QuickActionResult:
     # cu un singur IBAN "ales" pentru el ar fi o decizie facuta de model.
     accounts: tuple[QuickActionAccount, ...]
     url: str
+    # Doar pentru kind="confirma_categorie" (legare atasament -> tranzactie):
+    # id-ul tranzactiei gasite si categoria sugerata, deterministe (gasite de
+    # find_transaction_for_receipt/categorizeaza), niciodata scrise de model.
+    transaction_id: str | None = None
+    suggested_category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -185,6 +191,13 @@ def _render_tool_results(selections: list[SelectedTool], results: list[ToolResul
             )
         blocks.append(f"### {result.tool_name} (motiv: {reasons.get(result.tool_name, 'n/a')})\n{body}")
     return "\n\n".join(blocks)
+
+
+def _receipt_candidates(tool_results: list[ToolResult]) -> list[dict]:
+    for result in tool_results:
+        if result.tool_name == "find_transaction_for_receipt" and result.success and result.data:
+            return result.data.get("candidates", [])
+    return []
 
 
 class Orchestrator:
@@ -252,7 +265,10 @@ class Orchestrator:
         # fluxului principal, deci o conversatie inceputa cu "salut" (scurtcircuit
         # _handle_greeting_request) ramanea cu titlul implicit "Conversație nouă"
         # pentru totdeauna.
-        await self._conversations.set_title_if_default(conversation.id, _derive_title(user_text))
+        title_source = user_text if user_text.strip() else await self._title_from_attachment(
+            principal.user_id, attachment_ids or []
+        )
+        await self._conversations.set_title_if_default(conversation.id, _derive_title(title_source))
 
         guardrail_hit = check_input(user_text)
         if guardrail_hit is not None:
@@ -357,6 +373,23 @@ class Orchestrator:
                 kind="credit", accounts=(), url=_link_cerere_credit(tool_results),
             )
             quick_action_data = {"kind": quick_action.kind, "accounts": [], "url": quick_action.url}
+        elif intent == "categorize_receipt_intent":
+            # La fel ca la credit_intent: raspunsul modelului ramane normal (poate
+            # cere clarificari daca suma lipseste sau nu exista o potrivire clara),
+            # iar butonul de confirmare se ataseaza DOAR cand exista exact un
+            # candidat si o categorie recunoscuta — niciodata modelul nu "alege"
+            # intre mai multe tranzactii posibile (CLAUDE.md #9).
+            candidates = _receipt_candidates(tool_results)
+            if len(candidates) == 1 and candidates[0]["category"] != CATEGORIE_IMPLICITA:
+                candidat = candidates[0]
+                quick_action = QuickActionResult(
+                    kind="confirma_categorie", accounts=(), url="",
+                    transaction_id=candidat["id"], suggested_category=candidat["category"],
+                )
+                quick_action_data = {
+                    "kind": quick_action.kind, "accounts": [], "url": quick_action.url,
+                    "transaction_id": quick_action.transaction_id, "suggested_category": quick_action.suggested_category,
+                }
 
         assistant_message = await self._messages.append(
             conversation.id, principal.user_id, "assistant", redacted_text, answer.citations,
@@ -566,6 +599,14 @@ class Orchestrator:
             conversation_id=conversation_id, message_id=assistant_message.id, text=reply_text,
             citations=[], confidence=None, agent_id="greeting",
         )
+
+    async def _title_from_attachment(self, user_id: str, attachment_ids: list[str]) -> str:
+        """Titlu provizoriu cand mesajul e doar un atasament, fara text —
+        numele fisierului, in loc de un titlu gol."""
+        if not attachment_ids:
+            return ""
+        records = await self._attachments.get_owned_many(user_id, attachment_ids[:1])
+        return f"Atașament: {records[0].filename}" if records else ""
 
     async def _resolve_attachments(
         self, user_id: str, attachment_ids: list[str], message_id: str

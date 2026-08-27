@@ -30,11 +30,19 @@ CAMPURI_PRODUS = (
 CAMPURI_CERERE = (
     "id,id_user,id_produs,suma_ceruta,luni,scop,venit_declarat,angajator,"
     "vechime_angajator_luni,obligatii_declarate,venit_folosit,obligatii_folosite,"
-    "dti,scor,motive,explicatie,rata_lunara,dae,oferta_expira_la,status,creat_la"
+    "dti,scor,motive,explicatie,rata_lunara,dae,oferta_expira_la,status,creat_la,"
+    "contract_html,contract_actualizat_la,contract_actualizat_de,contract_trimis_la"
 )
+# De cand `credit_cereri` are si `contract_actualizat_de` (0044_contract_credit),
+# tabela are doua chei straine catre `profiles`, iar un embed scris simplu
+# "profiles(...)" e ambiguu si PostgREST raspunde cu PGRST201. Numim explicit
+# cheia clientului; in raspuns cheia ramane tot "profiles", hintul se pierde.
+EMBED_PROFIL_CERERE = "profiles!credit_cereri_id_user_fkey"
+
 CAMPURI_CREDIT = (
     "id,id_cerere,id_user,id_cont_creditare,principal,dobanda_anuala,luni,"
-    "rata_lunara,dae,sold_ramas,data_acordarii,semnat_la,status,inchis_la,creat_la"
+    "rata_lunara,dae,sold_ramas,data_acordarii,semnat_la,status,inchis_la,creat_la,"
+    "contract_url"
 )
 CAMPURI_RATA = (
     "id,numar_rata,scadenta,principal_rata,dobanda_rata,rata_totala,"
@@ -84,7 +92,12 @@ class CreditRepository:
         def interogare() -> dict | None:
             raspuns = (
                 self._client.table("profiles")
-                .select("id,nume,cnp,verification_status,creat_la")
+                .select(
+                    # email/telefon/iban_cont sunt cerute de sablonul de
+                    # contract (credit/contract.py): partile unui contract
+                    # trebuie identificate complet.
+                    "id,nume,cnp,email,telefon,iban_cont,verification_status,creat_la"
+                )
                 .eq("id", str(user_id))
                 .maybe_single()
                 .execute()
@@ -207,7 +220,7 @@ class CreditRepository:
         def interogare() -> list[dict]:
             raspuns = (
                 self._client.table("credit_cereri")
-                .select(CAMPURI_CERERE + ",profiles(nume,cnp)")
+                .select(CAMPURI_CERERE + "," + EMBED_PROFIL_CERERE + "(nume,cnp)")
                 .eq("status", "analiza_manuala")
                 .order("creat_la")
                 .execute()
@@ -226,7 +239,7 @@ class CreditRepository:
         def interogare() -> list[dict]:
             cerere = (
                 self._client.table("credit_cereri")
-                .select(CAMPURI_CERERE + ",profiles(nume)")
+                .select(CAMPURI_CERERE + "," + EMBED_PROFIL_CERERE + "(nume)")
                 .order("creat_la", desc=True)
                 .limit(limita)
             )
@@ -620,6 +633,7 @@ class CreditRepository:
         dae: float,
         grafic: list[dict],
         semnatura: dict,
+        contract_url: str,
     ) -> dict:
         def interogare() -> dict:
             raspuns = self._client.rpc(
@@ -631,6 +645,7 @@ class CreditRepository:
                     "p_dae": dae,
                     "p_grafic": grafic,
                     "p_semnatura": semnatura,
+                    "p_contract_url": contract_url,
                 },
             ).execute()
             return raspuns.data

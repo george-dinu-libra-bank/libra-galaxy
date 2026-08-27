@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Banknote, Calculator } from "lucide-react";
-import { CereriInCurs } from "@/components/credite/cereri-in-curs";
+import { ArrowRight, Banknote, Calculator, Plus } from "lucide-react";
+import type { ReactNode } from "react";
+import { CardInVerificare, CardOferta, CardRespinsa } from "@/components/credite/cereri-in-curs";
 import { Banda } from "@/components/ui/banda";
 import { obtineConturiUtilizator } from "@/lib/data/conturi";
 import {
   obtineCereri,
+  obtineContractCerere,
   obtineCredite,
   obtineMesajeCerere,
   obtineProdusCredit,
 } from "@/lib/data/credite";
-import type { MesajCerere } from "@/lib/data/credite";
+import type { ContractCerere, MesajCerere } from "@/lib/data/credite";
 import { cn, formateazaSuma } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -23,6 +25,9 @@ const ETICHETE: Record<string, { text: string; clasa: string }> = {
   inchis: { text: "Închis", clasa: "bg-muted text-ink-soft" },
   rambursat_anticipat: { text: "Rambursat", clasa: "bg-success/10 text-success" },
 };
+
+const STARI_VERIFICARE = ["analiza_manuala", "in_analiza", "asteapta_documente"];
+const STARI_RESPINSE = ["respinsa", "expirata", "anulata"];
 
 export default async function CreditePage({
   searchParams,
@@ -51,21 +56,25 @@ export default async function CreditePage({
   const { cereri } = citireCereri;
   const eroare = citireCredite.eroare ?? citireCereri.eroare ?? null;
 
-  // Ecranul de intrare („n-ai niciun credit, simuleaza unul") n-are ce cauta
-  // sub o oferta pe care omul tocmai e invitat sa o semneze.
-  const inCurs = cereri.some((cerere) =>
-    ["oferta", "analiza_manuala", "asteapta_documente", "in_analiza"].includes(cerere.status),
+  // Pagina se citeste de sus in jos in ordinea in care conteaza: intai ce cere
+  // o semnatura, apoi banii pe care ii ai deja, apoi dosarele care asteapta un
+  // raspuns, si la final ce s-a inchis. Fiecare grup e o sectiune cu titlu, in
+  // loc de un singur teanc de carduri fara nume.
+  const oferte = cereri.filter((cerere) => cerere.status === "oferta");
+  const inVerificare = cereri.filter((cerere) => STARI_VERIFICARE.includes(cerere.status));
+  const respinse = cereri.filter((cerere) => STARI_RESPINSE.includes(cerere.status));
+
+  const active = credite.filter(
+    (credit) => credit.status === "activ" || credit.status === "restant",
+  );
+  const inchise = credite.filter(
+    (credit) => credit.status !== "activ" && credit.status !== "restant",
   );
 
   // Firele se cer si pentru dosarele inchise recent: acolo sta motivul scris de
   // analist, iar fara el o respingere n-are unde fi citita. Raman putine — o
   // persoana are cateva cereri, nu sute.
-  const inLucru = cereri.filter((cerere) =>
-    [
-      "oferta", "analiza_manuala", "asteapta_documente", "in_analiza",
-      "respinsa", "expirata", "anulata",
-    ].includes(cerere.status),
-  );
+  const inLucru = [...oferte, ...inVerificare, ...respinse];
   const fire = Object.fromEntries(
     await Promise.all(
       inLucru.map(
@@ -74,12 +83,31 @@ export default async function CreditePage({
     ),
   ) as Record<string, MesajCerere[]>;
 
-  const active = credite.filter((credit) => credit.status === "activ" || credit.status === "restant");
-  const inchise = credite.filter((credit) => credit.status !== "activ" && credit.status !== "restant");
+  // Contractul se cere doar pentru ofertele care asteapta semnatura: pentru
+  // orice alta stare backendul raspunde 404, iar clientul n-are ce citi.
+  const contracte = Object.fromEntries(
+    await Promise.all(
+      oferte.map(async (cerere) => [cerere.id, await obtineContractCerere(cerere.id)] as const),
+    ),
+  ) as Record<string, ContractCerere | null>;
+
+  // Ecranul de intrare („n-ai niciun credit") apare doar cand chiar nu e nimic
+  // in lucru. O cerere respinsa nu-l ascunde: acolo invitatia de a depune din
+  // nou e exact ce trebuie sa vada omul.
+  const gol = credite.length === 0 && oferte.length === 0 && inVerificare.length === 0;
 
   return (
     <div className="mx-auto w-full max-w-[440px] px-6 pb-6 pt-8 sm:max-w-2xl">
-      <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Credite</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl font-bold tracking-[-0.02em] text-ink">Credite</h1>
+        <Link
+          href="/credite/simulare"
+          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-primary-600 px-4 text-[14px] font-semibold text-white shadow-btn transition-colors duration-150 ease-soft hover:bg-primary-700 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+        >
+          <Plus size={17} strokeWidth={2} aria-hidden />
+          Credit nou
+        </Link>
+      </div>
 
       {eroare ? (
         <div className="mt-4">
@@ -87,29 +115,22 @@ export default async function CreditePage({
         </div>
       ) : null}
 
-      <CereriInCurs
-        cereri={cereri}
-        conturi={conturi}
-        mesaje={fire}
-        discutieDeschisa={discutie ?? null}
-      />
-
-      {credite.length === 0 && !inCurs && !eroare ? (
-        <section className="mt-6 rounded-card bg-surface p-6 text-center shadow-sm">
+      {gol && !eroare ? (
+        <section className="mt-6 rounded-card bg-surface p-7 text-center shadow-sm">
           <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-50 text-primary-600">
             <Banknote size={26} strokeWidth={1.5} aria-hidden />
           </span>
-          <h2 className="mt-4 text-[17px] font-semibold text-ink">
+          <h2 className="mt-5 text-[17px] font-semibold text-ink">
             {produs?.nume ?? "Credit de nevoi personale"}
           </h2>
-          <p className="mt-2 text-[15px] leading-[22px] text-ink-soft">
+          <p className="mt-2.5 text-[15px] leading-[22px] text-ink-soft">
             {produs
               ? `Între ${formateazaSuma(produs.sumaMin)} și ${formateazaSuma(produs.sumaMax)}, cu dobândă fixă de ${(produs.dobandaAnuala * 100).toFixed(2).replace(".", ",")}% pe an.`
               : "Vezi cât ai de plată lunar înainte să depui o cerere."}
           </p>
           <Link
             href="/credite/simulare"
-            className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-field bg-primary-600 text-[15px] font-semibold text-white shadow-btn transition-[transform,box-shadow] duration-[180ms] ease-soft hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+            className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-field bg-primary-600 text-[15px] font-semibold text-white shadow-btn transition-[transform,box-shadow] duration-[180ms] ease-soft hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
           >
             <Calculator size={18} strokeWidth={1.75} aria-hidden />
             Simulează un credit
@@ -117,51 +138,93 @@ export default async function CreditePage({
         </section>
       ) : null}
 
-      {credite.length > 0 ? (
-        <>
-          {active.length > 0 ? (
-            <ul className="mt-6 space-y-3">
-              {active.map((credit) => (
-                <li key={credit.id}>
-                  <CardCredit credit={credit} />
-                </li>
-              ))}
-            </ul>
-          ) : null}
-
-          {inchise.length > 0 ? (
-            <>
-              <h2 className="mt-8 text-lg font-semibold text-ink">Credite încheiate</h2>
-              <ul className="mt-4 space-y-3">
-                {inchise.map((credit) => (
-                  <li key={credit.id}>
-                    <CardCredit credit={credit} />
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : null}
-
-          <Link
-            href="/credite/simulare"
-            className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-field border border-line bg-surface text-[15px] font-semibold text-ink shadow-sm transition-[transform,box-shadow] duration-[180ms] ease-soft hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
-          >
-            <Calculator size={18} strokeWidth={1.75} aria-hidden />
-            Simulează un credit nou
-          </Link>
-        </>
+      {/* Ofertele stau deasupra creditelor active: sunt singurul lucru din
+          pagina care expira daca omul nu face nimic. */}
+      {oferte.length > 0 ? (
+        <Sectiune titlu="De semnat" numar={oferte.length}>
+          {oferte.map((cerere) => (
+            <CardOferta
+              key={cerere.id}
+              cerere={cerere}
+              conturi={conturi}
+              mesaje={fire[cerere.id] ?? []}
+              contract={contracte[cerere.id] ?? null}
+              discutieDeschisa={discutie === cerere.id}
+            />
+          ))}
+        </Sectiune>
       ) : null}
 
-      {credite.length === 0 && inCurs ? (
-        <Link
-          href="/credite/simulare"
-          className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-field border border-line bg-surface text-[15px] font-semibold text-ink shadow-sm transition-[transform,box-shadow] duration-[180ms] ease-soft hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
-        >
-          <Calculator size={18} strokeWidth={1.75} aria-hidden />
-          Simulează un credit
-        </Link>
+      {active.length > 0 ? (
+        <Sectiune titlu="Credite active" numar={active.length}>
+          {active.map((credit) => (
+            <CardCredit key={credit.id} credit={credit} />
+          ))}
+        </Sectiune>
+      ) : null}
+
+      {inVerificare.length > 0 ? (
+        <Sectiune titlu="În verificare" numar={inVerificare.length}>
+          {inVerificare.map((cerere) => (
+            <CardInVerificare
+              key={cerere.id}
+              cerere={cerere}
+              mesaje={fire[cerere.id] ?? []}
+              discutieDeschisa={discutie === cerere.id}
+            />
+          ))}
+        </Sectiune>
+      ) : null}
+
+      {inchise.length > 0 ? (
+        <Sectiune titlu="Credite încheiate" numar={inchise.length}>
+          {inchise.map((credit) => (
+            <CardCredit key={credit.id} credit={credit} />
+          ))}
+        </Sectiune>
+      ) : null}
+
+      {respinse.length > 0 ? (
+        <Sectiune titlu="Cereri respinse" numar={respinse.length}>
+          {respinse.map((cerere) => (
+            <CardRespinsa
+              key={cerere.id}
+              cerere={cerere}
+              mesaje={fire[cerere.id] ?? []}
+              discutieDeschisa={discutie === cerere.id}
+            />
+          ))}
+        </Sectiune>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Un grup de carduri, cu titlu si numar.
+ *
+ * Acelasi antet pentru toate grupurile: asa se vede din prima ca sunt liste
+ * diferite, nu un teanc continuu de carduri.
+ */
+function Sectiune({
+  titlu,
+  numar,
+  children,
+}: {
+  titlu: string;
+  numar: number;
+  children: ReactNode;
+}) {
+  return (
+    <section className="mt-8">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[12.5px] font-semibold uppercase tracking-[0.07em] text-ink-faint">
+          {titlu}
+        </h2>
+        <span className="tabular text-[12.5px] text-ink-faint">{numar}</span>
+      </div>
+      <div className="mt-3 space-y-4">{children}</div>
+    </section>
   );
 }
 
@@ -171,30 +234,48 @@ function CardCredit({
   credit: Awaited<ReturnType<typeof obtineCredite>>["credite"][number];
 }) {
   const eticheta = ETICHETE[credit.status] ?? ETICHETE.activ;
+  const incheiat = credit.status !== "activ" && credit.status !== "restant";
 
   return (
     <Link
       href={`/credite/${credit.id}`}
-      className="flex items-center gap-3 rounded-card bg-surface p-5 shadow-sm transition-[transform,box-shadow] duration-[180ms] ease-soft hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+      className="block rounded-card bg-surface p-5 shadow-sm transition-[transform,box-shadow] duration-[180ms] ease-soft hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
     >
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", eticheta.clasa)}>
-            {eticheta.text}
-          </span>
-          <span className="text-[13px] text-ink-faint">{credit.luni} luni</span>
-        </div>
-
-        <p className="tabular mt-2 text-[22px] font-bold leading-[28px] text-ink">
-          {formateazaSuma(credit.soldRamas)}
-        </p>
-        <p className="text-[13px] text-ink-faint">
-          rămas din {formateazaSuma(credit.principal)} · rată{" "}
-          {formateazaSuma(credit.rataLunara)}
-        </p>
+      <div className="flex items-center justify-between gap-3">
+        <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium", eticheta.clasa)}>
+          {eticheta.text}
+        </span>
+        <ArrowRight size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-ink-faint" />
       </div>
 
-      <ArrowRight size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-ink-faint" />
+      {/* O singura cifra mare, cu eticheta ei dedesubt. Restul detaliilor stau
+          jos, despartite de o linie, in loc sa fie inghesuite intr-un rand
+          lipit cu puncte. */}
+      <p className="tabular mt-4 text-[26px] font-bold leading-[32px] text-ink">
+        {formateazaSuma(incheiat ? credit.principal : credit.soldRamas)}
+      </p>
+      <p className="mt-1 text-[13px] text-ink-faint">
+        {incheiat ? "credit achitat" : "rămas de plată"}
+      </p>
+
+      <dl className="mt-5 flex gap-8 border-t border-line pt-4">
+        {!incheiat ? (
+          <>
+            <Detaliu eticheta="Rată lunară" valoare={formateazaSuma(credit.rataLunara)} />
+            <Detaliu eticheta="Acordat" valoare={formateazaSuma(credit.principal)} />
+          </>
+        ) : null}
+        <Detaliu eticheta="Durată" valoare={`${credit.luni} luni`} />
+      </dl>
     </Link>
+  );
+}
+
+function Detaliu({ eticheta, valoare }: { eticheta: string; valoare: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[12px] text-ink-faint">{eticheta}</dt>
+      <dd className="tabular mt-1 text-[14px] font-semibold text-ink">{valoare}</dd>
+    </div>
   );
 }

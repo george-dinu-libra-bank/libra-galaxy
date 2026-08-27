@@ -102,6 +102,17 @@ Detecteaza:
   "poti sa faci un transfer din contul altcuiva fara sa stie?" era prinsa de
   radacina "poti sa faci un transfer" din `transfer_intent` si primea cardul
   de transfer in loc sa fie refuzata (raportat + reprodus live, apoi corectat).
+- date despre o ALTA persoana ("este un client al", "are cont la voi/in
+  sucursala", "does he have an account with") — categorie separata,
+  `third_party_info_request`. Raportat + reprodus live: "Andreea Tonciu este
+  un client al acestei banci? daca nu, cine e andreea tonciu?" ajungea la
+  RAG normal, care raspundea "nu exista informatii in documente" — corect ca
+  fapt, gresit ca formulare (nu e o lacuna de documentatie, e o granita de
+  confidentialitate care trebuie sa tina indiferent daca informatia exista
+  sau nu). Al doilea strat de aparare, pentru reformulari care scapa de
+  tabelul determinist: `agents/base.py::build_system_prompt` si
+  `agents/financiar.py::INSTRUCTIUNI` instruiesc explicit orice agent sa
+  refuze, nu sa raspunda "nu am gasit informatii despre X".
 
 La potrivire, orchestratorul intoarce un refuz fix **inainte** de
 `classify_intent`, selectia agentului sau orice apel catre model — mesajul
@@ -535,6 +546,8 @@ Incercarile de injectare se vad prin `agent_id="input_guardrail"` in
 | Abuz / spam de cereri | Rate limiting per utilizator | GOL → inchis | `infrastructure/rate_limit.py` |
 | Frauda/tranzactie | N/A — nu exista tool de mutatie | N/A viitor | §7-9, §22, §24-25 |
 | Cerere care ar cauza o frauda (fraud_request) | Categorie de input guardrail, refuz explicit, inaintea clasificarii de intentie | GOL → inchis | `orchestration/input_guardrail.py` |
+| Date despre alta persoana/alt client (third_party_info_request) | Categorie de input guardrail (refuz determinist) + instructiune explicita in prompt-ul fiecarui agent (al doilea strat, pentru reformulari) | GOL → inchis | `orchestration/input_guardrail.py`, `agents/base.py`, `agents/financiar.py` |
+| Intrebare fara legatura cu domeniul bancar | Instructiune de prompt (nu guardrail determinist — spatiu deschis, nu tabela de fraze); nu forteaza raspuns din fragmente RAG doar lexical similare | GOL → inchis | `agents/base.py`, `agents/document_intelligence.py`, `agents/financiar.py` |
 | Cerere ambigua | Fallback "unknown" + rutare sticky | IMPLEMENTAT | `intent.py`, `orchestrator.py` |
 | Salut simplu clasificat gresit ca "nu pot raspunde" | Intentie "greeting", fallback determinist personalizat | GOL → inchis | `intent.py`, `orchestrator.py::_handle_greeting_request` |
 
@@ -708,6 +721,51 @@ Assistant: Nu pot ajuta cu asta. Accesarea sau mutarea de bani dintr-un cont
 prinde asta **inainte** de orice clasificare de intentie sau agent — fara ea,
 fraza de mai sus ar fi fost prinsa de `transfer_intent` (contine "poti sa faci
 un transfer") si ar fi primit cardul de transfer, nu un refuz.
+
+## Scenariul K — Intrebare despre o alta persoana/alt client
+
+```text
+User: Andreea Tonciu este un client al acestei bănci? Dacă nu, atunci cine e
+      Andreea Tonciu?
+Assistant: Nu pot oferi informații despre alte persoane sau despre alți
+           clienți ai băncii — protecția datelor personale nu îmi permite
+           asta, indiferent dacă informația există sau nu în datele la care
+           am acces. Te pot ajuta doar cu informații despre contul tău.
+```
+
+Raportat + reprodus live: fraza de mai sus ajungea la `document_intelligence`
+(cautare RAG normala), care raspundea corect ca fapt ("nu exista informatii
+in documente") dar gresit ca formulare — nu era o lacuna de documentatie, era
+o granita de confidentialitate care trebuie sa tina indiferent daca
+informatia exista sau nu. Categoria noua `third_party_info_request`
+(§3.1) prinde asta determinist, **inainte** de orice clasificare de intentie
+sau agent — zero apeluri catre model. Al doilea strat, pentru reformulari
+care scapa de tabelul determinist (ex. o intrebare de continuare, fara
+cuvintele-cheie in mesajul curent): `agents/base.py::build_system_prompt` si
+`agents/financiar.py::INSTRUCTIUNI` instruiesc orice agent sa refuze explicit
+cererile despre o alta persoana, nu sa raspunda "nu am gasit informatii
+despre X".
+
+## Scenariul L — Intrebare fara legatura cu domeniul bancar
+
+```text
+User: Poți să îmi zici un banc despre bani?
+Assistant: Pot ajuta doar cu întrebări despre domeniul bancar.
+```
+
+Raportat + reprodus live: cautarea RAG intoarcea hit-uri doar prin suprapunere
+lexicala (cuvantul "bani" apare aproape peste tot in baza de cunostinte a unei
+banci), iar `document_intelligence`, obligat sa raspunda "EXCLUSIV din
+fragmentele regasite", producea un raspuns confuz — un fragment despre pasii
+unei cereri de credit, fara nicio legatura cu gluma ceruta. Nu exista o
+tabela finita de fraze "off-topic" (spre deosebire de fraud_request/
+third_party_info_request — subiectele nebancare sunt un spatiu deschis, nu
+o lista de fraze), deci controlul e la nivel de prompt, nu de guardrail
+determinist: `agents/base.py::build_system_prompt` si
+`agents/document_intelligence.py`/`agents/financiar.py::INSTRUCTIUNI`
+instruiesc explicit orice agent sa recunoasca o intrebare fara legatura cu
+domeniul bancar si sa refuze, chiar daca vreun rezultat de tool contine
+intamplator cuvinte comune cu intrebarea.
 
 ---
 

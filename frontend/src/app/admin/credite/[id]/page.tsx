@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { Banda } from "@/components/ui/banda";
 import { DeciziaCererii } from "@/components/admin/decizia-cererii";
+import { EditorContract } from "@/components/admin/editor-contract";
 import {
   DocumentAdeverinta,
   type CitireModel,
@@ -43,7 +44,7 @@ export default async function DosarCreditPage({
     throw exc;
   });
 
-  const { cerere, verificari, documente, mesaje, evenimente, ai } = dosar;
+  const { cerere, contract, verificari, documente, mesaje, evenimente, ai } = dosar;
   // 'analiza_manuala' = asteapta banca, 'asteapta_documente' = asteapta clientul.
   // Analistul poate lucra din amandoua: daca actele cerute nu mai vin, dosarul
   // trebuie sa se poata inchide.
@@ -108,6 +109,8 @@ export default async function DosarCreditPage({
           </p>
         </section>
       )}
+
+      <EditorContract idCerere={cerere.id} contract={contract} />
 
       {inLucru ? (
         <DeciziaCererii

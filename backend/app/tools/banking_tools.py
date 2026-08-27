@@ -54,6 +54,38 @@ def build_banking_tools(repository: BankingReadRepository) -> list[ToolDefinitio
             ]
         }
 
+    async def find_transaction_for_receipt(principal: Principal, args: dict) -> dict:
+        suma = args.get("suma")
+        if suma is None:
+            return {"candidates": []}
+
+        # 14 zile, nu o fereastra mai larga: o chitanta se leaga de o plata
+        # recenta, nu de istoricul intreg — reduce riscul unei potriviri
+        # intamplatoare intre doua plati diferite cu aceeasi suma.
+        since = datetime.now(timezone.utc) - timedelta(days=14)
+        transactions = repository.list_recent_transactions(principal.user_id, limit=200)
+
+        candidates = []
+        for tx in transactions:
+            if tx.incoming:
+                continue
+            if round(tx.amount, 2) != round(float(suma), 2):
+                continue
+            created_at = datetime.fromisoformat(tx.created_at.replace("Z", "+00:00"))
+            if created_at < since:
+                continue
+            candidates.append({
+                "id": tx.id,
+                "amount": tx.amount,
+                "currency": tx.currency,
+                "description": tx.description,
+                "created_at": tx.created_at,
+                "counterparty_name": tx.counterparty_name,
+                "category": categorizeaza(tx.description, tx.counterparty_name),
+            })
+
+        return {"candidates": candidates}
+
     async def get_spending_summary(principal: Principal, args: dict) -> dict:
         days = min(int(args.get("days", 30)), 365)
         since = datetime.now(timezone.utc) - timedelta(days=days)
@@ -104,6 +136,19 @@ def build_banking_tools(repository: BankingReadRepository) -> list[ToolDefinitio
             ),
             callback=get_recent_transactions,
             allowed_agents=frozenset({"transaction_intelligence", "financial_advisor"}),
+            required_permissions=frozenset({PERMISSION_ACCOUNTS_READ}),
+            side_effect=SideEffect.READ_ONLY,
+            risk_level=RiskLevel.LOW,
+        ),
+        ToolDefinition(
+            name="find_transaction_for_receipt",
+            description=(
+                "Cauta o tranzactie de-a utilizatorului care se potriveste cu suma mentionata, in "
+                "ultimele 14 zile. Foloseste cand utilizatorul spune ca un atasament corespunde unei "
+                "plati reale si vrea sa il lege de ea."
+            ),
+            callback=find_transaction_for_receipt,
+            allowed_agents=frozenset({"transaction_intelligence"}),
             required_permissions=frozenset({PERMISSION_ACCOUNTS_READ}),
             side_effect=SideEffect.READ_ONLY,
             risk_level=RiskLevel.LOW,

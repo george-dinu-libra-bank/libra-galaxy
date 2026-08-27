@@ -330,8 +330,19 @@ export type EvenimentCerere = {
   creat_la: string;
 };
 
+/** Contractul unei cereri, in HTML restrans (backend/app/credit/contract.py). */
+export type ContractCerere = {
+  id_cerere: string;
+  /** Sanitizat de backend la fiecare scriere; se randeaza cu dangerouslySetInnerHTML. */
+  html: string;
+  actualizat_la: string | null;
+  /** null cat timp banca inca lucreaza la el — clientul nu l-a vazut inca. */
+  trimis_la: string | null;
+};
+
 export type DosarCredit = {
   cerere: CerereCredit;
+  contract: ContractCerere;
   verificari: VerificareVenit[];
   documente: DocumentCerere[];
   mesaje: MesajCerere[];
@@ -612,4 +623,58 @@ export function motiveleInchiderii(cerere: CerereInchidere): string[] {
 
 export function sePoateAproba(cerere: CerereInchidere): boolean {
   return cerere.status === "in_asteptare" && motiveleInchiderii(cerere).length === 0;
+}
+
+
+// -----------------------------------------------------------------------------
+// Popriri
+//
+// Nu se confunda cu blocarea contului: blocarea (0030) opreste TOT ce pleaca
+// dintr-un cont, poprirea (0047) indisponibilizeaza o SUMA pe toate conturile
+// clientului. Pot fi si amandoua deodata.
+// -----------------------------------------------------------------------------
+
+export type Poprire = {
+  id: string;
+  id_utilizator: string;
+  creditor: string;
+  dosar: string | null;
+  /** Sume in RON, ca text — vin din `numeric(14,2)`, nu prin float. */
+  suma_totala: string;
+  suma_incasata: string;
+  valuta: string;
+  status: "activa" | "stinsa" | "ridicata";
+  creat_la: string;
+  incheiat_la: string | null;
+  observatie: string | null;
+  nume: string | null;
+  email: string | null;
+  /** Soldul cumulat al clientului. Fara el nu se stie daca se poate incasa azi. */
+  disponibil: string | null;
+};
+
+export function restDePlata(poprire: Poprire): number {
+  return Number(poprire.suma_totala) - Number(poprire.suma_incasata);
+}
+
+/**
+ * Cat se poate lua ACUM: `min(disponibil, rest de plata)`.
+ *
+ * Aceeasi formula ca in RPC (0047). Aici e doar ca sa nu ofere interfata un
+ * buton care ar fi respins oricum — decizia ramane a bazei, care recalculeaza
+ * cu soldul din momentul apasarii, nu cu cel de la incarcarea paginii.
+ */
+export function sePoateIncasaAcum(poprire: Poprire): number {
+  const disponibil = Number(poprire.disponibil ?? 0);
+  return Math.max(0, Math.min(disponibil, restDePlata(poprire)));
+}
+
+/**
+ * Cat se poate aduce inapoi: exact cat s-a virat catre creditor.
+ *
+ * Se poate storna si dintr-o poprire stinsa sau ridicata — acolo e chiar cazul
+ * obisnuit: contestatia a fost admisa dupa ce banca virase deja banii.
+ */
+export function sePoateStorna(poprire: Poprire): number {
+  return Number(poprire.suma_incasata);
 }

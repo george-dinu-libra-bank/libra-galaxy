@@ -32,6 +32,9 @@ const MESAJE_GRUPURI: Record<string, string> = {
   CONT_SURSA_INEXISTENT: "Contul din care vrei sa pui bani nu exista.",
   CONT_SURSA_STRAIN: "Nu poti pune bani dintr-un cont care nu este al tau.",
   FONDURI_INSUFICIENTE: "Nu ai fonduri suficiente in cont.",
+  // Trigger-ul din 0047 prinde si banii care pleaca spre punga comuna.
+  POPRIRE_ACTIVA:
+    "O parte din banii tăi sunt indisponibilizați printr-o poprire, iar suma cerută îi depășește pe cei disponibili.",
 };
 
 function mesajPentru(codul: string, implicit: string) {
