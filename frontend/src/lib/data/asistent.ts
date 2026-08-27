@@ -29,6 +29,9 @@ export type ActiuneRapida = {
   tip: string;
   conturi: ContActiuneRapida[];
   url: string;
+  // Doar pentru tip="confirma_categorie" (legare atasament -> tranzactie).
+  idTranzactie?: string | null;
+  categorieSugerata?: string | null;
 };
 
 export type MesajAsistent = {
@@ -72,7 +75,13 @@ export async function obtineMesaje(idConversatie: string): Promise<MesajAsistent
       channel: "text" | "voce";
       created_at: string;
       file: { url: string; filename: string; kind: string } | null;
-      quick_action: { kind: string; accounts: { id: string; name: string | null; iban: string; currency: string | null }[]; url: string } | null;
+      quick_action: {
+        kind: string;
+        accounts: { id: string; name: string | null; iban: string; currency: string | null }[];
+        url: string;
+        transaction_id?: string | null;
+        suggested_category?: string | null;
+      } | null;
     }[]
   >(`/assistant/conversations/${idConversatie}/messages`);
 
@@ -90,6 +99,8 @@ export async function obtineMesaje(idConversatie: string): Promise<MesajAsistent
           tip: m.quick_action.kind,
           conturi: m.quick_action.accounts.map((cont) => ({ id: cont.id, nume: cont.name, iban: cont.iban, valuta: cont.currency })),
           url: m.quick_action.url,
+          idTranzactie: m.quick_action.transaction_id,
+          categorieSugerata: m.quick_action.suggested_category,
         }
       : null,
   }));

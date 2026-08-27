@@ -26,6 +26,17 @@ FRAUD_REFUSAL_TEXT = (
     "titularului nu este permisă — dacă ai o problemă legitimă, contactează echipa de suport."
 )
 
+# Raportat live: "Andreea Tonciu este un client al acestei banci? daca nu,
+# atunci cine e andreea tonciu?" declansa o cautare RAG normala, care raspundea
+# "nu exista informatii in documente" — corect ca fapt, dar gresit ca formulare:
+# nu e o lacuna de documentatie, e o granita care trebuie sa tina indiferent
+# daca informatia exista sau nu in datele la care agentul are acces.
+THIRD_PARTY_REFUSAL_TEXT = (
+    "Nu pot oferi informații despre alte persoane sau despre alți clienți ai băncii — "
+    "protecția datelor personale nu îmi permite asta, indiferent dacă informația există "
+    "sau nu în datele la care am acces. Te pot ajuta doar cu informații despre contul tău."
+)
+
 
 def _normalize(text: str) -> str:
     """casefold + NFKD, apoi elimina semnele combinatorii — acopera si ș/ț
@@ -74,6 +85,34 @@ _FRAUD_PHRASES: tuple[str, ...] = (
     "to defraud", "to scam someone", "commit fraud",
 )
 
+# Intrebari despre statutul de client sau datele unei ALTE persoane — o
+# granita de confidentialitate, nu o lacuna de documentatie (vezi comentariul
+# de pe THIRD_PARTY_REFUSAL_TEXT). Fraze despre propriul cont ("sunt client",
+# "devin client") nu sunt aici — acelea raman intrebari normale.
+#
+# "este"/"e" scurt NU e folosit ca radacina de o litera ("e client"): orice
+# cuvant care se termina in "e" urmat de " client" ar prinde fals-pozitiv
+# (ex. "ce conditii trebuie sa indeplineasca UN cliENT" nu, dar "sa fiE
+# client" da) — verificat, "este" intreg e suficient de specific.
+#
+# "are cont la"/"are cont in" raman radacini deschise (fara sa enumere "voi"/
+# "banca"/"sucursala"/"aceasta banca" separat) — raportat + reprodus live ca
+# "are cont la aceast banca" (fara "a" final, gresit de tastare) nu se
+# potrivea cu "are cont la aceasta banca": orice continuare specifica ar
+# rata mereu o formulare noua, exact lectia repetata de mai multe ori azi.
+_THIRD_PARTY_PHRASES: tuple[str, ...] = (
+    "este un client al", "este client al", "este un client", "este client", "este clienta",
+    "client al acestei banci", "clienta a acestei banci",
+    "are cont la", "are cont in",
+    # "is a client of this bank" nu e aici: numele subiectului sta intre "is"
+    # si "a client" ("Is John Smith a client..."), deci un substring literal
+    # cu "is" nu s-ar potrivi niciodata — si o varianta fara "is" ("a client
+    # of this bank") ar prinde fals-pozitiv un "I am a client of this bank"
+    # legitim, auto-referential.
+    "does he have an account with", "does she have an account with",
+    "do you have a client named", "is this person a customer",
+)
+
 
 @dataclass(frozen=True)
 class GuardrailHit:
@@ -85,6 +124,8 @@ def check_input(user_text: str) -> GuardrailHit | None:
     normalized = _normalize(user_text)
     if any(phrase in normalized for phrase in _FRAUD_PHRASES):
         return GuardrailHit(category="fraud_request", refusal_text=FRAUD_REFUSAL_TEXT)
+    if any(phrase in normalized for phrase in _THIRD_PARTY_PHRASES):
+        return GuardrailHit(category="third_party_info_request", refusal_text=THIRD_PARTY_REFUSAL_TEXT)
     if any(phrase in normalized for phrase in _INJECTION_PHRASES):
         return GuardrailHit(category="prompt_injection")
     return None

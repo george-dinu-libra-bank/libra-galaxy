@@ -565,3 +565,4 @@ class AnalizaRepository:
 
         randuri = await to_thread.run_sync(interogare)
         return randuri[0] if randuri else None
+

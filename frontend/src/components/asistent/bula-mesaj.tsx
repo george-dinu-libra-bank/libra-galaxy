@@ -1,8 +1,12 @@
+"use client";
+
 import Link from "next/link";
-import { Fragment } from "react";
-import { ArrowRight, FileDown, Landmark, Mic, Users } from "lucide-react";
+import { Fragment, useState, useTransition } from "react";
+import { ArrowRight, Check, FileDown, Landmark, Loader2, Mic, Users } from "lucide-react";
 import { cn, formateazaIban } from "@/lib/utils";
+import { confirmaCategorie } from "@/lib/actions/asistent";
 import type { ActiuneRapida, FisierGenerat, NivelIncredere } from "@/lib/data/asistent";
+import { etichetaCategorie } from "@/lib/categorii";
 import { GRADIENTE_STIL_CARD } from "@/lib/stil-card";
 
 /**
@@ -54,6 +58,51 @@ const ACTIUNI_SIMPLE: Record<string, { eticheta: string; icona: typeof Landmark 
   credit: { eticheta: "Cerere de credit", icona: Landmark },
   grup: { eticheta: "Creează grup", icona: Users },
 };
+
+/**
+ * Butonul de confirmare pentru "confirma_categorie" — apasarea scrie direct,
+ * printr-un POST determinist (niciodata modelul insusi, CLAUDE.md #9). Stare
+ * locala, fara reincarcare: succesul devine "Categorisit ✓" pe loc.
+ */
+function ConfirmaCategorieButon({ idTranzactie, categorie }: { idTranzactie: string; categorie: string }) {
+  const [stare, setStare] = useState<"initial" | "confirmat" | "eroare">("initial");
+  const [seTrimite, startTransition] = useTransition();
+
+  if (stare === "confirmat") {
+    return (
+      <div className="flex w-full justify-center">
+        <span className="flex items-center gap-2 rounded-field bg-success/15 px-4 py-2.5 text-[13px] font-medium text-success">
+          <Check size={16} strokeWidth={2} aria-hidden />
+          Categorisit ✓
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex w-full flex-col items-center gap-1.5">
+      <button
+        type="button"
+        disabled={seTrimite}
+        onClick={() => {
+          startTransition(async () => {
+            const rezultat = await confirmaCategorie(idTranzactie, categorie);
+            setStare(rezultat.eroare ? "eroare" : "confirmat");
+          });
+        }}
+        className="flex items-center gap-2 rounded-field bg-primary-600 px-4 py-2.5 text-[13px] font-medium text-white shadow-lg transition-transform duration-150 ease-soft active:scale-[0.98] hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-70"
+      >
+        {seTrimite ? (
+          <Loader2 size={16} strokeWidth={2} className="animate-spin" aria-hidden />
+        ) : (
+          <Check size={16} strokeWidth={2} aria-hidden />
+        )}
+        Confirmă: {etichetaCategorie(categorie)}
+      </button>
+      {stare === "eroare" ? <p className="text-[12px] text-danger">Nu am putut salva categoria.</p> : null}
+    </div>
+  );
+}
 
 export function BulaMesaj({
   rol,
@@ -150,6 +199,10 @@ export function BulaMesaj({
             </div>
           );
         })()
+      ) : null}
+
+      {!alMeu && actiuneRapida?.tip === "confirma_categorie" && actiuneRapida.idTranzactie && actiuneRapida.categorieSugerata ? (
+        <ConfirmaCategorieButon idTranzactie={actiuneRapida.idTranzactie} categorie={actiuneRapida.categorieSugerata} />
       ) : null}
 
       {!alMeu && incredere ? (

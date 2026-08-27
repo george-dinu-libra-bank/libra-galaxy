@@ -57,3 +57,39 @@ export function converteste(
 
   return Math.round(((suma * cursDin) / cursSpre) * 100) / 100;
 }
+
+/**
+ * Totalul unui set de conturi, exprimat in valuta ceruta (`spre`).
+ *
+ * De cand conturile pot fi in valute diferite (0013_schimb_valutar.sql), o
+ * simpla adunare a soldurilor ar da o cifra fara sens — 100 EUR plus 100 RON nu
+ * fac 200 din nimic. Fiecare cont se aduce intai la valuta ceruta.
+ *
+ * Un cont a carui valuta n-are curs fata de `spre` se lasa afara din total:
+ * mai bine o cifra mai mica si corecta decat una inventata.
+ *
+ * Statuit aici (nu in lib/data/conturi.ts) desi tipul conturilor sta acolo:
+ * conturi.ts importa "@/lib/supabase/server" la nivel de modul, deci orice
+ * functie exportata de acolo trage acel import in bundle-ul de client cand e
+ * folosita dintr-o componenta "use client" (verificat live: build-ul Next
+ * esua exact din cauza asta pentru TotalConturi).
+ */
+export function totalSoldIn(
+  conturi: { sold: number; valuta: Valuta }[],
+  cursuri: Curs[],
+  spre: Valuta,
+) {
+  // Soldurile sunt numeric(14,2); adunarea in bani evita resturile din virgula
+  // mobila (0.1 + 0.2 = 0.30000000000000004).
+  const bani = conturi.reduce((total, cont) => {
+    const convertit = converteste(cont.sold, cont.valuta, spre, cursuri);
+    return convertit === null ? total : total + Math.round(convertit * 100);
+  }, 0);
+
+  return bani / 100;
+}
+
+/** Totalul unui set de conturi, exprimat in RON — cazul implicit al lui totalSoldIn. */
+export function totalSold(conturi: { sold: number; valuta: Valuta }[], cursuri: Curs[]) {
+  return totalSoldIn(conturi, cursuri, "RON");
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { formateazaSuma } from "@/lib/utils";
+import { formateazaNumar, formateazaSuma } from "@/lib/utils";
 
 const DURATA = 900;
 
@@ -20,10 +20,13 @@ function lin(t: number) {
 export function SoldAnimat({
   sold,
   valuta = "RON",
+  arataValuta = true,
   className,
 }: {
   sold: number;
   valuta?: string;
+  /** Fals cand valuta se arata separat, langa suma (ex. ca buton de schimbare). */
+  arataValuta?: boolean;
   className?: string;
 }) {
   const [afisat, setAfisat] = useState(0);
@@ -62,7 +65,7 @@ export function SoldAnimat({
 
   return (
     <p className={className}>
-      <span aria-hidden>{formateazaSuma(afisat, valuta)}</span>
+      <span aria-hidden>{arataValuta ? formateazaSuma(afisat, valuta) : formateazaNumar(afisat)}</span>
       <span className="sr-only">{formateazaSuma(sold, valuta)}</span>
     </p>
   );

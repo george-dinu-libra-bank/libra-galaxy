@@ -1,13 +1,22 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SendMessageRequest(BaseModel):
     conversation_id: str | None = Field(default=None, description="Omite pentru o conversatie noua.")
-    text: str = Field(min_length=1, max_length=4000)
+    # Fara min_length: un atasament trimis singur, fara nicio intrebare, e un
+    # caz valid (document_intelligence il analizeaza proactiv) — validarea de
+    # "macar unul din doua" e mai jos, ca sa acopere si cazul "niciunul".
+    text: str = Field(default="", max_length=4000)
     attachment_ids: list[str] = Field(default_factory=list, max_length=5)
     tts: bool = Field(default=False, description="Daca e adevarat, raspunsul vine si ca audio (sinteza vocala).")
+
+    @model_validator(mode="after")
+    def _cere_text_sau_atasament(self) -> "SendMessageRequest":
+        if not self.text.strip() and not self.attachment_ids:
+            raise ValueError("Scrie ceva sau ataseaza un fisier.")
+        return self
 
 
 class CitationOut(BaseModel):
@@ -33,6 +42,9 @@ class QuickActionOut(BaseModel):
     kind: str
     accounts: list[QuickActionAccountOut] = Field(default_factory=list)
     url: str
+    # Doar pentru kind="confirma_categorie" — vezi orchestrator.py::QuickActionResult.
+    transaction_id: str | None = None
+    suggested_category: str | None = None
 
 
 class SendMessageResponse(BaseModel):

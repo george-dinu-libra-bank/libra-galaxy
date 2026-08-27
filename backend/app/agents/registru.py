@@ -15,6 +15,7 @@ from app.infrastructure.config import Settings
 from app.infrastructure.llm import ClientModel
 from app.ml.neregularitati import DetectorNeregularitati
 from app.repositories.card_repository import CardRepository
+from app.repositories.categorie_manuala_repository import CategorieManualaRepository
 from app.repositories.cont_repository import ContRepository
 from app.repositories.tranzactie_repository import TranzactieRepository
 from app.services.analiza_service import AnalizaService
@@ -27,6 +28,7 @@ def construieste_analiza(client_supabase: Client, settings: Settings) -> Analiza
         ContRepository(client_supabase),
         DetectorNeregularitati.cu_model_de_pe_disc(),
         settings.analiza_limita_randuri,
+        categorii_manuale=CategorieManualaRepository(client_supabase),
     )
 
 

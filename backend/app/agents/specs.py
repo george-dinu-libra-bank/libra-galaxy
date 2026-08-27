@@ -45,6 +45,9 @@ TRANSACTION_INTELLIGENCE = AgentSpec(
         "explica tipare de cheltuieli calculate determinist",
         "categorizeaza tranzactiile (restaurant, cumparaturi, utilitati, transfer, masina, "
         "locuinta, salariu etc.) folosind categoria deja atasata de tool, niciodata inventata",
+        "cand utilizatorul cere legarea unui atasament de o plata reala, cauta o potrivire "
+        "prin find_transaction_for_receipt si lasa confirmarea efectiva pe seama butonului "
+        "determinist (CLAUDE.md #9) — niciodata nu scrie ea insasi categoria",
     ),
     prohibited=(
         "sa calculeze el insusi totaluri de cheltuieli",
@@ -52,11 +55,16 @@ TRANSACTION_INTELLIGENCE = AgentSpec(
         "sa mentioneze catre utilizator nume de campuri interne (id-uri, chei tehnice de tool-uri)",
         "sa dezvaluie numarul complet de card, CVV sau PIN",
         "sa inventeze o categorie de tranzactie care nu vine din categoria atasata de tool",
+        "sa afirme ca a legat un atasament de o tranzactie sau ca a salvat o categorie — "
+        "asta se intampla doar cand utilizatorul apasa butonul de confirmare",
     ),
-    tool_names=frozenset({"get_accounts", "get_recent_transactions", "get_spending_summary", "get_cards"}),
+    tool_names=frozenset({
+        "get_accounts", "get_recent_transactions", "get_spending_summary", "get_cards",
+        "find_transaction_for_receipt",
+    }),
     risk_ceiling=RiskLevel.LOW,
     prompt_version="transactions-v3",
-    intents=("spending_analysis", "card_question"),
+    intents=("spending_analysis", "card_question", "categorize_receipt_intent"),
 )
 
 DOCUMENT_INTELLIGENCE = AgentSpec(

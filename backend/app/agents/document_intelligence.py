@@ -17,6 +17,7 @@ from app.agents.base import (
     build_system_prompt,
     build_user_message,
 )
+
 from app.agents.specs import DOCUMENT_INTELLIGENCE
 from app.context.builder import AssembledContext
 from app.core.security import Principal
@@ -24,8 +25,29 @@ from app.providers.base import ChatMessage, ChatProvider
 from app.tools.base import SelectedTool, ToolResult
 
 _NO_MATCH_TEXT_RO = (
-    "Îmi pare rău, nu pot răspunde la această întrebare. Te rog reformuleaz-o sau "
-    "contactează echipa de suport pentru ajutor."
+    "Pot răspunde doar la întrebări legate de domeniul bancar — conturi, carduri, tranzacții, "
+    "credite, transferuri sau produsele Galaxy Bank. Reformulează întrebarea sau contactează "
+    "echipa de suport dacă ai nevoie de altceva."
+)
+_NO_MATCH_TEXT_EN = (
+    "I can only help with banking-related questions — accounts, cards, transactions, credit, "
+    "transfers, or Galaxy Bank's products. Rephrase your question or contact support if you "
+    "need something else."
+)
+
+_ATTACHMENT_ONLY_RULE_RO = (
+    "Utilizatorul a trimis un atasament (poza sau document) fara nicio intrebare. Descrie pe scurt "
+    "ce contine, apoi sugereaza explicit ce poti face cu el: sa verifici carei categorii de cheltuiala "
+    "ii corespunde, sau sa il legi de o tranzactie reala din istoric daca utilizatorul confirma suma si "
+    "data platii. NU afirma ca ai facut deja legatura sau ca ai categorisit ceva — doar sugereaza pasul "
+    "urmator si intreaba daca utilizatorul vrea sa continue."
+)
+_ATTACHMENT_ONLY_RULE_EN = (
+    "The user sent an attachment (photo or document) without asking anything. Briefly describe what "
+    "it contains, then explicitly suggest what you can do with it: check which spending category it "
+    "matches, or link it to a real transaction from their history if they confirm the amount and date. "
+    "Do NOT claim you have already linked or categorized anything — just suggest the next step and ask "
+    "if they want to proceed."
 )
 
 _SCORE_HIGH_THRESHOLD = 0.65
@@ -68,7 +90,8 @@ class DocumentIntelligenceAgent:
         hits = self._hits(tool_results)
 
         if not hits and not attachments:
-            return AgentAnswer(text=_NO_MATCH_TEXT_RO, citations=[])
+            text = _NO_MATCH_TEXT_RO if principal.locale == "ro" else _NO_MATCH_TEXT_EN
+            return AgentAnswer(text=text, citations=[])
 
         citations = [
             {"document_id": hit["document_id"], "section": hit.get("section"), "score": hit["score"]}
@@ -76,14 +99,27 @@ class DocumentIntelligenceAgent:
         ]
         confidence = _confidence_from_score(hits[0]["score"]) if hits else CONFIDENCE_MEDIUM
 
-        if hits:
+        if not user_text.strip() and attachments:
+            # Atasament trimis singur, fara intrebare — nu are sens sa cerem
+            # citare stricta din fragmente RAG (n-a fost cautat nimic relevant,
+            # vezi search_bank_knowledge cu query gol); modelul trebuie doar sa
+            # descrie atasamentul si sa sugereze pasul urmator.
+            grounding_rule = _ATTACHMENT_ONLY_RULE_RO if principal.locale == "ro" else _ATTACHMENT_ONLY_RULE_EN
+        elif hits:
             grounding_rule = "Raspunde EXCLUSIV din fragmentele regasite de mai sus si din fisierul atasat, daca exista."
         else:
             grounding_rule = "Nu exista fragmente din baza de cunostinte — raspunde EXCLUSIV din fisierul atasat de utilizator."
 
         system_prompt = build_system_prompt(self.spec, context) + (
             f"\n\n{grounding_rule} Daca informatia nu e acolo, spune simplu ca nu e documentata — "
-            f"fara sa mentionezi ce titlu de sectiune sau ce document ai gasit in schimb."
+            f"fara sa mentionezi ce titlu de sectiune sau ce document ai gasit in schimb.\n"
+            f"INAINTE de toate: daca intrebarea utilizatorului nu are nicio legatura cu domeniul "
+            f"bancar (Galaxy Bank, conturi, carduri, tranzactii, credite, transferuri, produse "
+            f"bancare) — de exemplu o gluma, o curiozitate generala, orice subiect fara legatura cu "
+            f"banii sau banca — raspunzi simplu ca poti ajuta doar cu intrebari despre domeniul "
+            f"bancar. Asta se aplica INDIFERENT de fragmentele regasite mai sus: un fragment poate "
+            f"contine cuvinte in comun cu intrebarea (ex. 'bani') fara sa fie relevant pentru ce s-a "
+            f"cerut de fapt — nu forta un raspuns dintr-un fragment doar pentru ca a fost regasit."
         )
         completion = await chat_provider.complete(
             [ChatMessage(role="system", content=system_prompt), build_user_message(user_text, attachments)]
