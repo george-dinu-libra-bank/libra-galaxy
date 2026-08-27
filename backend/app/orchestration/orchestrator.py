@@ -1,10 +1,14 @@
 """Pipeline-ul complet (docs/AI_ARCHITECTURE.md #2, PROJECT_CONTEXT.md #16).
 
-request -> conversatie -> intentie -> risc -> tool-uri eligibile -> context
--> agent -> validare -> persistare -> compresie -> telemetrie -> raspuns.
+request -> conversatie -> decizie de rationament (siguranta + rutare) ->
+tool-uri eligibile -> context -> agent -> validare -> persistare -> compresie
+-> telemetrie -> raspuns.
 
-Fiecare etapa e o functie/metoda mica; orchestratorul doar le compune, nu
-contine el insusi logica de business.
+Decizia de siguranta/rutare (cine raspunde, e sigur mesajul, ce actiune
+declanseaza) vine dintr-un singur apel LLM structurat
+(`orchestration/llm_router.py`), nu din tabele de cuvinte-cheie — vezi acel
+modul pentru motivatie. Restul ramane neschimbat: fiecare etapa e o
+functie/metoda mica, orchestratorul doar le compune.
 """
 
 from __future__ import annotations
@@ -20,16 +24,15 @@ from anyio import to_thread
 from app.agents.base import Agent, AttachmentContext
 from app.attachments.extraction import to_data_uri
 from app.context.builder import ContextBuilder, ContextSource
+from app.core.errors import AiProviderError, AiProviderUnavailableError
 from app.core.security import Principal
 from app.infrastructure.attachment_storage import AttachmentStorage
 from app.memory.compression import RECENT_WINDOW, compress_conversation
 from app.memory.extraction import extract_memory
-from app.orchestration.input_guardrail import check_input
-from app.orchestration.intent import classify_intent, starts_with_greeting
+from app.orchestration.llm_router import RoutingDecision
+from app.orchestration.llm_router import decide as decide_routing
 from app.orchestration.output_guardrail import redact
-from app.orchestration.risk import classify_risk
-from app.orchestration.routing import AgentRouter
-from app.providers.base import ChatProvider
+from app.providers.base import ChatProvider, StructuredChatProvider
 from app.repositories.attachment_repository import AttachmentRepository
 from app.repositories.banking_read_repository import BankingReadRepository
 from app.repositories.conversation_repository import ConversationRepository
@@ -49,47 +52,26 @@ logger = logging.getLogger("libra.assistant")
 
 _TITLE_MAX_CHARS = 60
 
+# Singurul agent la care se cade cand action=agent_turn dar modelul, dintr-un
+# motiv oarecare, n-a ales unul (schema permite tehnic null si aici — apararea
+# ramane, chiar daca promptul cere explicit un agent la agent_turn).
+_DEFAULT_AGENT_ID = "document_intelligence"
+
 _EMPTY_ANSWER_FALLBACK_RO = (
     "Nu am putut genera un răspuns de data asta. Te rog reformulează întrebarea "
     "sau încearcă din nou în câteva momente."
 )
 
-_EXPORT_REPLY_RO = "Am generat extrasul cu tranzacțiile tale. Îl poți descărca mai jos."
-_EXPORT_REPLY_EN = "I generated your transactions statement. You can download it below."
-
-_TRANSFER_REPLY_RO = "Sigur — poți iniția un transfer chiar de aici."
-_TRANSFER_REPLY_EN = "Sure — you can start a transfer right from here."
+# Singurul caz in care raspunsul nu poate veni din modelul de rationament:
+# acela nu stie dinainte daca utilizatorul chiar are un cont, iar textul lui
+# de succes ("poti incepe chiar de aici") ar fi inselator fara niciun cont.
 _TRANSFER_REPLY_NO_ACCOUNT_RO = "Nu am găsit niciun cont pe numele tău. Poți iniția un transfer din meniul Transferuri, după ce ai un cont."
 _TRANSFER_REPLY_NO_ACCOUNT_EN = "I couldn't find any account of yours. You can start a transfer from the Transfers menu once you have an account."
 
-_GROUP_REPLY_RO = "Sigur — poți crea un grup chiar de aici."
-_GROUP_REPLY_EN = "Sure — you can create a group right from here."
-
-_GREETING_REPLY_RO = (
-    "Salut, {nume}! Cu ce te pot ajuta azi? Pot să răspund la întrebări despre "
-    "conturi, carduri, tranzacții, credite, transferuri sau produsele Galaxy Bank."
-)
-_GREETING_REPLY_EN = (
-    "Hi, {nume}! How can I help you today? I can answer questions about your "
-    "accounts, cards, transactions, credit, transfers, or Galaxy Bank's products."
-)
-_GREETING_REPLY_NO_NAME_RO = (
-    "Salut! Cu ce te pot ajuta azi? Pot să răspund la întrebări despre conturi, "
-    "carduri, tranzacții, credite, transferuri sau produsele Galaxy Bank."
-)
-_GREETING_REPLY_NO_NAME_EN = (
-    "Hi! How can I help you today? I can answer questions about your accounts, "
-    "cards, transactions, credit, transfers, or Galaxy Bank's products."
-)
-
-# Doar deschiderea, spre deosebire de _GREETING_REPLY_* de mai sus (care e un
-# raspuns complet, de sine statator) — asta se ataseaza inaintea altui raspuns
-# real, cand mesajul incepe cu un salut dar cere si altceva
-# ("salut, vreau sa fac un transfer").
-_GREETING_PREFIX_RO = "Salut, {nume}! "
-_GREETING_PREFIX_EN = "Hi, {nume}! "
-_GREETING_PREFIX_NO_NAME_RO = "Salut! "
-_GREETING_PREFIX_NO_NAME_EN = "Hi! "
+# Plasa de siguranta pentru cand insusi motorul de rationament e inaccesibil
+# (provider cazut) — nu o decizie de continut, o eroare de infrastructura.
+_ROUTING_FAILURE_RO = "Am o problemă tehnică momentan — încearcă din nou în câteva secunde."
+_ROUTING_FAILURE_EN = "I'm having a technical issue right now — please try again in a few seconds."
 
 _TRANSFER_URL = "/transfer"
 _CREDIT_URL = "/credite/cerere"
@@ -98,6 +80,7 @@ _CREDIT_URL = "/credite/cerere"
 # de 30000 pe 48 de luni" — adica fix cazurile in care formularul chiar se poate
 # completa. Ramasese doar `credit_intent`, cea informativa.
 _INTENTII_CREDIT = frozenset({"credit_intent", "credit_question"})
+_GROUP_URL = "/grupuri"
 
 
 def _link_cerere_credit(tool_results: list[ToolResult]) -> str:
@@ -114,7 +97,6 @@ def _link_cerere_credit(tool_results: list[ToolResult]) -> str:
         if rezultat.success and date.get("ready") and isinstance(date.get("link"), str):
             return date["link"]
     return _CREDIT_URL
-_GROUP_URL = "/grupuri"
 
 
 @dataclass(frozen=True)
@@ -213,8 +195,8 @@ class Orchestrator:
         attachment_storage: AttachmentStorage,
         tool_registry: ToolRegistry,
         agents: dict[str, Agent],
-        router: AgentRouter,
         chat_provider: ChatProvider,
+        structured_chat_provider: StructuredChatProvider,
         environment: str,
         chat_price_in: float,
         chat_price_out: float,
@@ -231,8 +213,8 @@ class Orchestrator:
         self._attachment_storage = attachment_storage
         self._tools = tool_registry
         self._agents = agents
-        self._router = router
         self._chat_provider = chat_provider
+        self._structured_chat_provider = structured_chat_provider
         self._environment = environment
         self._chat_price_in = chat_price_in
         self._chat_price_out = chat_price_out
@@ -262,47 +244,49 @@ class Orchestrator:
         # O singura data, aici — inainte de orice dispatch — ca titlul sa se
         # stabileasca indiferent pe ce cale iese raspunsul (scurtcircuit
         # determinist sau agent normal). Inainte se seta doar la finalul
-        # fluxului principal, deci o conversatie inceputa cu "salut" (scurtcircuit
-        # _handle_greeting_request) ramanea cu titlul implicit "Conversație nouă"
-        # pentru totdeauna.
+        # fluxului principal, deci o conversatie inceputa cu "salut" ramanea
+        # cu titlul implicit "Conversație nouă" pentru totdeauna.
         title_source = user_text if user_text.strip() else await self._title_from_attachment(
             principal.user_id, attachment_ids or []
         )
         await self._conversations.set_title_if_default(conversation.id, _derive_title(title_source))
 
-        guardrail_hit = check_input(user_text)
-        if guardrail_hit is not None:
-            return await self._handle_input_guardrail_hit(
-                principal, conversation.id, guardrail_hit, channel, started
-            )
-
-        intent = classify_intent(user_text)
-        # Un mesaj poate deschide cu un salut si totusi cere o actiune reala in
-        # aceeasi propozitie ("salut, vreau sa fac un transfer") — classify_intent
-        # intoarce un singur intent (transfer_intent, aici), asa ca salutul s-ar
-        # pierde complet fara asta. greeting_prefix se ataseaza inaintea
-        # raspunsului real, niciodata ca mesaj separat.
-        greeting_prefix = (
-            await self._greeting_prefix(principal) if intent != "greeting" and starts_with_greeting(user_text) else ""
-        )
-        if intent == "export_request":
-            return await self._handle_export_request(principal, conversation.id, channel, started, greeting_prefix)
-        if intent == "transfer_intent":
-            return await self._handle_transfer_request(principal, conversation.id, channel, started, greeting_prefix)
-        if intent == "group_intent":
-            return await self._handle_group_request(principal, conversation.id, channel, started, greeting_prefix)
-        if intent == "greeting":
-            return await self._handle_greeting_request(principal, conversation.id, channel, started)
-
-        await self._remember(principal.user_id, user_text)
+        # Incarcat inaintea deciziei: motorul de rationament are nevoie de
+        # conversatia recenta ca sa poata rezolva singur follow-up-uri scurte
+        # ("dar cel mai mic?"), fara hack-ul de rutare "sticky" de dinainte.
         recent = await self._messages.recent_window(conversation.id, RECENT_WINDOW)
+        prenume = await self._first_name(principal.user_id)
+
+        try:
+            decision = await decide_routing(
+                self._structured_chat_provider, principal, user_text, recent, prenume
+            )
+        except (AiProviderError, AiProviderUnavailableError):
+            logger.exception("motorul de rationament al orchestratorului a esuat")
+            return await self._handle_routing_failure(principal, conversation.id, channel, started)
+
+        await self._record_routing_usage(decision)
+
+        if not decision.safety_allowed:
+            return await self._handle_safety_refusal(principal, conversation.id, decision, channel, started)
+
+        if decision.action == "export":
+            return await self._handle_export_request(principal, conversation.id, channel, started, decision)
+        if decision.action == "transfer":
+            return await self._handle_transfer_request(principal, conversation.id, channel, started, decision)
+        if decision.action == "group":
+            return await self._handle_group_request(principal, conversation.id, channel, started, decision)
+        if decision.action == "greeting":
+            return await self._handle_greeting_request(principal, conversation.id, channel, started, decision)
+
+        intent = decision.intent_label
+        await self._remember(principal.user_id, user_text)
         attachment_contexts = await self._resolve_attachments(
             principal.user_id, attachment_ids or [], user_message.id
         )
 
-        risk = classify_risk(intent)
-        agent_id = self._select_agent_id(intent, recent)
-        agent = self._agents[agent_id]
+        agent_id = decision.agent_id or _DEFAULT_AGENT_ID
+        agent = self._agents.get(agent_id) or self._agents[_DEFAULT_AGENT_ID]
 
         selections = agent.select_tools(user_text, intent)
         tool_results = await execute_tools(
@@ -310,7 +294,10 @@ class Orchestrator:
             registry=self._tools,
         )
 
-        context = await self._build_context(principal, conversation.id, selections, tool_results, recent)
+        context = await self._build_context(
+            principal, conversation.id, selections, tool_results, recent,
+            greeting_note=prenume if decision.open_with_greeting else None,
+        )
 
         error_code: str | None = None
         answer = None
@@ -339,14 +326,14 @@ class Orchestrator:
                     "empty_answer", extra={"event_data": {"agent_id": agent_id, "conversation_id": conversation.id}}
                 )
                 redacted_text = _EMPTY_ANSWER_FALLBACK_RO
-            redacted_text = greeting_prefix + redacted_text
         except Exception as exc:
             error_code = type(exc).__name__
             raise
         finally:
             latency_ms = int((time.perf_counter() - started) * 1000)
             await self._record_telemetry(
-                principal=principal, conversation_id=conversation.id, agent=agent, intent=intent, risk=risk,
+                principal=principal, conversation_id=conversation.id, agent=agent, intent=intent,
+                risk_level=decision.risk_level,
                 selections=selections, tool_results=tool_results, context_chars=len(context.render()),
                 latency_ms=latency_ms, success=answer is not None, error_code=error_code,
                 answer_tokens_in=answer.tokens_in if answer else 0,
@@ -362,10 +349,7 @@ class Orchestrator:
         # Link-ul vine din `prepare_credit_application` cand acesta a reusit sa
         # pregateasca formularul: el construieste deja URL-ul cu suma, durata,
         # venit, angajator, vechime si obligatii (credit_tools.py), iar pagina
-        # /credite/cerere citeste fix acei parametri. Pana acum se punea aici
-        # constanta goala, si link-ul pregatit se pierdea — butonul deschidea un
-        # formular necompletat, ba chiar redirectiona la simulator, fiindca
-        # pagina cere suma si durata valide ca sa se afiseze.
+        # /credite/cerere citeste fix acei parametri.
         quick_action: QuickActionResult | None = None
         quick_action_data: dict | None = None
         if intent in _INTENTII_CREDIT:
@@ -408,39 +392,78 @@ class Orchestrator:
             quick_action=quick_action,
         )
 
-    async def _handle_input_guardrail_hit(
-        self, principal: Principal, conversation_id: str, hit, channel: str, started: float
+    async def _record_routing_usage(self, decision: RoutingDecision) -> None:
+        """Costul apelului de clasificare/rutare, separat de raspunsul agentului
+        — acelasi tipar (estimate_chat_cost + record_usage) folosit azi pentru
+        fiecare raspuns de agent, doar cu un `feature` propriu."""
+        if not (decision.tokens_in or decision.tokens_out):
+            return
+        cost = estimate_chat_cost(decision.tokens_in, decision.tokens_out, self._chat_price_in, self._chat_price_out)
+        await self._telemetry.record_usage(
+            feature="orchestrator_routing", agent_id=None, deployment=decision.deployment,
+            environment=self._environment, tokens_in=decision.tokens_in, tokens_out=decision.tokens_out,
+            tokens_cached=decision.tokens_cached, estimated_cost_usd=cost,
+        )
+
+    async def _handle_routing_failure(
+        self, principal: Principal, conversation_id: str, channel: str, started: float
     ) -> OrchestratorResult:
-        """Scurtcircuit determinist (GUARDRAILS.md #3.1) — mesajul nu ajunge la
-        niciun agent sau LLM tura asta: mai rapid, mai ieftin, si imun la orice
-        formulare care ar putea "convinge" modelul. _remember/atasamente/
-        compress_conversation raman sarite intentionat — n-au ce contribui la
-        un mesaj care nu produce niciun raspuns de la un agent real."""
+        """Plasa de siguranta cand insusi motorul de rationament (nu un agent)
+        e inaccesibil — o eroare de infrastructura, nu o decizie de continut."""
+        reply_text = _ROUTING_FAILURE_RO if principal.locale == "ro" else _ROUTING_FAILURE_EN
         assistant_message = await self._messages.append(
-            conversation_id, principal.user_id, "assistant", hit.refusal_text, channel=channel
+            conversation_id, principal.user_id, "assistant", reply_text, channel=channel
+        )
+        await self._telemetry.record_run(
+            user_id=principal.user_id, conversation_id=conversation_id, agent_id="orchestrator_error",
+            intent="routing_failure", risk_level="low", prompt_version="n/a",
+            deployment=self._structured_chat_provider.deployment,
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            tool_count=0, retrieved_chunks=0, context_chars=0, success=False, error_code="ROUTING_UNAVAILABLE",
+        )
+        return OrchestratorResult(
+            conversation_id=conversation_id, message_id=assistant_message.id, text=reply_text,
+            citations=[], confidence=None, agent_id="orchestrator_error",
+        )
+
+    async def _handle_safety_refusal(
+        self, principal: Principal, conversation_id: str, decision: RoutingDecision, channel: str, started: float
+    ) -> OrchestratorResult:
+        """Scurtcircuit — mesajul nu ajunge la niciun agent sau LLM de raspuns
+        tura asta. Textul de refuz vine din rationamentul modelului
+        (`decision.safety_message`), nu dintr-un sablon fix — decizia CE sa
+        refuze si CUM sa o spuna e a lui; deterministic ramane doar faptul ca
+        un refuz opreste complet fluxul, inainte sa ajunga la vreun agent.
+        _remember/atasamente/compress_conversation raman sarite intentionat —
+        n-au ce contribui la un mesaj care nu produce niciun raspuns real."""
+        reply_text = decision.safety_message or (
+            "Nu pot ajuta cu asta." if principal.locale == "ro" else "I can't help with that."
+        )
+        assistant_message = await self._messages.append(
+            conversation_id, principal.user_id, "assistant", reply_text, channel=channel
         )
         await self._telemetry.record_run(
             user_id=principal.user_id, conversation_id=conversation_id, agent_id="input_guardrail",
-            intent="blocked", risk_level="low", prompt_version="n/a",
-            deployment=self._chat_provider.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
+            intent=decision.safety_category or "blocked", risk_level=decision.risk_level, prompt_version="n/a",
+            deployment=decision.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
             tool_count=0, retrieved_chunks=0, context_chars=0, success=False,
-            error_code=f"INPUT_GUARDRAIL_{hit.category.upper()}",
+            error_code=f"SAFETY_{(decision.safety_category or 'blocked').upper()}",
         )
         return OrchestratorResult(
-            conversation_id=conversation_id, message_id=assistant_message.id, text=hit.refusal_text,
+            conversation_id=conversation_id, message_id=assistant_message.id, text=reply_text,
             citations=[], confidence=None, agent_id="input_guardrail",
         )
 
     async def _handle_export_request(
-        self, principal: Principal, conversation_id: str, channel: str, started: float, greeting_prefix: str = ""
+        self, principal: Principal, conversation_id: str, channel: str, started: float, decision: RoutingDecision
     ) -> OrchestratorResult:
         """Scurtcircuit determinist: o cerere de export nu ajunge la niciun agent
-        sau LLM — textul e fix, iar fisierul vine dintr-un serviciu tipizat
+        sau LLM de raspuns — fisierul vine dintr-un serviciu tipizat
         (services/transaction_export_service.py), niciodata din text generat de
-        model (CLAUDE.md #9, #25). Elimina complet halucinatia de formate/campuri
-        inventate, nu doar o reduce prin prompt."""
+        model (CLAUDE.md #9, #25) — elimina complet halucinatia de formate/campuri
+        inventate. Doar textul de confirmare vine din model."""
         export = await self._export_service.generate_transactions_pdf(principal)
-        reply_text = greeting_prefix + redact(_EXPORT_REPLY_RO if principal.locale == "ro" else _EXPORT_REPLY_EN)
+        reply_text = redact(decision.reply_text or "")
 
         assistant_message = await self._messages.append(
             conversation_id, principal.user_id, "assistant", reply_text, channel=channel
@@ -453,8 +476,8 @@ class Orchestrator:
 
         run_id = await self._telemetry.record_run(
             user_id=principal.user_id, conversation_id=conversation_id, agent_id="transaction_export",
-            intent="export_request", risk_level="low", prompt_version="n/a",
-            deployment=self._chat_provider.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
+            intent="export_request", risk_level=decision.risk_level, prompt_version="n/a",
+            deployment=decision.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
             tool_count=1, retrieved_chunks=0, context_chars=0, success=True, error_code=None,
         )
         await self._telemetry.record_tool_invocation(
@@ -469,20 +492,23 @@ class Orchestrator:
         )
 
     async def _handle_transfer_request(
-        self, principal: Principal, conversation_id: str, channel: str, started: float, greeting_prefix: str = ""
+        self, principal: Principal, conversation_id: str, channel: str, started: float, decision: RoutingDecision
     ) -> OrchestratorResult:
         """Scurtcircuit determinist, la fel ca _handle_export_request: modelul nu
         decide si nu narreaza niciodata o actiune de transfer (CLAUDE.md #9) —
-        raspunsul e text fix + un link de navigare spre pagina reala de
-        transfer, niciodata o executie. quick_action se persista direct pe
-        mesaj (spre deosebire de generated_file, nu are nevoie de re-generare:
-        nu e sensibil si nu expira ca un URL semnat)."""
+        raspunsul e text scris de model + un link de navigare spre pagina reala
+        de transfer, niciodata o executie. Daca utilizatorul nu are niciun cont,
+        modelul n-are cum sa stie asta dinainte — se foloseste un text fix
+        pentru acel caz, verificat determinist dupa citirea conturilor reale.
+        quick_action se persista direct pe mesaj (spre deosebire de
+        generated_file, nu are nevoie de re-generare: nu e sensibil si nu
+        expira ca un URL semnat)."""
         accounts = await to_thread.run_sync(lambda: self._banking.list_accounts(principal.user_id))
 
         quick_action_data: dict | None = None
         quick_action: QuickActionResult | None = None
         if accounts:
-            reply_text = greeting_prefix + redact(_TRANSFER_REPLY_RO if principal.locale == "ro" else _TRANSFER_REPLY_EN)
+            reply_text = redact(decision.reply_text or "")
             quick_action = QuickActionResult(
                 kind="transfer",
                 accounts=tuple(
@@ -500,7 +526,7 @@ class Orchestrator:
                 "url": quick_action.url,
             }
         else:
-            reply_text = greeting_prefix + redact(
+            reply_text = redact(
                 _TRANSFER_REPLY_NO_ACCOUNT_RO if principal.locale == "ro" else _TRANSFER_REPLY_NO_ACCOUNT_EN
             )
 
@@ -511,8 +537,8 @@ class Orchestrator:
 
         run_id = await self._telemetry.record_run(
             user_id=principal.user_id, conversation_id=conversation_id, agent_id="transfer_quick_action",
-            intent="transfer_intent", risk_level="low", prompt_version="n/a",
-            deployment=self._chat_provider.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
+            intent="transfer_intent", risk_level=decision.risk_level, prompt_version="n/a",
+            deployment=decision.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
             tool_count=1, retrieved_chunks=0, context_chars=0, success=True, error_code=None,
         )
         await self._telemetry.record_tool_invocation(
@@ -526,12 +552,13 @@ class Orchestrator:
         )
 
     async def _handle_group_request(
-        self, principal: Principal, conversation_id: str, channel: str, started: float, greeting_prefix: str = ""
+        self, principal: Principal, conversation_id: str, channel: str, started: float, decision: RoutingDecision
     ) -> OrchestratorResult:
         """Scurtcircuit determinist, acelasi tipar ca _handle_transfer_request —
         o cerere de a crea un grup e pur actiune, fara continut informativ:
-        text fix + link de navigare spre /grupuri, niciodata o executie."""
-        reply_text = greeting_prefix + redact(_GROUP_REPLY_RO if principal.locale == "ro" else _GROUP_REPLY_EN)
+        text scris de model + link de navigare spre /grupuri, niciodata o
+        executie."""
+        reply_text = redact(decision.reply_text or "")
         quick_action = QuickActionResult(kind="grup", accounts=(), url=_GROUP_URL)
         quick_action_data = {"kind": quick_action.kind, "accounts": [], "url": quick_action.url}
 
@@ -540,10 +567,10 @@ class Orchestrator:
             quick_action=quick_action_data,
         )
 
-        run_id = await self._telemetry.record_run(
+        await self._telemetry.record_run(
             user_id=principal.user_id, conversation_id=conversation_id, agent_id="group_quick_action",
-            intent="group_intent", risk_level="low", prompt_version="n/a",
-            deployment=self._chat_provider.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
+            intent="group_intent", risk_level=decision.risk_level, prompt_version="n/a",
+            deployment=decision.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
             tool_count=0, retrieved_chunks=0, context_chars=0, success=True, error_code=None,
         )
 
@@ -559,30 +586,13 @@ class Orchestrator:
         # ultimul cuvant, la fel ca in frontend/src/app/(app)/dashboard/page.tsx.
         return nume_complet.split(" ")[-1] if nume_complet else None
 
-    async def _greeting_prefix(self, principal: Principal) -> str:
-        """"Salut, {prenume}! " de atasat inaintea altui raspuns, cand mesajul
-        incepe cu un salut dar cere si altceva — vezi starts_with_greeting()
-        din intent.py si punctul de apel din handle_message()."""
-        nume = await self._first_name(principal.user_id)
-        if principal.locale == "ro":
-            return _GREETING_PREFIX_RO.format(nume=nume) if nume else _GREETING_PREFIX_NO_NAME_RO
-        return _GREETING_PREFIX_EN.format(nume=nume) if nume else _GREETING_PREFIX_NO_NAME_EN
-
     async def _handle_greeting_request(
-        self, principal: Principal, conversation_id: str, channel: str, started: float
+        self, principal: Principal, conversation_id: str, channel: str, started: float, decision: RoutingDecision
     ) -> OrchestratorResult:
-        """Scurtcircuit determinist — un salut simplu nu trebuie sa cada pe
-        refuzul generic de RAG ("nu pot raspunde"), gresit pentru asa ceva.
-        Text fix, personalizat cu prenumele din profil daca exista, niciodata
-        generat de model (evita orice risc de raspuns ciudat la un salut)."""
-        nume = await self._first_name(principal.user_id)
-
-        if principal.locale == "ro":
-            reply_text = _GREETING_REPLY_RO.format(nume=nume) if nume else _GREETING_REPLY_NO_NAME_RO
-        else:
-            reply_text = _GREETING_REPLY_EN.format(nume=nume) if nume else _GREETING_REPLY_NO_NAME_EN
-
-        reply_text = redact(reply_text)
+        """Un salut simplu nu ajunge la niciun agent — textul, scris de model,
+        vine direct din `decision.reply_text` (personalizat cu prenumele, daca
+        exista, prin promptul din llm_router.py)."""
+        reply_text = redact(decision.reply_text or "")
 
         assistant_message = await self._messages.append(
             conversation_id, principal.user_id, "assistant", reply_text, channel=channel,
@@ -590,9 +600,9 @@ class Orchestrator:
 
         await self._telemetry.record_run(
             user_id=principal.user_id, conversation_id=conversation_id, agent_id="greeting",
-            intent="greeting", risk_level="low", prompt_version="n/a",
-            deployment=self._chat_provider.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
-            tool_count=1, retrieved_chunks=0, context_chars=0, success=True, error_code=None,
+            intent="greeting", risk_level=decision.risk_level, prompt_version="n/a",
+            deployment=decision.deployment, latency_ms=int((time.perf_counter() - started) * 1000),
+            tool_count=0, retrieved_chunks=0, context_chars=0, success=True, error_code=None,
         )
 
         return OrchestratorResult(
@@ -643,23 +653,6 @@ class Orchestrator:
 
         return contexts
 
-    def _select_agent_id(self, intent: str, recent: list) -> str:
-        """Rutare "sticky": un raspuns scurt fara cuvinte-cheie proprii ("dar cel
-        mai mic?") ramane la agentul turei precedente, in loc sa cada pe
-        document_intelligence (implicitul pentru "unknown") doar pentru ca nu
-        contine niciun tipar din intent.py. Fara asta, o continuare fireasca a
-        unei intrebari financiare primea un raspuns "nu am gasit in baza de
-        cunostinte", complet nelegat de intrebare — vezi discutia din chat."""
-        if intent != "unknown":
-            return self._router.select(intent)
-
-        previous_user_messages = [message for message in recent if message.role == "user"][:-1]
-        if not previous_user_messages:
-            return self._router.select(intent)
-
-        previous_intent = classify_intent(previous_user_messages[-1].text)
-        return self._router.select(previous_intent)
-
     async def _remember(self, user_id: str, user_text: str) -> None:
         """Extractie determinista, best-effort — un esec aici nu strica raspunsul."""
         candidate = extract_memory(user_text)
@@ -677,18 +670,21 @@ class Orchestrator:
         selections: list[SelectedTool],
         tool_results: list[ToolResult],
         recent: list,
+        greeting_note: str | None = None,
     ):
         builder = ContextBuilder()
-        sections = [
-            builder.add(
-                ContextSource.IDENTITY, "Identitate",
-                f"user_id={principal.user_id}\nrol={principal.role}\nlocale={principal.locale}",
-            )
-        ]
+        identity_text = f"user_id={principal.user_id}\nrol={principal.role}\nlocale={principal.locale}"
+        if greeting_note is not None:
+            # Mesajul a inceput cu un salut (llm_router.py::decide, open_with_greeting)
+            # dar cere si altceva, deci nu se scurtcircuiteaza la un salut simplu —
+            # agentul ales tese singur un "Salut, {nume}!" in raspunsul lui, in loc
+            # de o concatenare bruta de sabloane facuta de orchestrator.
+            identity_text += f"\n\nUtilizatorul a inceput mesajul cu un salut — include un \"Salut, {greeting_note}!\" natural la inceputul raspunsului tau."
+        sections = [builder.add(ContextSource.IDENTITY, "Identitate", identity_text)]
 
         # recent vine deja incarcat de handle_message (are nevoie de el si
-        # pentru rutarea "sticky") — nu se mai citeste a doua oara aici. Doar
-        # rezumatul si memoriile raman de citit, in paralel.
+        # pentru decizia de rationament) — nu se mai citeste a doua oara aici.
+        # Doar rezumatul si memoriile raman de citit, in paralel.
         summary, memories = await asyncio.gather(
             self._summaries.get(conversation_id),
             self._memories.list_active(principal.user_id),
@@ -718,7 +714,7 @@ class Orchestrator:
         conversation_id: str,
         agent,
         intent: str,
-        risk,
+        risk_level: str,
         selections: list[SelectedTool],
         tool_results: list[ToolResult],
         context_chars: int,
@@ -737,7 +733,7 @@ class Orchestrator:
 
         run_id = await self._telemetry.record_run(
             user_id=principal.user_id, conversation_id=conversation_id, agent_id=agent.spec.agent_id,
-            intent=intent, risk_level=risk.value, prompt_version=agent.spec.prompt_version,
+            intent=intent, risk_level=risk_level, prompt_version=agent.spec.prompt_version,
             deployment=self._chat_provider.deployment, latency_ms=latency_ms, tool_count=len(tool_results),
             retrieved_chunks=retrieved_chunks, context_chars=context_chars, success=success, error_code=error_code,
         )

@@ -39,7 +39,6 @@ from app.infrastructure.supabase import create_auth_client, create_user_client
 from app.infrastructure.supabase_client import get_service_client
 from app.ml.neregularitati import DetectorNeregularitati
 from app.orchestration.orchestrator import Orchestrator
-from app.orchestration.routing import AgentRouter
 from app.providers.foundry import MicrosoftFoundryChatProvider, MicrosoftFoundryEmbeddingProvider
 from app.providers.voice import MicrosoftVoiceProvider
 from app.rag.retrieval import RetrievalService
@@ -130,8 +129,13 @@ def get_orchestrator() -> Orchestrator:
     return Orchestrator(
         conversations=conversations, messages=messages, summaries=summaries, memories=memories,
         telemetry=telemetry, attachments=attachments, attachment_storage=attachment_storage,
-        tool_registry=tools, agents=agents, router=AgentRouter(),
-        chat_provider=chat_provider, environment=settings.environment,
+        tool_registry=tools, agents=agents,
+        # Aceeasi instanta implementeaza si ChatProvider (raspunsurile agentilor)
+        # si StructuredChatProvider (decizia de rationament/rutare a
+        # orchestratorului, orchestration/llm_router.py) — nu e nevoie de un al
+        # doilea provider.
+        chat_provider=chat_provider, structured_chat_provider=chat_provider,
+        environment=settings.environment,
         chat_price_in=settings.chat_price_per_million_input, chat_price_out=settings.chat_price_per_million_output,
         export_service=export_service, banking=banking, profiles=profiles,
     )
