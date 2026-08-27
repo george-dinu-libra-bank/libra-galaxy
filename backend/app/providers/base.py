@@ -19,6 +19,20 @@ ChatContent = Union[str, list[Union[str, ImagePart]]]
 class ChatMessage:
     role: str
     content: ChatContent
+    # Numai pentru role="tool": raspunsul se leaga de apelul care l-a cerut.
+    tool_call_id: str | None = None
+    # Numai pentru role="assistant", cand tura precedenta a cerut tool-uri.
+    # Se trimite inapoi neschimbat, ca modelul sa-si vada propriile apeluri.
+    tool_calls: tuple["ApelTool", ...] = ()
+
+
+@dataclass(frozen=True)
+class ApelTool:
+    """Un tool cerut de model, cu argumentele compuse de el."""
+
+    id: str
+    nume: str
+    argumente: dict
 
 
 @dataclass(frozen=True)
@@ -28,6 +42,9 @@ class ChatCompletion:
     tokens_out: int
     tokens_cached: int
     deployment: str
+    # Gol cand modelul a raspuns direct. Cand nu e gol, raspunsul inca nu e
+    # gata: apelantul executa tool-urile si il intreaba din nou.
+    apeluri: tuple[ApelTool, ...] = ()
 
 
 class ChatProvider(Protocol):
@@ -36,7 +53,12 @@ class ChatProvider(Protocol):
 
     deployment: str
 
-    async def complete(self, messages: list[ChatMessage]) -> ChatCompletion: ...
+    async def complete(
+        self, messages: list[ChatMessage], tools: list[dict] | None = None
+    ) -> ChatCompletion:
+        """`tools` in forma OpenAI. Optional: agentii care nu-l dau se comporta
+        exact ca inainte, iar modelul nu are ce cere."""
+        ...
 
 
 @dataclass(frozen=True)

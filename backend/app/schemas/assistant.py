@@ -45,6 +45,9 @@ class QuickActionOut(BaseModel):
     # Doar pentru kind="confirma_categorie" — vezi orchestrator.py::QuickActionResult.
     transaction_id: str | None = None
     suggested_category: str | None = None
+    # Doar pentru kind="sesizare": ce ar pleca la banca, si eticheta butonului.
+    rezumat: str = ""
+    eticheta: str = ""
 
 
 class SendMessageResponse(BaseModel):

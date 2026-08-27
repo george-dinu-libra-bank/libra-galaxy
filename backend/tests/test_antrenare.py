@@ -65,8 +65,12 @@ def test_fisier_inexistent_se_opreste_clar(tmp_path: pathlib.Path) -> None:
         _din_csv(tmp_path / "lipseste.csv")
 
 
-def test_fiecare_exemplu_are_cinci_trasaturi() -> None:
-    """Vectorul e contractul comun cu inferenta; lungimea lui nu se schimba tacit."""
+def test_fiecare_exemplu_are_sase_trasaturi() -> None:
+    """Vectorul e contractul comun cu inferenta; lungimea lui nu se schimba tacit.
+
+    A sasea trasatura e locul de unde vine plata (0050). Testul asta a prins
+    schimbarea cand a fost adaugata — exact rostul lui.
+    """
     randuri = [
         {
             "id": str(uuid4()),
@@ -85,7 +89,7 @@ def test_fiecare_exemplu_are_cinci_trasaturi() -> None:
     # Prima plata la comerciant nu produce exemplu: n-are cu ce fi comparata,
     # iar la inferenta detectorul nici n-o trimite la model.
     assert len(exemple) == 4
-    assert all(len(e) == 5 for e in exemple)
+    assert all(len(e) == 6 for e in exemple)
 
 
 def test_incasarile_nu_devin_exemple() -> None:

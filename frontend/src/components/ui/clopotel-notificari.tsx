@@ -9,7 +9,11 @@ import { Bulina } from "@/components/ui/bulina";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { marcheazaToateCitite } from "@/lib/actions/notificari";
 import type { Notificare } from "@/lib/data/notificari";
-import { idCerereDinNotificare, textFaraMarcaj } from "@/lib/notificari-credit";
+import {
+  idCerereDinNotificare,
+  idInvestigatieDinNotificare,
+  textFaraMarcaj,
+} from "@/lib/notificari-credit";
 import { cn, etichetaZi, formateazaOra as ora } from "@/lib/utils";
 
 /**
@@ -113,6 +117,7 @@ export function ClopotelNotificari({ notificari }: { notificari: Notificare[] })
               <ul className="flex flex-col gap-2">
                 {notificari.map((notificare) => {
                   const idCerere = idCerereDinNotificare(notificare.mesaj);
+                  const idInvestigatie = idInvestigatieDinNotificare(notificare.mesaj);
 
                   return (
                     <li
@@ -156,6 +161,16 @@ export function ClopotelNotificari({ notificari }: { notificari: Notificare[] })
                           className="mt-2 inline-block text-[12.5px] font-semibold text-primary-600 hover:underline"
                         >
                           Deschide discuția →
+                        </Link>
+                      ) : null}
+
+                      {idInvestigatie ? (
+                        <Link
+                          href={`/investigatii/${idInvestigatie}`}
+                          onClick={() => setDeschis(false)}
+                          className="mt-2 inline-block text-[12.5px] font-semibold text-primary-600 hover:underline"
+                        >
+                          Vezi mesajul băncii →
                         </Link>
                       ) : null}
                     </li>

@@ -29,7 +29,13 @@ from openai import APIConnectionError, APIError, AsyncOpenAI
 
 from app.core.config import Settings
 from app.core.errors import AiProviderError, AiProviderUnavailableError
-from app.providers.base import ChatCompletion, ChatMessage, ImagePart, StructuredCompletion
+from app.providers.base import (
+    ApelTool,
+    ChatCompletion,
+    ChatMessage,
+    ImagePart,
+    StructuredCompletion,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +53,60 @@ def _to_openai_content(content):
     return parts
 
 
+def _to_openai_message(message: ChatMessage) -> dict:
+    """Un mesaj al nostru, in forma pe care o asteapta OpenAI.
+
+    Trei forme, nu una: mesajele obisnuite au doar rol si continut; raspunsul
+    unui tool trebuie legat de apelul care l-a cerut (`tool_call_id`); iar
+    mesajul asistentului care a cerut tool-uri trebuie sa le duca inapoi, altfel
+    modelul nu-si recunoaste propriile apeluri si o ia de la capat.
+    """
+    if message.role == "tool":
+        return {
+            "role": "tool",
+            "tool_call_id": message.tool_call_id,
+            "content": _to_openai_content(message.content),
+        }
+
+    if message.tool_calls:
+        return {
+            "role": message.role,
+            "content": _to_openai_content(message.content) or None,
+            "tool_calls": [
+                {
+                    "id": apel.id,
+                    "type": "function",
+                    "function": {"name": apel.nume, "arguments": json.dumps(apel.argumente)},
+                }
+                for apel in message.tool_calls
+            ],
+        }
+
+    return {"role": message.role, "content": _to_openai_content(message.content)}
+
+
+def _apeluri_din(mesaj) -> tuple[ApelTool, ...]:
+    """Tool-urile cerute de model, cu argumentele deja parsate.
+
+    Argumentele vin ca text JSON. Unul stricat nu opreste tura: apelul se sare,
+    iar modelul primeste raspuns doar la ce a cerut corect si poate reincerca.
+    """
+    apeluri = getattr(mesaj, "tool_calls", None) or []
+    rezultat: list[ApelTool] = []
+
+    for apel in apeluri:
+        try:
+            argumente = json.loads(apel.function.arguments or "{}")
+        except (ValueError, AttributeError):
+            logger.warning("argumente invalide pentru tool-ul %s", getattr(apel, "id", "?"))
+            continue
+        if not isinstance(argumente, dict):
+            continue
+        rezultat.append(ApelTool(id=apel.id, nume=apel.function.name, argumente=argumente))
+
+    return tuple(rezultat)
+
+
 class MicrosoftFoundryChatProvider:
     def __init__(self, settings: Settings) -> None:
         if not settings.foundry_configured:
@@ -57,15 +117,20 @@ class MicrosoftFoundryChatProvider:
         self._reasoning_effort = settings.foundry_reasoning_effort
         self._client = AsyncOpenAI(base_url=settings.foundry_endpoint, api_key=settings.foundry_api_key)
 
-    async def complete(self, messages: list[ChatMessage]) -> ChatCompletion:
+    async def complete(
+        self, messages: list[ChatMessage], tools: list[dict] | None = None
+    ) -> ChatCompletion:
+        optiuni: dict = {}
+        if tools:
+            optiuni["tools"] = tools
+
         try:
             response = await self._client.chat.completions.create(
                 model=self.deployment,
-                messages=[
-                    {"role": message.role, "content": _to_openai_content(message.content)} for message in messages
-                ],
+                messages=[_to_openai_message(message) for message in messages],
                 max_completion_tokens=self._max_completion_tokens,
                 reasoning_effort=self._reasoning_effort,
+                **optiuni,
             )
         except APIConnectionError as exc:
             raise AiProviderUnavailableError("Microsoft Foundry este inaccesibil.") from exc
@@ -75,12 +140,15 @@ class MicrosoftFoundryChatProvider:
         usage = response.usage
         cached = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0) or 0
 
+        mesaj = response.choices[0].message
+
         return ChatCompletion(
-            text=response.choices[0].message.content or "",
+            text=mesaj.content or "",
             tokens_in=usage.prompt_tokens if usage else 0,
             tokens_out=usage.completion_tokens if usage else 0,
             tokens_cached=cached,
             deployment=self.deployment,
+            apeluri=_apeluri_din(mesaj),
         )
 
     async def complete_json(

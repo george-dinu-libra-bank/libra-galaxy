@@ -5,7 +5,19 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, agents, alerte, analiza, assistant, credite, health, identity, profiles
+from app.api.routes import (
+    admin,
+    agents,
+    alerte,
+    analiza,
+    assistant,
+    cazuri,
+    credite,
+    health,
+    identity,
+    profiles,
+    suport,
+)
 from app.api.routes.admin_identity import router as admin_identity_router
 from app.core.config import get_settings
 from app.core.envelope import error_response, new_request_id
@@ -80,6 +92,8 @@ app.include_router(identity.router)
 # Revizuirea manuala a verificarilor de identitate. Isi tine prefixul propriu
 # (/api/identity/admin) in router, langa rutele de identitate pe care le revizuieste.
 app.include_router(admin_identity_router)
+app.include_router(suport.router)
+app.include_router(cazuri.router)
 app.include_router(profiles.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(alerte.router, prefix="/api/v1")

@@ -37,17 +37,17 @@ MAX_OBSERVATIE = 2000
 MESAJE = {
     "frauda": (
         "blocare",
-        "Contul tau a fost blocat temporar",
-        "Am observat activitate neobisnuita pe contul tau si, ca masura de "
-        "protectie, retragerile si platile au fost oprite temporar. Banii care "
-        "vin catre tine intra in continuare normal. Te rugam sa contactezi "
-        "banca pentru a clarifica situatia.",
+        "Contul tău a fost blocat temporar",
+        "Am observat activitate neobișnuită pe contul tău și, ca măsură de "
+        "protecție, retragerile și plățile au fost oprite temporar. Banii care "
+        "vin către tine intră în continuare normal. Te rugăm să contactezi "
+        "banca pentru a clarifica situația.",
     ),
     "deblocat": (
         "deblocare",
-        "Contul tau a fost deblocat",
-        "Verificarea s-a incheiat, iar contul tau functioneaza din nou normal. "
-        "Iti multumim pentru rabdare.",
+        "Contul tău a fost deblocat",
+        "Verificarea s-a încheiat, iar contul tău funcționează din nou normal. "
+        "Îți mulțumim pentru răbdare.",
     ),
 }
 
@@ -130,7 +130,7 @@ class AnalizaContService:
         if anunta and decizie in MESAJE:
             tip, titlu, mesaj = MESAJE[decizie]
             if observatie:
-                mesaj = f"{mesaj}\n\nObservatia analistului: {observatie}"
+                mesaj = f"{mesaj}\n\nObservația analistului: {observatie}"
             try:
                 await self._analize.scrie_notificare(user_id, titlu, mesaj, tip)
                 notificare_trimisa = True

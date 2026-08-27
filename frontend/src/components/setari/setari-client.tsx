@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition, type ReactNode } from "react";
-import { Bell, ChevronRight, LogOut, Moon, UserCog, Users } from "lucide-react";
+import { Bell, ChevronRight, LogOut, Moon, UserCog, Users, LifeBuoy } from "lucide-react";
 import { AvatarProfil } from "@/components/ui/avatar-profil";
 import { Button } from "@/components/ui/button";
 import { Comutator } from "@/components/ui/comutator";
@@ -151,6 +151,15 @@ export function SetariClient({
         >
           <Users size={20} strokeWidth={1.75} aria-hidden className="text-ink-faint" />
           <span className="flex-1 text-[15px] text-ink">Beneficiari</span>
+          <ChevronRight size={18} strokeWidth={1.75} aria-hidden className="text-ink-faint" />
+        </Link>
+
+        <Link
+          href="/sesizari"
+          className="flex items-center gap-3 rounded-card bg-surface px-4 py-3.5 shadow-sm transition-colors hover:bg-muted"
+        >
+          <LifeBuoy size={20} strokeWidth={1.75} aria-hidden className="text-ink-faint" />
+          <span className="flex-1 text-[15px] text-ink">Sesizări</span>
           <ChevronRight size={18} strokeWidth={1.75} aria-hidden className="text-ink-faint" />
         </Link>
 

@@ -61,10 +61,17 @@ TRANSACTION_INTELLIGENCE = AgentSpec(
     tool_names=frozenset({
         "get_accounts", "get_recent_transactions", "get_spending_summary", "get_cards",
         "find_transaction_for_receipt",
+        # Mesajele bancii: motivul unei blocari, pe care starea conturilor nu il contine.
+        "get_bank_messages",
+        # Numarul de telefon potrivit situatiei si pasii oficiali de escaladare.
+        "search_bank_knowledge",
     }),
     risk_ceiling=RiskLevel.LOW,
     prompt_version="transactions-v3",
-    intents=("spending_analysis", "card_question", "categorize_receipt_intent"),
+    intents=(
+        "spending_analysis", "card_question",
+        "categorize_receipt_intent", "cont_blocat",
+    ),
 )
 
 DOCUMENT_INTELLIGENCE = AgentSpec(
@@ -166,6 +173,103 @@ CREDIT_ADVISOR = AgentSpec(
     # de agent, deci nu se pierde nimic mutandu-l aici.
     intents=("credit_question", "credit_intent"),
 )
+
+
+# -----------------------------------------------------------------------------
+# Investigatia de frauda: trei agenti, nu unul
+#
+# Impartirea nu e de dragul complexitatii. Sunt trei sarcini care esueaza
+# diferit, deci merita instructiuni si limite diferite:
+#
+#   redactorul   scrie catre un om caruia tocmai i s-a blocat contul — greseala
+#                lui e tonul: prea rece sau prea acuzator;
+#   extractorul  transforma text liber in campuri comparabile — greseala lui e
+#                sa citeasca in raspuns ceva ce omul n-a spus;
+#   analistul    aduna semnalele pentru administrator — greseala lui, cea mai
+#                grava, ar fi sa alunece intr-un verdict.
+#
+# Un singur agent cu toate trei in prompt ar fi avut un singur set de interdictii
+# pentru trei feluri de a gresi. Orchestratorul care ii coordoneaza nu e un model,
+# ci masina de stari a cazului (services/caz_service.py): pasii sunt cunoscuti
+# dinainte, nu descoperiti.
+# -----------------------------------------------------------------------------
+
+CAZ_REDACTOR = AgentSpec(
+    agent_id="caz_redactor",
+    purpose=(
+        "Scrie mesajul prin care banca il intreaba pe client despre tranzactii "
+        "semnalate, in numele bancii, pentru a fi citit si aprobat de un administrator."
+    ),
+    responsibilities=(
+        "explica limpede ce s-a observat, folosind numai faptele din caz",
+        "pune intrebarile de clarificare primite, fara sa adauge altele",
+        "pastreaza un ton calm si respectuos, potrivit unui om ingrijorat",
+    ),
+    prohibited=(
+        "sa afirme ca s-a stabilit o frauda sau ca omul e vinovat",
+        "sa promita un termen de rezolvare sau o despagubire",
+        "sa ceara parola, PIN-ul, codul de card sau coduri de autentificare",
+        "sa inventeze tranzactii, sume sau date care nu sunt in caz",
+    ),
+    tool_names=frozenset(),
+    risk_ceiling=RiskLevel.LOW,
+    prompt_version="caz-redactor-v1",
+    intents=(),
+)
+
+CAZ_EXTRACTOR = AgentSpec(
+    agent_id="caz_extractor",
+    purpose=(
+        "Transforma raspunsul scris de client in campuri comparabile, "
+        "fiecare cu citatul pe care se sprijina."
+    ),
+    responsibilities=(
+        "raspunde la fiecare intrebare cu da, nu sau nu_a_spus",
+        "citeaza fragmentul din raspuns pe care se bazeaza fiecare camp",
+    ),
+    prohibited=(
+        "sa completeze un camp pe care clientul nu l-a atins — atunci e nu_a_spus",
+        "sa deduca intentia, buna-credinta sau vinovatia cuiva",
+        "sa rezume, sa comenteze sau sa recomande ceva",
+    ),
+    tool_names=frozenset(),
+    risk_ceiling=RiskLevel.LOW,
+    prompt_version="caz-extractor-v1",
+    intents=(),
+)
+
+CAZ_ANALIST = AgentSpec(
+    agent_id="caz_analist",
+    purpose=(
+        "Scrie pentru administrator un rezumat scurt al cazului: ce a spus clientul, "
+        "ce se potriveste si ce nu cu tranzactiile."
+    ),
+    responsibilities=(
+        "spune in doua-trei propozitii ce sustine clientul",
+        "arata unde raspunsul lui se bate cap in cap cu datele din caz",
+        "spune limpede cand raspunsul nu lamureste nimic",
+    ),
+    prohibited=(
+        "sa recomande o masura — blocare, sucursala, escaladare",
+        "sa spuna daca omul e vinovat sau nevinovat",
+        "sa afirme ceva ce nu reiese din raspunsul lui sau din tranzactiile cazului",
+    ),
+    tool_names=frozenset(),
+    risk_ceiling=RiskLevel.LOW,
+    prompt_version="caz-analist-v1",
+    intents=(),
+)
+
+# Deliberat in afara lui ALL_AGENT_SPECS: acela alimenteaza /capabilities, lista
+# a ceea ce poate face asistentul CLIENTULUI, si rutarea pe intentii. Agentii de
+# investigatie nu sunt nici una, nici alta — ii cheama masina de stari a cazului,
+# direct, si nu au ce cauta intr-o lista aratata clientului.
+AGENTI_CAZ: tuple[AgentSpec, ...] = (
+    CAZ_REDACTOR,
+    CAZ_EXTRACTOR,
+    CAZ_ANALIST,
+)
+
 
 ALL_AGENT_SPECS: tuple[AgentSpec, ...] = (
     FINANCIAL_ADVISOR,

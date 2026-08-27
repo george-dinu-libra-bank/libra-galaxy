@@ -29,6 +29,7 @@ def build_banking_tools(repository: BankingReadRepository) -> list[ToolDefinitio
                 {
                     "id": account.id, "name": account.name, "iban": account.iban,
                     "balance": account.balance, "currency": account.currency,
+                    "is_blocked": account.blocked,
                 }
                 for account in accounts
             ]
@@ -120,7 +121,10 @@ def build_banking_tools(repository: BankingReadRepository) -> list[ToolDefinitio
     return [
         ToolDefinition(
             name="get_accounts",
-            description="Returneaza conturile bancare ale utilizatorului curent, cu sold.",
+            description=(
+                "Returneaza conturile bancare ale utilizatorului curent, cu sold si cu "
+                "`is_blocked` — daca banca a oprit iesirile din acel cont."
+            ),
             callback=get_accounts,
             allowed_agents=_ADVISOR_TOOLS_AGENTS,
             required_permissions=frozenset({PERMISSION_ACCOUNTS_READ}),

@@ -22,6 +22,19 @@ def _normalize(text: str) -> str:
 # Ordine: cele mai specifice intentii primele.
 _INTENT_PHRASES: list[tuple[str, tuple[str, ...]]] = [
     (
+        # Inaintea intrebarilor despre carduri: "de ce mi-a fost blocat cardul"
+        # contine "card" si ar cadea la card_question, unde agentul vede doar
+        # `is_blocked`, nu si motivul scris de analist. Omul care intreaba asta
+        # vrea explicatia, nu starea.
+        "cont_blocat",
+        (
+            "blocat", "blocata", "blocate", "blochat",
+            "de ce nu pot plati", "de ce nu pot trimite", "de ce nu merge cardul",
+            "nu pot face transfer", "nu pot scoate bani", "nu merge plata",
+            "why is my account blocked", "account blocked", "card blocked",
+        ),
+    ),
+    (
         # Trebuie inaintea lui "spending_analysis": fraze ca "leaga asta de o
         # tranzactie" contin radacina "tranzact" de acolo, care ar prinde-o
         # gresit ca o simpla intrebare de istoric. Nu se scurtcircuiteaza —
