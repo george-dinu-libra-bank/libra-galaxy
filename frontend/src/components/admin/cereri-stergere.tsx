@@ -5,12 +5,13 @@ import { useState, useTransition } from "react";
 import { Banda } from "@/components/ui/banda";
 import { Button } from "@/components/ui/button";
 import { Camp } from "@/components/ui/camp";
+import { etichetaStare } from "@/lib/stari-cerere";
 import { decideCerereStergere, stergeClientul } from "@/lib/actions/admin-stergeri";
 import {
-  motiveleBlocarii,
+  motiveleStergerii,
   sePoateSterge,
   type CerereStergere,
-} from "@/lib/cereri-stergere";
+} from "@/lib/tipuri-admin";
 
 /**
  * Cererile de inchidere a contului, pentru analist.
@@ -25,13 +26,6 @@ import {
  * Butonul dezactivat nu e mut: scrie exact ce mai e de facut. Un „Șterge" gri
  * fara explicatie e cel mai bun mod de a face un analist sa deschida un tichet.
  */
-
-const ETICHETE_STATUS: Record<string, { text: string; clasa: string }> = {
-  in_asteptare: { text: "În așteptare", clasa: "bg-warning/10 text-warning" },
-  aprobata: { text: "Aprobată", clasa: "bg-success/10 text-success" },
-  respinsa: { text: "Respinsă", clasa: "bg-danger/10 text-danger" },
-  retrasa: { text: "Retrasă de client", clasa: "bg-muted text-ink-faint" },
-};
 
 export function CereriStergere({ cereri }: { cereri: CerereStergere[] }) {
   if (cereri.length === 0) return null;
@@ -58,11 +52,8 @@ function Cerere({ cerere }: { cerere: CerereStergere }) {
   const [eroare, setEroare] = useState<string | null>(null);
   const [seLucreaza, startTransition] = useTransition();
 
-  const status = ETICHETE_STATUS[cerere.status] ?? {
-    text: cerere.status,
-    clasa: "bg-muted text-ink-faint",
-  };
-  const blocaje = motiveleBlocarii(cerere);
+  const status = etichetaStare(cerere.status);
+  const blocaje = motiveleStergerii(cerere);
   const poate = sePoateSterge(cerere);
 
   function ruleaza(actiune: () => Promise<{ eroare?: string }>) {

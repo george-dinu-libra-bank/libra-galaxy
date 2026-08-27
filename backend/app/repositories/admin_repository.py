@@ -132,6 +132,284 @@ class AdminRepository:
 
         await to_thread.run_sync(interogare)
 
+    # -- cereri de inchidere a contului -------------------------------------
+
+    async def cereri_stergere(self, doar_deschise: bool = False) -> list[dict]:
+        """Coada analistului, cu numele clientului si ce mai are la banca.
+
+        Soldurile si creditele se aduc odata cu cererea, nu la deschiderea
+        fiecarui rand: analistul are nevoie de ele ca sa stie daca poate apasa
+        „Sterge", iar o citire per rand ar face lista de N ori mai lenta fara sa
+        arate nimic in plus.
+        """
+
+        def interogare() -> list[dict]:
+            constructor = (
+                self._client.table("cereri_stergere_cont")
+                .select("id,id_utilizator,motiv,status,creat_la,decis_la,motiv_refuz")
+                .order("creat_la", desc=False)
+            )
+            if doar_deschise:
+                constructor = constructor.eq("status", "in_asteptare")
+            return constructor.execute().data or []
+
+        cereri = await to_thread.run_sync(interogare)
+        if not cereri:
+            return []
+
+        id_uri = list({c["id_utilizator"] for c in cereri})
+
+        def context() -> tuple[dict, dict, dict]:
+            profile = (
+                self._client.table("profiles")
+                .select("id,nume,email")
+                .in_("id", id_uri)
+                .execute()
+                .data
+                or []
+            )
+            conturi = (
+                self._client.table("conturi_bancare")
+                .select("id_user,nume,sold,valuta,blocat_administrativ")
+                .in_("id_user", id_uri)
+                .execute()
+                .data
+                or []
+            )
+            credite = (
+                self._client.table("credite")
+                .select("id_user,status")
+                .in_("id_user", id_uri)
+                .in_("status", ["activ", "restant"])
+                .execute()
+                .data
+                or []
+            )
+            return (
+                {p["id"]: p for p in profile},
+                conturi,
+                credite,
+            )
+
+        pe_id, conturi, credite = await to_thread.run_sync(context)
+
+        for cerere in cereri:
+            id_user = cerere["id_utilizator"]
+            profil = pe_id.get(id_user) or {}
+            ale_lui = [c for c in conturi if c["id_user"] == id_user]
+
+            cerere["nume"] = profil.get("nume")
+            cerere["email"] = profil.get("email")
+            cerere["conturi"] = [
+                {
+                    "nume": c.get("nume"),
+                    "sold": str(c.get("sold") or 0),
+                    "valuta": c.get("valuta"),
+                    "blocat": bool(c.get("blocat_administrativ")),
+                }
+                for c in ale_lui
+            ]
+            cerere["credite_in_derulare"] = sum(1 for c in credite if c["id_user"] == id_user)
+
+        return cereri
+
+    async def decide_stergere(
+        self, id_cerere: UUID, id_admin: UUID, aproba: bool, motiv: str | None
+    ) -> dict:
+        def interogare() -> dict:
+            return self._client.rpc(
+                "decide_stergere_cont",
+                {
+                    "p_id_cerere": str(id_cerere),
+                    "p_id_admin": str(id_admin),
+                    "p_aproba": aproba,
+                    "p_motiv": motiv,
+                },
+            ).execute().data
+
+        return await to_thread.run_sync(interogare)
+
+    async def sterge_client(self, id_cerere: UUID, id_admin: UUID) -> dict:
+        """Poarta pe solduri sta in RPC, nu aici — vezi 0038_sterge_client.sql."""
+
+        def interogare() -> dict:
+            return self._client.rpc(
+                "sterge_client",
+                {"p_id_cerere": str(id_cerere), "p_id_admin": str(id_admin)},
+            ).execute().data
+
+        return await to_thread.run_sync(interogare)
+
+    # -- cereri de inchidere a unui CONT BANCAR -----------------------------
+    #
+    # Alta operatiune decat cele de mai sus, si se confunda usor: acolo pleaca
+    # omul din banca, aici se inchide un singur cont bancar si omul ramane.
+
+    async def cereri_inchidere_cont(self, doar_deschise: bool = False) -> list[dict]:
+        """Coada analistului pentru inchiderea conturilor.
+
+        Acelasi principiu ca la `cereri_stergere`: tot ce-i trebuie ca sa decida
+        vine intr-o singura citire. Aici asta inseamna si TOATE conturile
+        deschise ale clientului, nu doar cel care se inchide — analistul trebuie
+        sa poata alege destinatia banilor dintr-o lista, nu sa o ghiceasca.
+        """
+
+        def interogare() -> list[dict]:
+            constructor = (
+                self._client.table("cereri_inchidere_cont")
+                .select(
+                    "id,id_utilizator,id_cont,id_cont_destinatie,motiv,status,"
+                    "creat_la,decis_la,motiv_refuz"
+                )
+                .order("creat_la", desc=False)
+            )
+            if doar_deschise:
+                constructor = constructor.eq("status", "in_asteptare")
+            return constructor.execute().data or []
+
+        cereri = await to_thread.run_sync(interogare)
+        if not cereri:
+            return []
+
+        id_uri = list({c["id_utilizator"] for c in cereri})
+
+        def context() -> tuple[dict, list, list]:
+            profile = (
+                self._client.table("profiles")
+                .select("id,nume,email,iban_cont")
+                .in_("id", id_uri)
+                .execute()
+                .data
+                or []
+            )
+            conturi = (
+                self._client.table("conturi_bancare")
+                .select("id,id_user,nume,iban,sold,valuta,blocat_administrativ,inchis_la")
+                .in_("id_user", id_uri)
+                .execute()
+                .data
+                or []
+            )
+            carduri = (
+                self._client.table("carduri")
+                .select("id,id_cont,numar_card,tip")
+                .in_("id_user", id_uri)
+                .is_("inchis_la", "null")
+                .execute()
+                .data
+                or []
+            )
+            return {p["id"]: p for p in profile}, conturi, carduri
+
+        pe_id, conturi, carduri = await to_thread.run_sync(context)
+
+        for cerere in cereri:
+            id_user = cerere["id_utilizator"]
+            profil = pe_id.get(id_user) or {}
+            iban_principal = profil.get("iban_cont")
+            ale_lui = [c for c in conturi if c["id_user"] == id_user]
+            contul = next((c for c in ale_lui if c["id"] == cerere["id_cont"]), None)
+
+            cerere["nume"] = profil.get("nume")
+            cerere["email"] = profil.get("email")
+            cerere["cont"] = self._cont_admin(contul, iban_principal) if contul else None
+            # Doar conturile DESCHISE si diferite de cel care se inchide pot primi
+            # banii. Filtrul sta aici, nu in interfata: o lista din care lipsesc
+            # optiunile imposibile e mai buna decat una in care sunt dezactivate.
+            cerere["destinatii"] = [
+                self._cont_admin(c, iban_principal)
+                for c in ale_lui
+                if c["id"] != cerere["id_cont"] and c.get("inchis_la") is None
+            ]
+            cerere["carduri"] = [
+                {
+                    "id": card["id"],
+                    "ultimele4": str(card.get("numar_card") or "")[-4:],
+                    "tip": card.get("tip"),
+                }
+                for card in carduri
+                if card["id_cont"] == cerere["id_cont"]
+            ]
+
+        return cereri
+
+    @staticmethod
+    def _cont_admin(cont: dict, iban_principal: str | None) -> dict:
+        """Forma in care un cont ajunge la analist. Un singur loc, ca randul care
+        se inchide si cele care pot primi banii sa arate la fel."""
+        return {
+            "id": cont["id"],
+            "nume": cont.get("nume"),
+            "sold": str(cont.get("sold") or 0),
+            "valuta": cont.get("valuta"),
+            "blocat": bool(cont.get("blocat_administrativ")),
+            "inchis": cont.get("inchis_la") is not None,
+            "este_principal": bool(iban_principal) and cont.get("iban") == iban_principal,
+        }
+
+    async def decide_inchidere_cont(
+        self,
+        id_cerere: UUID,
+        id_admin: UUID,
+        aproba: bool,
+        *,
+        id_destinatie: UUID | None = None,
+        motiv: str | None = None,
+    ) -> dict:
+        """Aproba (si muta banii) sau respinge.
+
+        Toate garzile — contul principal, contul blocat, soldul negativ,
+        destinatia invalida — stau in RPC (0040), nu aici. Un buton dezactivat e
+        o sugestie; o exceptie din RPC e o regula.
+        """
+
+        def interogare() -> dict:
+            if aproba:
+                return self._client.rpc(
+                    "inchide_cont_bancar",
+                    {
+                        "p_id_cerere": str(id_cerere),
+                        "p_id_admin": str(id_admin),
+                        "p_id_destinatie": str(id_destinatie) if id_destinatie else None,
+                    },
+                ).execute().data
+            return self._client.rpc(
+                "respinge_inchidere_cont",
+                {
+                    "p_id_cerere": str(id_cerere),
+                    "p_id_admin": str(id_admin),
+                    "p_motiv": motiv,
+                },
+            ).execute().data
+
+        return await to_thread.run_sync(interogare)
+
+    async def redeschide_cont(self, id_cont: UUID, id_admin: UUID) -> dict:
+        """„Inchis, nu sters" nu inseamna nimic daca nimeni nu poate da inapoi."""
+
+        def interogare() -> dict:
+            return self._client.rpc(
+                "redeschide_cont",
+                {"p_id_cont": str(id_cont), "p_id_admin": str(id_admin)},
+            ).execute().data
+
+        return await to_thread.run_sync(interogare)
+
+    async def sterge_utilizator_auth(self, id_user: str) -> None:
+        """Randul din `auth.users`, dupa ce profilul a disparut prin RPC.
+
+        Se face separat fiindca SQL-ul nostru n-are ce cauta in schema `auth`.
+        Daca pica, profilul e deja sters si datele bancare la fel — ramane doar
+        un cont de autentificare orfan, care nu mai poate ajunge nicaieri.
+        """
+
+        def interogare() -> None:
+            self._client.auth.admin.delete_user(id_user)
+
+        await to_thread.run_sync(interogare)
+
+
+
 
 # -----------------------------------------------------------------------------
 # Analizele administratorului si urmarile lor
@@ -288,123 +566,3 @@ class AnalizaRepository:
         randuri = await to_thread.run_sync(interogare)
         return randuri[0] if randuri else None
 
-    # -- cereri de inchidere a contului -------------------------------------
-
-    async def cereri_stergere(self, doar_deschise: bool = False) -> list[dict]:
-        """Coada analistului, cu numele clientului si ce mai are la banca.
-
-        Soldurile si creditele se aduc odata cu cererea, nu la deschiderea
-        fiecarui rand: analistul are nevoie de ele ca sa stie daca poate apasa
-        „Sterge", iar o citire per rand ar face lista de N ori mai lenta fara sa
-        arate nimic in plus.
-        """
-
-        def interogare() -> list[dict]:
-            constructor = (
-                self._client.table("cereri_stergere_cont")
-                .select("id,id_utilizator,motiv,status,creat_la,decis_la,motiv_refuz")
-                .order("creat_la", desc=False)
-            )
-            if doar_deschise:
-                constructor = constructor.eq("status", "in_asteptare")
-            return constructor.execute().data or []
-
-        cereri = await to_thread.run_sync(interogare)
-        if not cereri:
-            return []
-
-        id_uri = list({c["id_utilizator"] for c in cereri})
-
-        def context() -> tuple[dict, dict, dict]:
-            profile = (
-                self._client.table("profiles")
-                .select("id,nume,email")
-                .in_("id", id_uri)
-                .execute()
-                .data
-                or []
-            )
-            conturi = (
-                self._client.table("conturi_bancare")
-                .select("id_user,nume,sold,valuta,blocat_administrativ")
-                .in_("id_user", id_uri)
-                .execute()
-                .data
-                or []
-            )
-            credite = (
-                self._client.table("credite")
-                .select("id_user,status")
-                .in_("id_user", id_uri)
-                .in_("status", ["activ", "restant"])
-                .execute()
-                .data
-                or []
-            )
-            return (
-                {p["id"]: p for p in profile},
-                conturi,
-                credite,
-            )
-
-        pe_id, conturi, credite = await to_thread.run_sync(context)
-
-        for cerere in cereri:
-            id_user = cerere["id_utilizator"]
-            profil = pe_id.get(id_user) or {}
-            ale_lui = [c for c in conturi if c["id_user"] == id_user]
-
-            cerere["nume"] = profil.get("nume")
-            cerere["email"] = profil.get("email")
-            cerere["conturi"] = [
-                {
-                    "nume": c.get("nume"),
-                    "sold": str(c.get("sold") or 0),
-                    "valuta": c.get("valuta"),
-                    "blocat": bool(c.get("blocat_administrativ")),
-                }
-                for c in ale_lui
-            ]
-            cerere["credite_in_derulare"] = sum(1 for c in credite if c["id_user"] == id_user)
-
-        return cereri
-
-    async def decide_stergere(
-        self, id_cerere: UUID, id_admin: UUID, aproba: bool, motiv: str | None
-    ) -> dict:
-        def interogare() -> dict:
-            return self._client.rpc(
-                "decide_stergere_cont",
-                {
-                    "p_id_cerere": str(id_cerere),
-                    "p_id_admin": str(id_admin),
-                    "p_aproba": aproba,
-                    "p_motiv": motiv,
-                },
-            ).execute().data
-
-        return await to_thread.run_sync(interogare)
-
-    async def sterge_client(self, id_cerere: UUID, id_admin: UUID) -> dict:
-        """Poarta pe solduri sta in RPC, nu aici — vezi 0038_sterge_client.sql."""
-
-        def interogare() -> dict:
-            return self._client.rpc(
-                "sterge_client",
-                {"p_id_cerere": str(id_cerere), "p_id_admin": str(id_admin)},
-            ).execute().data
-
-        return await to_thread.run_sync(interogare)
-
-    async def sterge_utilizator_auth(self, id_user: str) -> None:
-        """Randul din `auth.users`, dupa ce profilul a disparut prin RPC.
-
-        Se face separat fiindca SQL-ul nostru n-are ce cauta in schema `auth`.
-        Daca pica, profilul e deja sters si datele bancare la fel — ramane doar
-        un cont de autentificare orfan, care nu mai poate ajunge nicaieri.
-        """
-
-        def interogare() -> None:
-            self._client.auth.admin.delete_user(id_user)
-
-        await to_thread.run_sync(interogare)

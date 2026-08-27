@@ -93,6 +93,27 @@ _GREETING_PREFIX_NO_NAME_EN = "Hi! "
 
 _TRANSFER_URL = "/transfer"
 _CREDIT_URL = "/credite/cerere"
+# Ambele intentii de creditare primesc butonul. `credit_question` lipsea, desi
+# exact ea prinde frazele cele mai concrete — "vreau sa depun o cerere de credit
+# de 30000 pe 48 de luni" — adica fix cazurile in care formularul chiar se poate
+# completa. Ramasese doar `credit_intent`, cea informativa.
+_INTENTII_CREDIT = frozenset({"credit_intent", "credit_question"})
+
+
+def _link_cerere_credit(tool_results: list[ToolResult]) -> str:
+    """URL-ul formularului, completat daca tool-ul a apucat sa-l pregateasca.
+
+    Nu se ia niciun link din textul modelului: singura sursa e rezultatul
+    tool-ului, exact ca la transfer. Daca datele n-au fost complete, `ready` e
+    fals si se cade pe formularul gol — omul il completeaza singur, ca inainte.
+    """
+    for rezultat in tool_results:
+        if rezultat.tool_name != "prepare_credit_application":
+            continue
+        date = rezultat.data or {}
+        if rezultat.success and date.get("ready") and isinstance(date.get("link"), str):
+            return date["link"]
+    return _CREDIT_URL
 _GROUP_URL = "/grupuri"
 
 
@@ -337,10 +358,20 @@ class Orchestrator:
         # continut util despre eligibilitate, spre deosebire de transfer) — doar
         # link-ul de inceput de cerere e determinist, atasat mereu, nu propus de
         # model (CLAUDE.md #9: modelul nu decide "hai sa iti deschid formularul").
+        #
+        # Link-ul vine din `prepare_credit_application` cand acesta a reusit sa
+        # pregateasca formularul: el construieste deja URL-ul cu suma, durata,
+        # venit, angajator, vechime si obligatii (credit_tools.py), iar pagina
+        # /credite/cerere citeste fix acei parametri. Pana acum se punea aici
+        # constanta goala, si link-ul pregatit se pierdea — butonul deschidea un
+        # formular necompletat, ba chiar redirectiona la simulator, fiindca
+        # pagina cere suma si durata valide ca sa se afiseze.
         quick_action: QuickActionResult | None = None
         quick_action_data: dict | None = None
-        if intent == "credit_intent":
-            quick_action = QuickActionResult(kind="credit", accounts=(), url=_CREDIT_URL)
+        if intent in _INTENTII_CREDIT:
+            quick_action = QuickActionResult(
+                kind="credit", accounts=(), url=_link_cerere_credit(tool_results),
+            )
             quick_action_data = {"kind": quick_action.kind, "accounts": [], "url": quick_action.url}
         elif intent == "categorize_receipt_intent":
             # La fel ca la credit_intent: raspunsul modelului ramane normal (poate

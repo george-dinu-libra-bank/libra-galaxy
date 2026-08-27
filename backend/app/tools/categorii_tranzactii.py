@@ -99,7 +99,7 @@ _CATEGORII: list[tuple[str, tuple[str, ...]]] = [
 # din api/routes/analiza.py (categoria manuala trimisa de utilizator) inainte
 # de scriere, ca sa nu ajunga in categorii_manuale_tranzactii o valoare pe care
 # categorizeaza() n-o va produce niciodata. Constrangerea CHECK din migratia
-# 0040 repeta aceeasi lista in SQL, ca a doua bariera.
+# 0043 repeta aceeasi lista in SQL, ca a doua bariera.
 CATEGORII_VALIDE: frozenset[str] = frozenset({categorie for categorie, _ in _CATEGORII} | {CATEGORIE_IMPLICITA})
 
 

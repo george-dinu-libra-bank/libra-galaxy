@@ -465,3 +465,151 @@ export type StareConturi = {
   total: number;
   blocate: number;
 };
+
+
+// -----------------------------------------------------------------------------
+// Cereri de inchidere a relatiei cu banca (0036-0038)
+//
+// Tipurile si regulile stau AICI, nu langa `backendFetch`, fiindca de ele au
+// nevoie si componentele de client. Modulele din `lib/data/` importa
+// `@/lib/backend`, care e `server-only`: un singur import de-acolo intr-o
+// componenta „use client" opreste build-ul intreg cu
+// „You're importing a module that depends on server-only".
+// -----------------------------------------------------------------------------
+
+export type ContClient = {
+  nume: string | null;
+  sold: string;
+  valuta: string | null;
+  blocat: boolean;
+};
+
+export type CerereStergere = {
+  id: string;
+  id_utilizator: string;
+  nume: string | null;
+  email: string | null;
+  motiv: string | null;
+  status: string;
+  creat_la: string;
+  decis_la: string | null;
+  motiv_refuz: string | null;
+  conturi: ContClient[];
+  credite_in_derulare: number;
+};
+
+/** Toate conturile pe zero, fara blocari si fara credite — vezi 0038. */
+export function sePoateSterge(cerere: CerereStergere): boolean {
+  return (
+    cerere.status === "aprobata" &&
+    cerere.credite_in_derulare === 0 &&
+    cerere.conturi.every((cont) => Number(cont.sold) === 0 && !cont.blocat)
+  );
+}
+
+/** De ce nu se poate, in cuvinte — ca butonul dezactivat sa nu fie mut. */
+export function motiveleStergerii(cerere: CerereStergere): string[] {
+  const motive: string[] = [];
+
+  if (cerere.status !== "aprobata") {
+    motive.push("Cererea trebuie aprobată întâi.");
+  }
+  if (cerere.credite_in_derulare > 0) {
+    motive.push(`Are ${cerere.credite_in_derulare} credit(e) în derulare.`);
+  }
+
+  const cuBani = cerere.conturi.filter((cont) => Number(cont.sold) !== 0);
+  if (cuBani.length > 0) {
+    motive.push(
+      `Are sold în ${cuBani.length} cont(uri): ` +
+        cuBani.map((c) => `${c.nume ?? "Cont"} ${c.sold} ${c.valuta ?? ""}`.trim()).join(", ") +
+        ".",
+    );
+  }
+
+  const blocate = cerere.conturi.filter((cont) => cont.blocat);
+  if (blocate.length > 0) {
+    motive.push(`Are ${blocate.length} cont(uri) blocate administrativ.`);
+  }
+
+  return motive;
+}
+
+
+// -----------------------------------------------------------------------------
+// Cereri de inchidere a unui CONT BANCAR (0040)
+//
+// Alta operatiune decat cea de mai sus, si se confunda usor: acolo pleaca omul
+// din banca, aici se inchide un singur cont bancar si omul ramane client.
+// -----------------------------------------------------------------------------
+
+export type ContAdmin = {
+  id: string;
+  nume: string | null;
+  sold: string;
+  valuta: string | null;
+  blocat: boolean;
+  inchis: boolean;
+  este_principal: boolean;
+};
+
+export type CardInchis = {
+  id: string;
+  ultimele4: string;
+  tip: string | null;
+};
+
+export type CerereInchidere = {
+  id: string;
+  id_utilizator: string;
+  id_cont: string;
+  id_cont_destinatie: string | null;
+  nume: string | null;
+  email: string | null;
+  motiv: string | null;
+  status: string;
+  creat_la: string;
+  decis_la: string | null;
+  motiv_refuz: string | null;
+  cont: ContAdmin | null;
+  destinatii: ContAdmin[];
+  carduri: CardInchis[];
+};
+
+/**
+ * Destinatia din care porneste analistul: propunerea clientului daca mai e
+ * valida, altfel contul principal, altfel primul deschis.
+ *
+ * Propunerea poate sa nu mai fie valida — contul ales de client putea fi inchis
+ * intre timp — de aceea se cauta in `destinatii`, nu se foloseste id-ul brut.
+ */
+export function destinatiaImplicita(cerere: CerereInchidere): ContAdmin | null {
+  const propusa = cerere.destinatii.find((c) => c.id === cerere.id_cont_destinatie);
+  if (propusa) return propusa;
+  return cerere.destinatii.find((c) => c.este_principal) ?? cerere.destinatii[0] ?? null;
+}
+
+/** De ce nu se poate aproba, in cuvinte — ca butonul dezactivat sa nu fie mut. */
+export function motiveleInchiderii(cerere: CerereInchidere): string[] {
+  const motive: string[] = [];
+  const cont = cerere.cont;
+  if (!cont) return ["Contul nu mai există."];
+
+  if (cont.este_principal) {
+    motive.push("E contul principal al clientului; acesta nu se poate închide.");
+  }
+  if (cont.blocat) {
+    motive.push("Contul e blocat administrativ; se lămurește întâi blocarea.");
+  }
+  if (Number(cont.sold) < 0) {
+    motive.push("Contul are sold negativ; se acoperă înainte de închidere.");
+  }
+  if (Number(cont.sold) > 0 && cerere.destinatii.length === 0) {
+    motive.push("Are sold, dar clientul nu mai are alt cont deschis în care să fie mutat.");
+  }
+  return motive;
+}
+
+export function sePoateAproba(cerere: CerereInchidere): boolean {
+  return cerere.status === "in_asteptare" && motiveleInchiderii(cerere).length === 0;
+}

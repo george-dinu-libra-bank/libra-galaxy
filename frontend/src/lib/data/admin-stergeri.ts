@@ -1,19 +1,12 @@
 import { backendFetch } from "@/lib/backend";
-import type { CerereStergere } from "@/lib/cereri-stergere";
-
-export type { ContClient, CerereStergere } from "@/lib/cereri-stergere";
+import type { CerereStergere } from "@/lib/tipuri-admin";
 
 /**
- * Cererile de inchidere a contului, pentru analist.
+ * Aducerea cererilor de inchidere a relatiei cu banca.
  *
- * Soldurile si creditele vin odata cu lista, nu la deschiderea fiecarui rand:
- * fara ele, analistul ar apasa „Sterge" si abia RPC-ul i-ar spune de ce nu se
- * poate (0038_sterge_client.sql).
- *
- * Regulile pure (`sePoateSterge`, `motiveleBlocarii`) si tipurile stau in
- * `lib/cereri-stergere.ts`, nu aici — acest fisier importa `lib/backend.ts`
- * (server-only), iar `components/admin/cereri-stergere.tsx` (client) are
- * nevoie de reguli fara sa traga acel import (vezi antetul de acolo).
+ * Doar atat. Tipurile si regulile („se poate sterge?", „de ce nu?") stau in
+ * `@/lib/tipuri-admin`, fiindca de ele are nevoie si componenta de client — iar
+ * fisierul asta importa `@/lib/backend`, care e `server-only`.
  */
 export async function obtineCereriStergere(token: string): Promise<CerereStergere[]> {
   return backendFetch<CerereStergere[]>("api/v1/admin/cereri-stergere", token);

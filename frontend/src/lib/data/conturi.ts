@@ -24,6 +24,11 @@ export type ContBancar = {
    * minciuna cu consecinte.
    */
   estePrincipal: boolean;
+  /**
+   * Cererea de inchidere inca nedecisa, daca exista. Contul functioneaza normal
+   * cat timp e in analiza — se schimba doar ce scrie in meniul lui.
+   */
+  cerereInchidere: { id: string; creatLa: string } | null;
   creatLa: string;
 };
 
@@ -59,9 +64,28 @@ export async function obtineConturiUtilizator(): Promise<ContBancar[]> {
     .from("conturi_bancare")
     .select("id, nume, iban, sold, valuta, blocat_administrativ, creat_la")
     .eq("id_user", user.id)
+    // Conturile inchise (0040) raman in baza, ca istoricul sa le pastreze numele,
+    // dar n-au ce cauta in liste: nu mai pot primi si nu mai pot trimite bani.
+    .is("inchis_la", null)
     .order("creat_la", { ascending: true });
 
   if (error) throw error;
+
+  // Cererile de inchidere inca nedecise, ca meniul contului sa arate „in analiza"
+  // in loc sa ofere din nou un buton care ar fi respins de indexul unic.
+  const { data: cereri } = await supabase
+    .from("cereri_inchidere_cont")
+    .select("id, id_cont, creat_la")
+    .eq("id_utilizator", user.id)
+    .eq("status", "in_asteptare");
+
+  const cereriPeCont = new Map<string, { id: string; creatLa: string }>();
+  for (const cerere of cereri ?? []) {
+    cereriPeCont.set(cerere.id_cont as string, {
+      id: cerere.id as string,
+      creatLa: cerere.creat_la as string,
+    });
+  }
 
   return (data ?? []).map((cont) => ({
     id: cont.id as string,
@@ -72,6 +96,7 @@ export async function obtineConturiUtilizator(): Promise<ContBancar[]> {
     valuta: (cont.valuta as Valuta) ?? "RON",
     blocatDeBanca: (cont.blocat_administrativ as boolean) ?? false,
     estePrincipal: ibanPrincipal !== null && cont.iban === ibanPrincipal,
+    cerereInchidere: cereriPeCont.get(cont.id as string) ?? null,
     creatLa: cont.creat_la as string,
   }));
 }
