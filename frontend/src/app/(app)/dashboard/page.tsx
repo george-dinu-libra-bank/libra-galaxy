@@ -170,7 +170,7 @@ export default async function DashboardPage() {
               vigoare pe banii din ecran, nu o informatie despre trecut. */}
           {poprire ? <BandaPoprire poprire={poprire} /> : null}
 
-          <CategoriiCheltuieli date={cheltuieliPeCategorie} cursuri={cursuri} />
+          {/* <CategoriiCheltuieli date={cheltuieliPeCategorie} cursuri={cursuri} /> */}
 
           <ListaConturi conturi={conturi} />
 
