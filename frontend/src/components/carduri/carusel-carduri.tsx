@@ -125,57 +125,75 @@ export function CaruselCarduri({
           const dezvaluit = intors && Boolean(dateSensibile);
 
           return (
-            // Fara `style` si fara clasa de tranzitie: transformarea o scrie
-            // hook-ul, direct pe nod, la fiecare cadru de derulare. O tranzitie
-            // CSS aici ar reporni de zeci de ori pe secunda si ar tine cardul
-            // in urma degetului (vezi antetul din use-carusel-carduri.ts).
-            <li key={card.id} className="w-[var(--latime-card)] shrink-0 snap-center">
-              <FataCard
-                date={card}
-                posesor={posesor}
-                intoarsa={intors}
-                ccv={intors ? dateSensibile?.ccv : undefined}
-                numarComplet={intors ? dateSensibile?.numar : undefined}
-                // Intoarcerea trece la spatele cardului cat timp datele sunt pe
-                // el, fiindca tinta de mai jos se retrage atunci.
-                onIntoarce={inCentru ? () => onIntoarce(card) : undefined}
-                // Cardurile de pe laturi nu se inclina: sunt deja rotite de
-                // carusel, iar a doua rotatie peste prima arata a defectiune.
-                inert={!inCentru}
-              >
-                {/* Tinta care acopera tot cardul: intoarce cardul din centru,
-                    aduce in centru un card de pe lateral.
+            // `<li>` e tinta de scroll-snap si ramane NETRANSFORMAT: aria dupa
+            // care browserul alege unde sa se opreasca derularea e border-box-ul
+            // transformat, deci o transformare scrisa aici la fiecare cadru ar
+            // muta chiar tinta spre care se deruleaza. Miscarea sta pe invelisul
+            // de dedesubt (vezi antetul din use-carusel-carduri.ts).
+            //
+            // Fara `style` si fara clasa de tranzitie pe invelis: transformarea
+            // o scrie hook-ul, direct pe nod, la fiecare cadru de derulare. O
+            // tranzitie CSS acolo ar reporni de zeci de ori pe secunda si ar
+            // tine cardul in urma degetului.
+            //
+            // `preserve-3d` pe `<li>` nu e decorativ: `perspective` de pe pista
+            // se aplica numai COPIILOR DIRECTI. Fara el, invelisul de dedesubt
+            // ar fi aplatizat in planul lui `<li>` — `translateZ` n-ar mai face
+            // nimic, iar `rotateY` ar turti cardul pe orizontala in loc sa-l
+            // roteasca. Aici e permis, spre deosebire de pista, care are
+            // `overflow` si e impinsa fortat inapoi pe `flat`.
+            <li
+              key={card.id}
+              className="w-[var(--latime-card)] shrink-0 snap-center [transform-style:preserve-3d]"
+            >
+              <div>
+                <FataCard
+                  date={card}
+                  posesor={posesor}
+                  intoarsa={intors}
+                  ccv={intors ? dateSensibile?.ccv : undefined}
+                  numarComplet={intors ? dateSensibile?.numar : undefined}
+                  // Intoarcerea trece la spatele cardului cat timp datele sunt pe
+                  // el, fiindca tinta de mai jos se retrage atunci.
+                  onIntoarce={inCentru ? () => onIntoarce(card) : undefined}
+                  // Cardurile de pe laturi nu se inclina: sunt deja rotite de
+                  // carusel, iar a doua rotatie peste prima arata a defectiune.
+                  inert={!inCentru}
+                >
+                  {/* Tinta care acopera tot cardul: intoarce cardul din centru,
+                      aduce in centru un card de pe lateral.
 
-                    Se retrage — `pointer-events-none`, si iese si din arborele
-                    de accesibilitate — cat timp numarul si CCV-ul sunt pe
-                    spate. Altfel ar sta peste butoanele de copiere de pe card
-                    si le-ar manca apasarile, fiindca ea e in afara stratului 3D
-                    si se deseneaza mereu deasupra lui. Intoarcerea nu se pierde
-                    in rastimpul asta: si-o ia spatele cardului, pe dedesubtul
-                    propriului continut (`fata-card.tsx`). */}
-                <button
-                  type="button"
-                  onClick={() => (inCentru ? onIntoarce(card) : centreaza(i))}
-                  {...(dezvaluit ? { tabIndex: -1, "aria-hidden": true } : {})}
-                  // Focusul din tastatura aduce cardul in centru. Fara asta,
-                  // Tab ar muta focusul pe un card lasat pe jumatate in afara
-                  // cadrului, iar `scroll-snap` l-ar trage inapoi imediat.
-                  onFocus={() => centreaza(i)}
-                  aria-pressed={inCentru ? intors : undefined}
-                  aria-label={
-                    inCentru
-                      ? etichetaCard(card, intors)
-                      : `${etichetaCard(card, intors)}. Adu cardul în față.`
-                  }
-                  className={cn(
-                    "absolute inset-0 rounded-card transition-transform duration-150 ease-soft",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset",
-                    INEL_FOCUS_CARD[card.stil],
-                    inCentru && !dezvaluit && "active:scale-[0.99]",
-                    dezvaluit && "pointer-events-none",
-                  )}
-                />
-              </FataCard>
+                      Se retrage — `pointer-events-none`, si iese si din arborele
+                      de accesibilitate — cat timp numarul si CCV-ul sunt pe
+                      spate. Altfel ar sta peste butoanele de copiere de pe card
+                      si le-ar manca apasarile, fiindca ea e in afara stratului 3D
+                      si se deseneaza mereu deasupra lui. Intoarcerea nu se pierde
+                      in rastimpul asta: si-o ia spatele cardului, pe dedesubtul
+                      propriului continut (`fata-card.tsx`). */}
+                  <button
+                    type="button"
+                    onClick={() => (inCentru ? onIntoarce(card) : centreaza(i))}
+                    {...(dezvaluit ? { tabIndex: -1, "aria-hidden": true } : {})}
+                    // Focusul din tastatura aduce cardul in centru. Fara asta,
+                    // Tab ar muta focusul pe un card lasat pe jumatate in afara
+                    // cadrului, iar `scroll-snap` l-ar trage inapoi imediat.
+                    onFocus={() => centreaza(i)}
+                    aria-pressed={inCentru ? intors : undefined}
+                    aria-label={
+                      inCentru
+                        ? etichetaCard(card, intors)
+                        : `${etichetaCard(card, intors)}. Adu cardul în față.`
+                    }
+                    className={cn(
+                      "absolute inset-0 rounded-card transition-transform duration-150 ease-soft",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset",
+                      INEL_FOCUS_CARD[card.stil],
+                      inCentru && !dezvaluit && "active:scale-[0.99]",
+                      dezvaluit && "pointer-events-none",
+                    )}
+                  />
+                </FataCard>
+              </div>
             </li>
           );
         })}

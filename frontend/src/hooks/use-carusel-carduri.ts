@@ -47,6 +47,28 @@ const PANTA = 1.15;
  * latime de card crestea liniar, dupa care se oprea brusc. Cotul se vedea ca o
  * smucitura fix cand cardul urmator intra in cadru. `tanh` da aceeasi
  * aplatizare, dar neted peste tot — nicaieri nu-si schimba panta dintr-odata.
+ *
+ * ---------------------------------------------------------------------------
+ * De ce transformarea NU se scrie pe `<li>`, ci pe un invelis dinauntrul lui
+ *
+ * `<li>`-urile sunt tintele de `scroll-snap` (`snap-center`), iar aria dupa
+ * care browserul calculeaza unde sa opreasca derularea e border-box-ul lor
+ * TRANSFORMAT (css-scroll-snap-1). Cat timp transformarea statea chiar pe
+ * `<li>`, iesea o bucla: derulezi -> se rescrie transformarea -> se muta aria
+ * de snap -> se muta punctul in care ar trebui sa se opreasca derularea -> care
+ * schimba iar transformarea. De 60 de ori pe secunda, exact in timp ce
+ * browserul incerca sa aleaga unde sa aterizeze.
+ *
+ * La vedere: glisarea nu se mai aseaza pe niciun card, si nu simetric —
+ * `rotateY` are semn opus la stanga fata de dreapta, deci si eroarea de
+ * proiectie sub `perspective` cadea intr-o singura parte.
+ *
+ * Acum `<li>` ramane o cutie curata, netransformata: aria de snap e fixa si
+ * browserul are unde sa aterizeze. Tot ce se misca sta pe invelisul dinauntru,
+ * care nu e tinta de snap. Efectul la vedere e neschimbat.
+ *
+ * Masuratorile n-au avut nevoie de nicio modificare: `offsetLeft` si
+ * `offsetWidth` sunt valori de layout, pe care transformarile nu le ating.
  */
 export function useCaruselCarduri(numar: number) {
   const miscareRedusa = useMiscareRedusa();
@@ -65,6 +87,11 @@ export function useCaruselCarduri(numar: number) {
     let minim = Infinity;
 
     copii.forEach((copil, i) => {
+      // Se masoara `<li>`-ul (cutia de layout) si se scrie pe invelisul
+      // dinauntrul lui — vezi antetul.
+      const invelis = copil.firstElementChild as HTMLElement | null;
+      if (!invelis) return;
+
       const centruCardului = copil.offsetLeft + copil.offsetWidth / 2;
       // Distanta pana la centru, masurata in latimi de card: 0 = fix in mijloc,
       // 1 = la o latime de card distanta.
@@ -81,22 +108,23 @@ export function useCaruselCarduri(numar: number) {
       if (miscareRedusa) {
         // Marimea si opacitatea raman: sunt stari, nu animatii, si fara ele
         // n-ai cum sa vezi care card e cel selectat.
-        copil.style.transform = `scale(${1 - curba * 0.12})`;
+        invelis.style.transform = `scale(${1 - curba * 0.12})`;
       } else {
         // Semnul: un card aflat in dreapta se roteste cu unghi POZITIV, ceea ce
         // in CSS duce muchia lui dinspre centru spre privitor si pe cealalta in
         // spate. Asa cardurile par asezate in cerc in jurul omului, nu lipite
         // pe un perete.
-        copil.style.transform =
+        invelis.style.transform =
           `translateZ(${-curba * ADANCIME}px)` +
           ` rotateY(${Math.tanh(p * PANTA) * MAXIM_GRADE}deg)` +
           ` scale(${1 - curba * 0.08})`;
       }
 
-      copil.style.opacity = String(1 - curba * 0.34);
+      invelis.style.opacity = String(1 - curba * 0.34);
       // Pista are `overflow`, deci browserul o trateaza ca plana si deseneaza
       // copiii in ordinea din DOM — fara asta, cardul din DREAPTA celui central
       // i-ar trece peste colt, desi e mai in spate.
+      // `zIndex` ramane pe `<li>`: stivuirea se face intre frati.
       copil.style.zIndex = String(100 - Math.round(departare * 10));
     });
 
@@ -118,7 +146,8 @@ export function useCaruselCarduri(numar: number) {
     const el = pista.current;
     if (el) {
       for (const copil of Array.from(el.children) as HTMLElement[]) {
-        copil.style.willChange = "transform, opacity";
+        const invelis = copil.firstElementChild as HTMLElement | null;
+        if (invelis) invelis.style.willChange = "transform, opacity";
       }
     }
     aseaza();
