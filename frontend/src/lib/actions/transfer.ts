@@ -83,6 +83,14 @@ const MESAJE_CORE_BANKING: Record<string, string> = {
   NU_ESTI_MEMBRU: "Nu faci parte din acest grup.",
   FONDURI_INSUFICIENTE_GRUP: "Grupul nu are fonduri suficiente.",
   DIRECTIE_INVALIDA: "Nu am putut trimite banii. Incearca din nou.",
+  // Ridicate de verifica_drept_cheltuiala_grup (0053_drepturi_grup.sql), pe
+  // amandoua drumurile prin care pleaca bani din punga comuna. Nu sunt acelasi
+  // lucru cu FONDURI_INSUFICIENTE_GRUP: banii SUNT in grup, dar membrului
+  // acesta nu-i sunt la indemana.
+  CHELTUIALA_INTERZISA:
+    "Nu ai dreptul sa scoti bani din soldul acestui grup. Cere-i creatorului grupului acest drept.",
+  LIMITA_GRUP_DEPASITA:
+    "Ai depasit plafonul lunar de cheltuiala stabilit pentru tine in acest grup.",
 };
 
 /**
@@ -112,6 +120,19 @@ function sumaBlocata(detalii: string | null | undefined) {
  * explicatia corecta, nu „incearca din nou".
  */
 function mesajCoreBanking(error: { message: string; details?: string | null }) {
+  // Plafonul lunar al grupului: cifra ramasa difera de la un membru la altul si
+  // de la o luna la alta, deci merita spusa. `details` o poarta ca ultima suma
+  // din propozitia scrisa de verifica_drept_cheltuiala_grup; fara potrivire se
+  // cade pe mesajul fix, niciodata pe textul brut al bazei.
+  if (error.message === "LIMITA_GRUP_DEPASITA") {
+    const gasit = /mai poti scoate ([0-9]+(?:[.,][0-9]{1,2})?) RON/i.exec(error.details ?? "");
+    const ramas = gasit ? Number(gasit[1].replace(",", ".")) : null;
+
+    return ramas !== null && Number.isFinite(ramas)
+      ? `Ti-a mai ramas ${formateazaSuma(ramas)} din plafonul lunar pentru acest grup.`
+      : MESAJE_CORE_BANKING.LIMITA_GRUP_DEPASITA;
+  }
+
   if (error.message?.startsWith("POPRIRE")) {
     const blocat = sumaBlocata(error.details);
 

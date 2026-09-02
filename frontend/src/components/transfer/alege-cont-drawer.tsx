@@ -40,10 +40,14 @@ function Rand({
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className="truncate text-[15px] text-ink">{sursa.nume}</span>
+            {/* Aceeasi pastila, doua motive diferite: un cont e inghetat de
+                banca, iar dintr-un grup nu ai tu dreptul sa scoti bani
+                (0053_drepturi_grup.sql). „Blocat" pe al doilea ar suna a
+                masura a bancii, cand de fapt e decizia creatorului grupului. */}
             {sursa.blocat ? (
               <span className="flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-ink-faint">
                 <Lock size={11} strokeWidth={1.75} aria-hidden />
-                Blocat
+                {sursa.tip === "grup" ? "Fără drept" : "Blocat"}
               </span>
             ) : null}
           </span>

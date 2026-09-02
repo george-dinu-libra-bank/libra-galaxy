@@ -73,7 +73,12 @@ export async function obtineConturiTransfer(): Promise<ContSursa[]> {
       sold: grup.sold,
       // Punga comuna a unui grup ramane in RON, oricare ar fi conturile membrilor.
       valuta: VALUTA_IMPLICITA,
-      blocat: false,
+      // Acelasi rol ca `blocatDeBanca` la conturi: un grup din care creatorul
+      // nu i-a dat omului dreptul sa cheltuiasca aparea aici ca oricare altul,
+      // iar refuzul (CHELTUIALA_INTERZISA, 0053_drepturi_grup.sql) venea abia
+      // dupa ce completase tot formularul. Plafonul lunar NU se ia in seama
+      // aici — depinde de suma, care inca nu e scrisa.
+      blocat: !grup.poateCheltui,
       estePrincipal: false,
       tip: "grup" as const,
     })),

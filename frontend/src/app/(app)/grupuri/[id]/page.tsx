@@ -9,10 +9,11 @@ import { InviteazaDinContrapartiDrawer } from "@/components/grupuri/invita-din-c
 import { ListaMembriGrup } from "@/components/grupuri/lista-membri-grup";
 import { PartajeazaGrupDrawer } from "@/components/grupuri/partajeaza-grup-drawer";
 import { StergeGrupDrawer } from "@/components/grupuri/sterge-grup-drawer";
+import { VizibilitateTranzactii } from "@/components/grupuri/vizibilitate-tranzactii";
 import { obtineConturiUtilizator } from "@/lib/data/conturi";
 import {
+  obtineDrepturileMembrilor,
   obtineGrup,
-  obtineMembriiGrupului,
   obtineMesajeleGrupului,
 } from "@/lib/data/grupuri";
 import { obtineContrapartiRecente } from "@/lib/data/tranzactii";
@@ -47,8 +48,10 @@ export default async function GrupPage({ params }: { params: Promise<{ id: strin
 
   const esteCreator = user?.id === grup.idCreator;
 
+  // Drepturile vin odata cu membrii, dintr-un singur RPC: si lista, si ce poate
+  // face fiecare cu soldul comun (0053_drepturi_grup.sql).
   const [membri, conturi, contraparti] = await Promise.all([
-    obtineMembriiGrupului(idGrup),
+    obtineDrepturileMembrilor(idGrup),
     obtineConturiUtilizator(),
     esteCreator ? obtineContrapartiRecente() : Promise.resolve([]),
   ]);
@@ -105,6 +108,15 @@ export default async function GrupPage({ params }: { params: Promise<{ id: strin
           esteCreator={esteCreator}
           idUserCurent={user?.id ?? ""}
         />
+
+        {/* Comutatorul e al creatorului; ceilalti nici nu afla ca exista, ca sa
+            nu se citeasca drept „mi se ascunde ceva" cand e pornit. */}
+        {esteCreator ? (
+          <VizibilitateTranzactii
+            idGrup={grup.id}
+            vizibile={grup.tranzactiiVizibile}
+          />
+        ) : null}
       </section>
 
       <ConversatieGrup idGrup={grup.id} mesaje={mesaje} />

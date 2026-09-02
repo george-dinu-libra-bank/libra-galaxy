@@ -136,7 +136,10 @@ Dicționarele sunt în [transfer.ts](frontend/src/lib/actions/transfer.ts),
 [services/plati.ts](frontend/src/lib/services/plati.ts) — patru locuri, fiindcă patru
 fluxuri diferite ating aceleași funcții de bani. Când adaugi un cod nou de eroare în
 Postgres, toate patru trebuie să îl cunoască, altfel unul dintre fluxuri arată „a apărut
-o eroare neașteptată" pentru o situație perfect normală.
+o eroare neașteptată" pentru o situație perfect normală. Codurile de drepturi de grup
+(`CHELTUIALA_INTERZISA`, `LIMITA_GRUP_DEPASITA`) sunt un exemplu proaspăt: plata dintr-un
+grup trece prin `actions/transfer.ts`, nu prin `actions/grupuri.ts`, deci acolo trebuie să
+fie traducerea care contează.
 
 ---
 
@@ -198,6 +201,22 @@ redevenit neplătită.
 Ordinea lor nu e întâmplătoare: Postgres rulează triggerele BEFORE în ordinea alfabetică a
 numelui, iar `...blocare` vine înaintea lui `...poprire`, ca un cont blocat să fie refuzat
 cu motivul lui adevărat.
+
+**A treia barieră nu e un trigger, și are un motiv.** Drepturile de cheltuială dintr-un
+grup ([0053](supabase/migrations/0053_drepturi_grup.sql)) nu depind doar de rândul atins,
+ci de **cine** cheltuiește — iar ambele funcții care scot bani din punga comună rulează și
+sub `service_role`, unde `auth.uid()` e null. Un trigger pe `groups` n-ar avea de unde să
+afle utilizatorul. Deci verificarea trăiește într-o funcție comună,
+`verifica_drept_cheltuiala_grup`, chemată explicit — **și** din `core_banking_groups`
+(direcția `plata`), **și** din `transfer_semnalat` (ramura de grup), în amândouă *după*
+`for update` pe rândul grupului, ca două plăți simultane să nu treacă peste același rest de
+plafon. Cine adaugă un al treilea drum prin care scade `groups.sold` trebuie să o cheme și
+el: aici compilatorul nu ajută, spre deosebire de un trigger.
+
+Plafonul e lunar și se numără din `tranzactii` (`id_group_send` + `id_user_send`, luna
+curentă, fără `anulata`), nu dintr-un contor ținut de mână — un contor s-ar putea
+desincroniza de istoric, iar istoricul e oricum sursa de adevăr. Rândurile `flagged` **se**
+numără: banii au plecat deja din grup, chiar dacă așteaptă un administrator.
 
 **Funcțiile de bani** (`core_banking`, `core_banking_groups`, `schimba_valuta_suma`, plata
 cu cardul, operațiunile de credit) fac totul într-o singură tranzacție, cu `for update` pe
@@ -621,7 +640,7 @@ Un rând per fișier sursă, cu descrierea pe care și-o dă el însuși.
 | [(app)/credite/page.tsx](frontend/src/app/%28app%29/credite/page.tsx) | _(fără descriere proprie în fișier)_ |
 | [(app)/credite/simulare/page.tsx](frontend/src/app/%28app%29/credite/simulare/page.tsx) | _(fără descriere proprie în fișier)_ |
 | [(app)/dashboard/page.tsx](frontend/src/app/%28app%29/dashboard/page.tsx) | Stilul unei dale din grila — impartit intre linkuri si declansatorul de drawer. |
-| [(app)/grupuri/[id]/page.tsx](frontend/src/app/%28app%29/grupuri/[id]/page.tsx) | Un grup: soldul comun, membrii si conversatia. |
+| [(app)/grupuri/[id]/page.tsx](frontend/src/app/%28app%29/grupuri/[id]/page.tsx) | Un grup: soldul comun, membrii cu drepturile lor si conversatia. |
 | [(app)/grupuri/page.tsx](frontend/src/app/%28app%29/grupuri/page.tsx) | Lista grupurilor din care faci parte. |
 | [(app)/istoric/page.tsx](frontend/src/app/%28app%29/istoric/page.tsx) | _(fără descriere proprie în fișier)_ |
 | [(app)/layout.tsx](frontend/src/app/%28app%29/layout.tsx) | Cadrul comun al ecranelor autentificate (dashboard, istoric, transfer, carduri, beneficiari, setari): verifica sesiunea o singura data, monteaza navigarea de jos si ascultatorul de realtime. |
@@ -710,10 +729,12 @@ Un rând per fișier sursă, cu descrierea pe care și-o dă el însuși.
 | [grupuri/conversatie-grup.tsx](frontend/src/components/grupuri/conversatie-grup.tsx) | Conversatia din grup: mesajele existente si campul de scris. |
 | [grupuri/creeaza-grup-drawer.tsx](frontend/src/components/grupuri/creeaza-grup-drawer.tsx) | Sugestii uzuale, ca sa nu ramana campul gol la prima deschidere. |
 | [grupuri/depune-in-grup-drawer.tsx](frontend/src/components/grupuri/depune-in-grup-drawer.tsx) | Punerea de bani in soldul comun al grupului: din ce cont si cat. |
+| [grupuri/drepturi-membru-drawer.tsx](frontend/src/components/grupuri/drepturi-membru-drawer.tsx) | Drepturile unui membru asupra soldului comun, asa cum le vede creatorul: daca poate scoate bani si care ii e plafonul lunar. |
 | [grupuri/iesi-din-grup-drawer.tsx](frontend/src/components/grupuri/iesi-din-grup-drawer.tsx) | Iesirea din grup, cu confirmare. |
 | [grupuri/intra-in-grup-drawer.tsx](frontend/src/components/grupuri/intra-in-grup-drawer.tsx) | Intrarea intr-un grup cu cod de acces. |
 | [grupuri/lista-grupuri.tsx](frontend/src/components/grupuri/lista-grupuri.tsx) | Grupurile utilizatorului, cu soldul comun si numarul de membri. |
 | [grupuri/partajeaza-grup-drawer.tsx](frontend/src/components/grupuri/partajeaza-grup-drawer.tsx) | Invitatia intr-un grup: codul de acces si linkul care il contine. |
+| [grupuri/vizibilitate-tranzactii.tsx](frontend/src/components/grupuri/vizibilitate-tranzactii.tsx) | Comutatorul creatorului pentru vizibilitatea miscarilor de bani in conversatia grupului. |
 | [istoric/filtre-drawer.tsx](frontend/src/components/istoric/filtre-drawer.tsx) | _(fără descriere proprie în fișier)_ |
 | [istoric/lista-tranzactii.tsx](frontend/src/components/istoric/lista-tranzactii.tsx) | _(fără descriere proprie în fișier)_ |
 | [plati/confirma-plata-drawer.tsx](frontend/src/components/plati/confirma-plata-drawer.tsx) | 92 -> "1:32" |
@@ -762,7 +783,7 @@ Un rând per fișier sursă, cu descrierea pe care și-o dă el însuși.
 | [conturi.ts](frontend/src/lib/actions/conturi.ts) | Cate conturi poate avea un om — destul pentru orice folosire reala. |
 | [credite.ts](frontend/src/lib/actions/credite.ts) | Mutatiile de creditare. |
 | [dispozitive.ts](frontend/src/lib/actions/dispozitive.ts) | Singura actiune din zona de dispozitive apelabila din browser. |
-| [grupuri.ts](frontend/src/lib/actions/grupuri.ts) | Mesajele pentru utilizator, dupa codul ridicat de functiile din 0008_grupuri.sql: codul ajunge in `message`, textul lung in `details`. |
+| [grupuri.ts](frontend/src/lib/actions/grupuri.ts) | Mesajele pentru utilizator, dupa codul ridicat de functiile din 0008_grupuri.sql: codul ajunge in `message`, textul lung in `details`. Tot aici, drepturile membrilor si vizibilitatea tranzactiilor (0053). |
 | [identitate.ts](frontend/src/lib/actions/identitate.ts) | Verificarea identitatii (OCR buletin + comparare fete cu DeepFace) traieste intr-un serviciu FastAPI separat — vezi ARCHITECTURE.md §3.4 si backend/. |
 | [inchidere-cont.ts](frontend/src/lib/actions/inchidere-cont.ts) | Cererea clientului de a-si inchide un CONT BANCAR (nu relatia cu banca). |
 | [notificari.ts](frontend/src/lib/actions/notificari.ts) | Marcheaza o notificare drept citita. |
@@ -788,7 +809,7 @@ Un rând per fișier sursă, cu descrierea pe care și-o dă el însuși.
 | [credite.ts](frontend/src/lib/data/credite.ts) | Citirile de creditare. |
 | [curs-valutar.ts](frontend/src/lib/data/curs-valutar.ts) | Aducerea cursurilor valutare si scrierea lor in public.curs_valutar (0013_schimb_valutar.sql). |
 | [dispozitive.ts](frontend/src/lib/data/dispozitive.ts) | Evidenta dispozitivelor de pe care s-a intrat in cont. |
-| [grupuri.ts](frontend/src/lib/data/grupuri.ts) | Cati oameni sunt in grup, inclusiv utilizatorul curent. |
+| [grupuri.ts](frontend/src/lib/data/grupuri.ts) | Grupul, membrii lui si drepturile fiecaruia asupra soldului comun. |
 | [notificari.ts](frontend/src/lib/data/notificari.ts) | Mesajele bancii pentru clientul curent. |
 | [plati.ts](frontend/src/lib/data/plati.ts) | Platile proprii care inca asteapta un raspuns, cea mai veche prima. |
 | [popriri.ts](frontend/src/lib/data/popriri.ts) | Poprirea, asa cum o vede clientul. |
@@ -897,6 +918,7 @@ Un rând per fișier sursă, cu descrierea pe care și-o dă el însuși.
 | [0041_decizia_bancii_trece_de_trigger.sql](supabase/migrations/0041_decizia_bancii_trece_de_trigger.sql) | 0041 — Deciziile bancii treceau de politici, dar se opreau in propriul trigger CAUZA, gasita ruland fluxul cap-coada pe baza reala, nu citind codul: ERROR: DECIZIE_REZERVATA_BANCII |
 | [0042_notificari_tip_valid.sql](supabase/migrations/0042_notificari_tip_valid.sql) | 0042 — Notificarile deciziilor foloseau un `tip` care nu exista CAUZA, gasita tot ruland fluxul cap-coada, nu citind codul: ERROR: 23514 new row for relation "notificari" violates check constraint |
 | [0047_poprire.sql](supabase/migrations/0047_poprire.sql) | 0047 — Poprirea: se indisponibilizeaza o SUMA, nu tot contul 0030 a dat bancii un intrerupator: `blocat_administrativ`, pornit sau oprit, si din contul blocat nu mai iese niciun ban. |
+| [0053_drepturi_grup.sql](supabase/migrations/0053_drepturi_grup.sql) | 0053 — drepturile membrilor intr-un grup, decise de creator: daca un membru poate scoate bani din soldul comun, plafonul lui lunar, si daca miscarile de bani se vad intre membri. |
 | [0048_poprire_stornare.sql](supabase/migrations/0048_poprire_stornare.sql) | 0048 — Stornarea unei incasari din poprire: banii virati se intorc 0047 avea o gaura de operare, scrisa chiar in comentariile ei: „banii deja virati NU se intorc automat — au plecat catre creditor". |
 
 ### Teste

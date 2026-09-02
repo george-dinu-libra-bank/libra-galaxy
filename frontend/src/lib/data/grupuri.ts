@@ -7,6 +7,8 @@ export type GrupSumar = {
   creatLa: string;
   /** Cati oameni sunt in grup, inclusiv utilizatorul curent. */
   membri: number;
+  /** Daca utilizatorul curent are voie sa scoata bani din soldul comun. */
+  poateCheltui: boolean;
 };
 
 export type Grup = {
@@ -16,6 +18,8 @@ export type Grup = {
   tokenAcces: string;
   creatLa: string;
   idCreator: string;
+  /** Daca miscarile de bani ale unui membru se vad si de ceilalti. */
+  tranzactiiVizibile: boolean;
 };
 
 export type MembruGrup = {
@@ -23,6 +27,20 @@ export type MembruGrup = {
   nume: string;
   avatarUrl: string | null;
   creatLa: string;
+};
+
+/**
+ * Un membru impreuna cu drepturile lui asupra pungii comune
+ * (0053_drepturi_grup.sql). O vad toti membrii, nu doar creatorul: intr-un sold
+ * comun e corect sa stii pe ce reguli esti, fara sa incerci o plata ca sa afli.
+ */
+export type MembruCuDrepturi = MembruGrup & {
+  esteCreator: boolean;
+  poateCheltui: boolean;
+  /** Plafonul lunar in RON; null inseamna fara plafon, nu zero. */
+  limitaLunara: number | null;
+  /** Cat a scos din grup de la 1 ale lunii. */
+  cheltuitLuna: number;
 };
 
 /**
@@ -74,7 +92,7 @@ export async function obtineGrupurileMele(): Promise<GrupSumar[]> {
 
   const { data, error } = await supabase
     .from("groups_participants")
-    .select("id_group, creat_la, groups ( id, nume, sold, creat_la )")
+    .select("id_group, creat_la, poate_cheltui, groups ( id, nume, sold, creat_la )")
     .eq("id_user", user.id)
     .order("creat_la", { ascending: false });
 
@@ -116,6 +134,10 @@ export async function obtineGrupurileMele(): Promise<GrupSumar[]> {
         sold: Number(grup.sold),
         creatLa: grup.creat_la,
         membri: membriPeGrup.get(grup.id) ?? 1,
+        // Randul propriu de participant, deci dreptul utilizatorului curent.
+        // Ecranul de transfer se foloseste de el ca sa nu ofere ca sursa un
+        // grup din care omul oricum n-ar putea plati (0053_drepturi_grup.sql).
+        poateCheltui: (rand.poate_cheltui as boolean | null) ?? true,
       },
     ];
   });
@@ -129,7 +151,7 @@ export async function obtineGrup(id: number): Promise<Grup | null> {
 
   const { data, error } = await supabase
     .from("groups")
-    .select("id, nume, sold, token_acces, creat_la, id_creator")
+    .select("id, nume, sold, token_acces, creat_la, id_creator, tranzactii_vizibile")
     .eq("id", id)
     .maybeSingle();
 
@@ -143,20 +165,25 @@ export async function obtineGrup(id: number): Promise<Grup | null> {
     tokenAcces: data.token_acces as string,
     creatLa: data.creat_la as string,
     idCreator: data.id_creator as string,
+    tranzactiiVizibile: (data.tranzactii_vizibile as boolean | null) ?? true,
   };
 }
 
 /**
- * Membrii unui grup, cu nume si poza.
+ * Membrii grupului impreuna cu drepturile lor asupra soldului comun.
  *
- * Trece prin `public.membri_grup` pentru ca politica de pe profiles lasa pe
- * fiecare sa-si vada doar propriul rand — functia deschide exact numele si
- * avatarul colegilor de grup, nimic altceva (0008_grupuri.sql).
+ * Trece prin `public.drepturi_membri_grup` (SECURITY DEFINER), din acelasi
+ * motiv ca `membri_grup`: politica de pe profiles lasa pe fiecare sa-si vada
+ * doar propriul rand (0053_drepturi_grup.sql).
  */
-export async function obtineMembriiGrupului(idGrup: number): Promise<MembruGrup[]> {
+export async function obtineDrepturileMembrilor(
+  idGrup: number,
+): Promise<MembruCuDrepturi[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase.rpc("membri_grup", { p_id_group: idGrup });
+  const { data, error } = await supabase.rpc("drepturi_membri_grup", {
+    p_id_group: idGrup,
+  });
 
   if (error) throw error;
 
@@ -165,6 +192,11 @@ export async function obtineMembriiGrupului(idGrup: number): Promise<MembruGrup[
     nume: membru.nume as string,
     avatarUrl: (membru.avatar_url as string | null) ?? null,
     creatLa: membru.creat_la as string,
+    esteCreator: membru.este_creator as boolean,
+    poateCheltui: membru.poate_cheltui as boolean,
+    limitaLunara:
+      membru.limita_lunara == null ? null : Number(membru.limita_lunara),
+    cheltuitLuna: Number(membru.cheltuit_luna ?? 0),
   }));
 }
 

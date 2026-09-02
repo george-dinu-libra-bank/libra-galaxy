@@ -15,6 +15,7 @@ export type RezultatPreviziune = {
 };
 export type RezultatMesaj = { eroare?: string };
 export type RezultatInvitatie = { eroare?: string };
+export type RezultatDrepturi = { eroare?: string };
 
 /**
  * Mesajele pentru utilizator, dupa codul ridicat de functiile din
@@ -51,6 +52,18 @@ const MESAJE_GRUPURI: Record<string, string> = {
   SOLD_NEZERO: "Golește soldul grupului înainte de a-l șterge.",
   NU_TE_POTI_ELIMINA: "Folosește „Ieși din grup” ca să pleci singur.",
   NU_ESTE_MEMBRU: "Persoana nu face parte din grup.",
+
+  // Ridicate de verifica_drept_cheltuiala_grup si de functiile de drepturi
+  // (0053_drepturi_grup.sql). CHELTUIALA_INTERZISA si LIMITA_GRUP_DEPASITA nu
+  // se traduc la fel: prima spune ca n-ai voie deloc, a doua ca ai voie, dar
+  // ai consumat plafonul lunii — cifra ramasa se ia din `details`.
+  CHELTUIALA_INTERZISA:
+    "Nu ai dreptul să scoți bani din soldul acestui grup. Cere-i creatorului grupului acest drept.",
+  LIMITA_GRUP_DEPASITA: "Ai depășit plafonul lunar de cheltuială stabilit pentru tine în acest grup.",
+  NU_ITI_POTI_SETA_DREPTURILE: "Nu îți poți limita propriile drepturi în grupul pe care l-ai creat.",
+  LIMITA_INVALIDA:
+    "Plafonul lunar trebuie să fie mai mare decât 0. Lasă câmpul gol pentru „fără plafon”.",
+  DREPT_INVALID: "Nu am putut salva drepturile. Încearcă din nou.",
 };
 
 
@@ -369,6 +382,94 @@ export async function iesiDinGrup(idGrup: number): Promise<RezultatMesaj> {
   }
 
   revalidatePath("/grupuri");
+
+  return {};
+}
+
+/**
+ * Creatorul stabileste ce poate face un membru cu soldul comun: daca are voie
+ * sa scoata bani si, daca da, cat in total intr-o luna calendaristica.
+ *
+ * `limitaLunara: null` inseamna „fara plafon", nu zero — la fel ca
+ * `carduri.limita_zilnica`. Bariera reala e in
+ * seteaza_drepturi_membru_grup (0053_drepturi_grup.sql), care refuza pe
+ * oricine nu e creatorul; aici raman validarile de formular.
+ */
+export async function seteazaDrepturiMembru(input: {
+  idGrup: number;
+  idMembru: string;
+  poateCheltui: boolean;
+  limitaLunara: number | null;
+}): Promise<RezultatDrepturi> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { eroare: "Trebuie sa fii autentificat." };
+
+  const limita =
+    input.limitaLunara == null ? null : Number(input.limitaLunara.toFixed(2));
+
+  if (limita !== null && (!Number.isFinite(limita) || limita <= 0)) {
+    return { eroare: "Plafonul lunar trebuie să fie mai mare decât 0." };
+  }
+
+  const { error } = await supabase.rpc("seteaza_drepturi_membru_grup", {
+    p_id_group: input.idGrup,
+    p_id_membru: input.idMembru,
+    p_poate_cheltui: input.poateCheltui,
+    p_limita_lunara: input.poateCheltui ? limita : null,
+  });
+
+  if (error) {
+    if (!MESAJE_GRUPURI[error.message]) console.error("ERROR seteazaDrepturiMembru:", error);
+    return { eroare: mesajPentru(error.message, "Nu am putut salva drepturile. Încearcă din nou.") };
+  }
+
+  // Dreptul retras schimba si lista de surse din ecranul de transfer, nu doar
+  // pagina grupului.
+  revalidatePath(`/grupuri/${input.idGrup}`);
+  revalidatePath("/transfer");
+
+  return {};
+}
+
+/**
+ * Creatorul porneste sau opreste vizibilitatea miscarilor de bani intre membri.
+ *
+ * Oprit, fiecare isi vede doar propriile incasari si plati in conversatie, iar
+ * creatorul le vede in continuare pe toate — filtrarea o face politica de
+ * select de pe group_messages, nu codul de aici (0053_drepturi_grup.sql).
+ */
+export async function seteazaVizibilitateaTranzactiilor(
+  idGrup: number,
+  vizibile: boolean,
+): Promise<RezultatDrepturi> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { eroare: "Trebuie sa fii autentificat." };
+
+  const { error } = await supabase.rpc("seteaza_vizibilitate_tranzactii_grup", {
+    p_id_group: idGrup,
+    p_vizibile: vizibile,
+  });
+
+  if (error) {
+    if (!MESAJE_GRUPURI[error.message]) {
+      console.error("ERROR seteazaVizibilitateaTranzactiilor:", error);
+    }
+    return {
+      eroare: mesajPentru(error.message, "Nu am putut schimba vizibilitatea. Încearcă din nou."),
+    };
+  }
+
+  revalidatePath(`/grupuri/${idGrup}`);
 
   return {};
 }
