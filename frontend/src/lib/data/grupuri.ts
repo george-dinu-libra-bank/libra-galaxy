@@ -1,4 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
+import {
+  emblemaGrupValida,
+  fundalGrupValid,
+  temaGrupValida,
+  type EmblemaGrup,
+  type FundalGrup,
+  type TemaGrup,
+} from "@/lib/tema-grup";
 
 export type GrupSumar = {
   id: number;
@@ -9,6 +17,9 @@ export type GrupSumar = {
   membri: number;
   /** Daca utilizatorul curent are voie sa scoata bani din soldul comun. */
   poateCheltui: boolean;
+  /** Aspectul ales de membri (0054_tema_grup.sql), nu o preferinta personala. */
+  tema: TemaGrup;
+  emblema: EmblemaGrup;
 };
 
 export type Grup = {
@@ -20,6 +31,14 @@ export type Grup = {
   idCreator: string;
   /** Daca miscarile de bani ale unui membru se vad si de ceilalti. */
   tranzactiiVizibile: boolean;
+  /** Aspectul ales de membri (0054_tema_grup.sql), nu o preferinta personala. */
+  tema: TemaGrup;
+  emblema: EmblemaGrup;
+  /**
+   * Modelul de fundal al paginii. Nu apare in `GrupSumar`: e un tapet pe tot
+   * ecranul, deci n-are ce cauta pe un rand din lista.
+   */
+  fundal: FundalGrup;
 };
 
 export type MembruGrup = {
@@ -92,7 +111,9 @@ export async function obtineGrupurileMele(): Promise<GrupSumar[]> {
 
   const { data, error } = await supabase
     .from("groups_participants")
-    .select("id_group, creat_la, poate_cheltui, groups ( id, nume, sold, creat_la )")
+    .select(
+      "id_group, creat_la, poate_cheltui, groups ( id, nume, sold, creat_la, tema, emblema )",
+    )
     .eq("id_user", user.id)
     .order("creat_la", { ascending: false });
 
@@ -138,12 +159,21 @@ export async function obtineGrupurileMele(): Promise<GrupSumar[]> {
         // Ecranul de transfer se foloseste de el ca sa nu ofere ca sursa un
         // grup din care omul oricum n-ar putea plati (0053_drepturi_grup.sql).
         poateCheltui: (rand.poate_cheltui as boolean | null) ?? true,
+        tema: temaGrupValida(grup.tema),
+        emblema: emblemaGrupValida(grup.emblema),
       },
     ];
   });
 }
 
-type GrupBrut = { id: number; nume: string; sold: number | string; creat_la: string };
+type GrupBrut = {
+  id: number;
+  nume: string;
+  sold: number | string;
+  creat_la: string;
+  tema: string | null;
+  emblema: string | null;
+};
 
 /** Un grup dupa id. Null daca nu exista sau daca utilizatorul nu e in el (RLS). */
 export async function obtineGrup(id: number): Promise<Grup | null> {
@@ -151,7 +181,9 @@ export async function obtineGrup(id: number): Promise<Grup | null> {
 
   const { data, error } = await supabase
     .from("groups")
-    .select("id, nume, sold, token_acces, creat_la, id_creator, tranzactii_vizibile")
+    .select(
+      "id, nume, sold, token_acces, creat_la, id_creator, tranzactii_vizibile, tema, emblema, fundal",
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -166,6 +198,9 @@ export async function obtineGrup(id: number): Promise<Grup | null> {
     creatLa: data.creat_la as string,
     idCreator: data.id_creator as string,
     tranzactiiVizibile: (data.tranzactii_vizibile as boolean | null) ?? true,
+    tema: temaGrupValida(data.tema as string | null),
+    emblema: emblemaGrupValida(data.emblema as string | null),
+    fundal: fundalGrupValid(data.fundal as string | null),
   };
 }
 

@@ -1,0 +1,56 @@
+# Varianta de productie a stivei: frontend-ul ruleaza build-ul Next
+# ("npm run build" in imagine, apoi serverul standalone), nu "next dev".
+#
+# Fisier complet, nu override peste docker-compose.yml, si asta e intentionat:
+# la merge-ul a doua fisiere Compose, "volumes" se concateneaza, nu se
+# inlocuieste. Bind mount-ul ./frontend:/app din docker-compose.yml ar
+# supravietui oricarui override si ar acoperi build-ul din imagine cu codul
+# sursa — adica exact ce incercam sa evitam aici.
+#
+# Pornire:  .\start-prod.ps1
+name: libra-galaxy
+
+services:
+  frontend:
+    container_name: libra-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      # NEXT_PUBLIC_* se inlineaza in bundle-ul de client la BUILD, nu la
+      # runtime: trebuie "args", nu "environment". Puse in environment, ar
+      # ajunge "undefined" in browser, oricat de corect ar fi .env-ul.
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./.env
+    # Fara bind mount pe ./frontend si fara volumele anonime node_modules/.next:
+    # containerul trebuie sa ruleze ce s-a construit, nu ce e pe disc. Fara
+    # WATCHPACK_POLLING/CHOKIDAR_USEPOLLING — nu exista watch de alimentat.
+    environment:
+      # Citit la runtime de server (frontend/src/lib/env.ts), deci ramane aici.
+      - BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL:-http://backend:8000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - backend
+
+  backend:
+    container_name: libra-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    # Ramane doar montarea bazei de cunostinte: e date, nu cod, si backend-ul
+    # o citeste la runtime prin LIBRA_KNOWLEDGE_DIR.
+    volumes:
+      - ./galaxy-bank-knowledge:/galaxy-bank-knowledge:ro
+    env_file:
+      - ./.env
+    environment:
+      - LIBRA_KNOWLEDGE_DIR=/galaxy-bank-knowledge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

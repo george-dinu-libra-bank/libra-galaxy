@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ChevronRight, Users } from "lucide-react";
 import type { GrupSumar } from "@/lib/data/grupuri";
-import { formateazaSuma } from "@/lib/utils";
+import { CLASA_TEMA_GRUP, EMBLEME_GRUP } from "@/lib/tema-grup";
+import { cn, formateazaSuma } from "@/lib/utils";
 
 /** Grupurile utilizatorului, cu soldul comun si numarul de membri. */
 export function ListaGrupuri({ grupuri }: { grupuri: GrupSumar[] }) {
@@ -23,15 +24,25 @@ export function ListaGrupuri({ grupuri }: { grupuri: GrupSumar[] }) {
 
   return (
     <div className="mt-6 flex flex-col gap-3">
-      {grupuri.map((grup, i) => (
+      {grupuri.map((grup, i) => {
+        // Fiecare rand isi poarta propria tema (0054_tema_grup.sql): cercul,
+        // emblema si inelul de hover il fac de recunoscut dintr-o privire, fara
+        // sa citesti numele. Fundalul randului ramane `surface` — culoarea e un
+        // semn, nu o suprafata.
+        const Emblema = EMBLEME_GRUP[grup.emblema];
+
+        return (
         <Link
           key={grup.id}
           href={`/grupuri/${grup.id}`}
-          className="animate-fade-up flex items-center gap-3 rounded-card bg-surface p-4 shadow-sm transition-[transform,box-shadow] duration-[180ms] ease-soft hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25"
+          className={cn(
+            "animate-fade-up flex items-center gap-3 rounded-card bg-surface p-4 shadow-sm transition-[transform,box-shadow] duration-[180ms] ease-soft hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/25",
+            CLASA_TEMA_GRUP[grup.tema],
+          )}
           style={{ animationDelay: `${i * 40}ms` }}
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50">
-            <Users size={18} strokeWidth={1.75} aria-hidden className="text-primary-600" />
+            <Emblema size={18} strokeWidth={1.75} aria-hidden className="text-primary-600" />
           </span>
 
           <div className="min-w-0 flex-1">
@@ -47,7 +58,8 @@ export function ListaGrupuri({ grupuri }: { grupuri: GrupSumar[] }) {
 
           <ChevronRight size={18} strokeWidth={1.75} aria-hidden className="shrink-0 text-ink-faint" />
         </Link>
-      ))}
+        );
+      })}
     </div>
   );
 }

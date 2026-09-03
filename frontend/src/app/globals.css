@@ -25,6 +25,16 @@
   --color-ink-soft: #4a5773;
   --color-ink-faint: #8a96ae;
 
+  /* Aceleasi trei suprafete, dar ca punct de plecare pentru nuantare (vezi
+     .tema-grup). O proprietate custom nu se poate referi la ea insasi
+     (`--color-surface: color-mix(..., var(--color-surface))` e un ciclu), deci
+     avem nevoie de o a doua variabila cu aceeasi valoare. Se schimba odata cu
+     tema, la fel ca originalele — altfel un grup din tema intunecata si-ar
+     amesteca accentul peste alb. */
+  --surface-baza: #ffffff;
+  --muted-baza: #f7f9fd;
+  --line-baza: #e3e9f2;
+
   /* Accente */
   --color-success: #12b981;
   --color-danger: #f0435f;
@@ -153,6 +163,10 @@
   --color-ink-soft: #a9b3d1;
   --color-ink-faint: #6d78a0;
 
+  --surface-baza: #121a2e;
+  --muted-baza: #232f52;
+  --line-baza: #232e4d;
+
   --color-success: #22c58f;
   --color-danger: #f0546e;
   --color-warning: #f5b942;
@@ -165,6 +179,382 @@
   --shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.55);
   --shadow-lg: 0 24px 48px -16px rgba(0, 0, 0, 0.6);
   --shadow-btn: 0 8px 20px -8px rgba(76, 134, 245, 0.45);
+}
+
+/* =============================================================================
+   Temele de grup — vezi lib/tema-grup.ts si migratia 0054_tema_grup.sql.
+
+   Acelasi mecanism ca .dark de mai sus, aplicat pe alt scope: clasa se pune pe
+   containerul unui grup (pagina lui, randul lui din lista, drawerele lui) si
+   rescrie rampa primara doar acolo. Clasele Tailwind raman aceleasi peste tot in
+   cod — bg-primary-600, text-primary-700, hero-gradient, focus-visible:ring —
+   deci nu exista nicio componenta care sa stie ce culoare are grupul. De aceea
+   nici nu e nevoie de o coloana separata de „fundal": .hero-gradient e construit
+   din 500/600/700, deci cardul de sold al grupului se recoloreaza singur.
+
+   `implicit` nu are clasa: e chiar rampa din @theme.
+
+   --color-halo urmeaza acelasi 300 ca rampa, ca inelul de hover sa nu ramana
+   albastru pe un grup verde. In tema intunecata .dark il face auriu, dar
+   proprietatile custom se mostenesc de la elementul cel mai apropiat, deci
+   inauntrul grupului castiga valoarea de aici.
+
+   Fiecare rampa a fost verificata pe perechile pe care le deseneaza efectiv
+   aplicatia (alb pe 600 si 700, alb pe 500 pentru soldul mare de pe hero, 700 pe
+   50, 600 pe 50, 600 pe alb, 900 pe 100) si trece pragurile din DESIGN.md 2.5 —
+   4.5:1 pentru text normal, 3:1 pentru text mare si iconite — la valori egale
+   sau mai bune decat albastrul pe care il inlocuieste. Verdele, chihlimbarul si
+   portocaliul sunt decalate fata de paletele uzuale: `emerald-600` sau
+   `amber-600` NU trec cu text alb, asa ca slotul 600 ia o valoare mai inchisa,
+   iar restul rampei se decaleaza dupa el. Aceeasi problema ca la cardul `gold`,
+   vezi lib/stil-card.ts.
+   ========================================================================== */
+/* Marcajul comun al oricarui grup — pus alaturi de clasa de culoare, si pentru
+   `implicit` (unde e singurul). Aici NU se schimba rampa, ci suprafetele: si
+   cardurile din grup se aseaza in culoarea lui, nu doar accentele de pe ele.
+
+   Prinde dintr-o singura regula lista de membri, panoul de conversatie, campul
+   de scris si drawerele grupului — toate sunt `bg-surface` / `bg-muted` /
+   `border-line`, deci nu e nevoie sa umblam prin ele.
+
+   Procentele NU se aleg dupa contrast — acolo e loc berechet (`ink` pe
+   `surface` ramane la 13-15:1 chiar si la 16%). Se aleg dupa doua diferente
+   perceptuale, masurate in Lab pe toate cele 8 culori si in ambele teme:
+
+     - cardul fata de fundalul paginii — altfel nu se mai vede ca e card;
+     - bula straina (`muted`) fata de cardul pe care sta — la 9% peste un
+       `surface` de 12% dadea dE 0.77, adica bula disparea in card.
+
+   De aici 12 / 22 / 40. Primele valori incercate (4 / 9 / 14) erau corecte la
+   contrast dar invizibile: dE 2.1 fata de cardul alb de dinainte, sub pragul la
+   care ochiul vede ceva. Limita de sus o da numele autorului de pe bula
+   (`ink-soft` pe `muted`): la 22% e 4.97 in tema deschisa si 4.68 in cea
+   intunecata, iar la 28% cade sub 4.5. `line` n-are prag — nu poarta text. */
+.tema-grup {
+  --color-surface: color-mix(in srgb, var(--color-primary-500) 12%, var(--surface-baza));
+  --color-muted: color-mix(in srgb, var(--color-primary-500) 22%, var(--muted-baza));
+  --color-line: color-mix(in srgb, var(--color-primary-500) 40%, var(--line-baza));
+}
+
+.tema-grup-smarald {
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d3f8e6;
+  --color-primary-200: #a7f0cf;
+  --color-primary-300: #66dcae;
+  --color-primary-400: #21bd8a;
+  --color-primary-500: #0d9f74;
+  --color-primary-600: #0a7f5d;
+  --color-primary-700: #08674c;
+  --color-primary-800: #06503b;
+  --color-primary-900: #04382a;
+  --color-halo: #66dcae;
+}
+
+.tema-grup-turcoaz {
+  --color-primary-50: #ecfbfe;
+  --color-primary-100: #d0f3fa;
+  --color-primary-200: #a4e6f4;
+  --color-primary-300: #5fcde6;
+  --color-primary-400: #22aacb;
+  --color-primary-500: #0d8fae;
+  --color-primary-600: #0a7390;
+  --color-primary-700: #095d75;
+  --color-primary-800: #07495c;
+  --color-primary-900: #053340;
+  --color-halo: #5fcde6;
+}
+
+.tema-grup-ametist {
+  --color-primary-50: #f5f2ff;
+  --color-primary-100: #e9e2fe;
+  --color-primary-200: #d6c9fd;
+  --color-primary-300: #b69ffa;
+  --color-primary-400: #9573f4;
+  --color-primary-500: #7c50ea;
+  --color-primary-600: #6733d4;
+  --color-primary-700: #5427ad;
+  --color-primary-800: #421f88;
+  --color-primary-900: #2f1662;
+  --color-halo: #b69ffa;
+}
+
+.tema-grup-zmeura {
+  --color-primary-50: #fff0f4;
+  --color-primary-100: #ffdce6;
+  --color-primary-200: #ffbccf;
+  --color-primary-300: #fb87a8;
+  --color-primary-400: #f2507f;
+  --color-primary-500: #e02c60;
+  --color-primary-600: #c01449;
+  --color-primary-700: #9e0f3c;
+  --color-primary-800: #7c0c2f;
+  --color-primary-900: #580822;
+  --color-halo: #fb87a8;
+}
+
+.tema-grup-chihlimbar {
+  --color-primary-50: #fefaec;
+  --color-primary-100: #fdf0cd;
+  --color-primary-200: #fadf9c;
+  --color-primary-300: #f2c352;
+  --color-primary-400: #d9a012;
+  --color-primary-500: #b8850a;
+  --color-primary-600: #956b07;
+  --color-primary-700: #7a5706;
+  --color-primary-800: #5f4404;
+  --color-primary-900: #432f03;
+  --color-halo: #f2c352;
+}
+
+.tema-grup-scortisoara {
+  --color-primary-50: #fef5ef;
+  --color-primary-100: #fce6d7;
+  --color-primary-200: #f8cbaf;
+  --color-primary-300: #f0a377;
+  --color-primary-400: #e07440;
+  --color-primary-500: #cb5620;
+  --color-primary-600: #a84317;
+  --color-primary-700: #8a3713;
+  --color-primary-800: #6c2b0f;
+  --color-primary-900: #4c1e0a;
+  --color-halo: #f0a377;
+}
+
+.tema-grup-grafit {
+  --color-primary-50: #f3f5f8;
+  --color-primary-100: #e5e8ee;
+  --color-primary-200: #ccd2dd;
+  --color-primary-300: #a3adc0;
+  --color-primary-400: #7a86a0;
+  --color-primary-500: #5f6b85;
+  --color-primary-600: #4a5470;
+  --color-primary-700: #3c455c;
+  --color-primary-800: #2e3647;
+  --color-primary-900: #1f2532;
+  --color-halo: #a3adc0;
+}
+
+/* =============================================================================
+   Fundalurile de grup — vezi lib/tema-grup.ts si migratia 0054_tema_grup.sql.
+
+   Modelul se deseneaza din rampa de accent a grupului, prin `color-mix` peste
+   `--color-primary-*`. Sunt deci doua axe independente: 8 modele × 8 culori =
+   64 de fundaluri din 8 clase. De aici si alegerea de a NU folosi imagini —
+   un JPEG n-ar urma culoarea aleasa, ar cere doua variante (deschis/intunecat)
+   si n-ar avea cine sa-i garanteze contrastul cu textul de deasupra.
+
+   Culoarea de baza e `--color-bg`, deci stratul e opac si acopera cerul
+   instelat al aplicatiei. `implicit` nu are clasa si nu se randeaza deloc:
+   atunci se vede chiar .fundal-spatial.
+
+   Modelul si stratul sunt clase SEPARATE (`.fundal-grup-<model>` vs
+   `.fundal-grup-strat`) fiindca aceleasi modele se deseneaza si in miniaturile
+   din selector, unde nu au voie sa fie `position: fixed`.
+   ========================================================================== */
+.fundal-grup-strat {
+  position: fixed;
+  inset: 0;
+  /* Peste cerul aplicatiei (z-index -10), sub tot continutul. */
+  z-index: -9;
+  pointer-events: none;
+}
+
+.fundal-grup-simplu,
+.fundal-grup-buline,
+.fundal-grup-grila,
+.fundal-grup-romburi,
+.fundal-grup-diagonale,
+.fundal-grup-valuri,
+.fundal-grup-stropi,
+.fundal-grup-zigzag,
+.fundal-grup-confetti,
+.fundal-grup-cercuri,
+.fundal-grup-inimioare,
+.fundal-grup-nori,
+.fundal-grup-stele,
+.fundal-grup-frunze,
+.fundal-grup-triunghiuri {
+  background-color: var(--color-bg);
+}
+
+.fundal-grup-buline {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-primary-500) 24%, transparent) 1.5px,
+    transparent 1.6px
+  );
+  background-size: 22px 22px;
+}
+
+.fundal-grup-grila {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--color-primary-500) 16%, transparent) 0 1px,
+      transparent 1px 28px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-primary-500) 16%, transparent) 0 1px,
+      transparent 1px 28px
+    );
+}
+
+.fundal-grup-romburi {
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      color-mix(in srgb, var(--color-primary-500) 18%, transparent) 0 1px,
+      transparent 1px 26px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      color-mix(in srgb, var(--color-primary-500) 18%, transparent) 0 1px,
+      transparent 1px 26px
+    );
+}
+
+.fundal-grup-diagonale {
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--color-primary-500) 12%, transparent) 0 8px,
+    transparent 8px 20px
+  );
+}
+
+.fundal-grup-valuri {
+  background-image: repeating-radial-gradient(
+    circle at 0 100%,
+    transparent 0 13px,
+    color-mix(in srgb, var(--color-primary-500) 20%, transparent) 13px 15px
+  );
+  background-size: 56px 28px;
+}
+
+/* Singurul fara repetitie: trei pete foarte difuze, ca atmosfera din
+   .fundal-spatial, dar in culoarea grupului. Unitatile sunt in vmax ca sa
+   acopere ecranul; in miniatura din selector se vede doar coltul lor, ceea ce e
+   corect — asa arata si pe ecran, un colt de lumina, nu trei bule. */
+.fundal-grup-stropi {
+  background-image:
+    radial-gradient(
+      60vmax 45vmax at 8% -10%,
+      color-mix(in srgb, var(--color-primary-400) 34%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      55vmax 40vmax at 100% 8%,
+      color-mix(in srgb, var(--color-primary-600) 24%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      65vmax 45vmax at 40% 112%,
+      color-mix(in srgb, var(--color-primary-500) 26%, transparent),
+      transparent 62%
+    );
+}
+
+/* Trei modele din gradiente, ca cele de mai sus. */
+.fundal-grup-zigzag {
+  background-image:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-primary-500) 16%, transparent) 25%, transparent 25%),
+    linear-gradient(225deg, color-mix(in srgb, var(--color-primary-500) 16%, transparent) 25%, transparent 25%),
+    linear-gradient(315deg, color-mix(in srgb, var(--color-primary-500) 16%, transparent) 25%, transparent 25%),
+    linear-gradient(45deg, color-mix(in srgb, var(--color-primary-500) 16%, transparent) 25%, transparent 25%);
+  background-position: -13px 0, -13px 0, 0 0, 0 0;
+  background-size: 26px 26px;
+}
+
+/* Buline de marimi si pozitii diferite in acelasi patrat: fara regularitatea
+   grilei, arata imprastiat, nu tiparit. */
+.fundal-grup-confetti {
+  background-image:
+    radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--color-primary-500) 30%, transparent) 2.5px, transparent 3px),
+    radial-gradient(circle at 62% 8%, color-mix(in srgb, var(--color-primary-400) 26%, transparent) 1.5px, transparent 2px),
+    radial-gradient(circle at 84% 42%, color-mix(in srgb, var(--color-primary-600) 24%, transparent) 3px, transparent 3.5px),
+    radial-gradient(circle at 33% 58%, color-mix(in srgb, var(--color-primary-500) 22%, transparent) 2px, transparent 2.5px),
+    radial-gradient(circle at 8% 82%, color-mix(in srgb, var(--color-primary-400) 28%, transparent) 2.5px, transparent 3px),
+    radial-gradient(circle at 70% 88%, color-mix(in srgb, var(--color-primary-500) 24%, transparent) 1.5px, transparent 2px);
+  background-size: 90px 90px;
+}
+
+.fundal-grup-cercuri {
+  background-image: repeating-radial-gradient(
+    circle at 50% 50%,
+    transparent 0 15px,
+    color-mix(in srgb, var(--color-primary-500) 18%, transparent) 15px 17px
+  );
+  background-size: 74px 74px;
+}
+
+/* =============================================================================
+   Modele cu forma proprie — inimioare, nori, stele, frunze, triunghiuri.
+
+   Astea nu se pot desena din gradiente, deci forma vine dintr-un SVG. SVG-ul e
+   folosit insa ca MASCA, nu ca imagine: intr-un `background-image` culoarea ar
+   fi fost scrisa in interiorul lui si ar fi ramas fixa, adica modelul n-ar mai fi
+   urmat accentul grupului si ar fi trebuit livrat in 8 variante. Ca masca,
+   silueta vine din SVG iar culoarea din `background-color` de pe pseudo-element,
+   deci tot din rampa — exact ca la modelele din gradiente.
+
+   Doua straturi de masca, al doilea decalat cu jumatate de dala, ca randurile sa
+   fie intretesute; altfel se citeste ca un tabel, nu ca un tapet.
+
+   ATENTIE: `::before` e `position: absolute`, deci clasa trebuie pusa pe un
+   element pozitionat. Ambele locuri unde se foloseste il au — `.fundal-grup-strat`
+   e `fixed`, iar miniaturile din selector primesc `relative`. Clasele NU-si
+   declara singure `position`, fiindca ar suprascrie `fixed`-ul stratului.
+   ========================================================================== */
+.fundal-grup-inimioare::before,
+.fundal-grup-nori::before,
+.fundal-grup-stele::before,
+.fundal-grup-frunze::before,
+.fundal-grup-triunghiuri::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: color-mix(in srgb, var(--color-primary-500) 26%, transparent);
+  mask-repeat: repeat, repeat;
+}
+
+.fundal-grup-inimioare::before {
+  mask-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z'/%3E%3C/svg%3E");
+  mask-size: 22px 22px, 22px 22px;
+  mask-position: 0 0, 22px 22px;
+}
+
+.fundal-grup-nori::before {
+  mask-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z'/%3E%3C/svg%3E");
+  mask-size: 34px 34px, 26px 26px;
+  mask-position: 0 0, 34px 30px;
+}
+
+.fundal-grup-stele::before {
+  mask-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M12 2l3 7 7 .5-5.3 4.6 1.6 7L12 17.6 5.7 21l1.6-7L2 9.5 9 9z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M12 2l3 7 7 .5-5.3 4.6 1.6 7L12 17.6 5.7 21l1.6-7L2 9.5 9 9z'/%3E%3C/svg%3E");
+  mask-size: 24px 24px, 16px 16px;
+  mask-position: 0 0, 24px 22px;
+}
+
+.fundal-grup-frunze::before {
+  mask-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10Z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M13 20a7 7 0 0 0 1.2-13.9C8.5 5 7 4.5 5 2c-1 2-2 4.2-2 8 0 5.5 4.8 10 10 10Z'/%3E%3C/svg%3E");
+  mask-size: 26px 26px, 26px 26px;
+  mask-position: 0 0, 26px 26px;
+}
+
+.fundal-grup-triunghiuri::before {
+  mask-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M12 4l9 16H3z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M12 20L3 4h18z'/%3E%3C/svg%3E");
+  mask-size: 22px 22px, 22px 22px;
+  mask-position: 0 0, 22px 22px;
 }
 
 /* Butoanele pline (bg-primary-600 / bg-danger) se lumineaza la hover in loc

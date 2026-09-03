@@ -640,7 +640,7 @@ Un rând per fișier sursă, cu descrierea pe care și-o dă el însuși.
 | [(app)/credite/page.tsx](frontend/src/app/%28app%29/credite/page.tsx) | _(fără descriere proprie în fișier)_ |
 | [(app)/credite/simulare/page.tsx](frontend/src/app/%28app%29/credite/simulare/page.tsx) | _(fără descriere proprie în fișier)_ |
 | [(app)/dashboard/page.tsx](frontend/src/app/%28app%29/dashboard/page.tsx) | Stilul unei dale din grila — impartit intre linkuri si declansatorul de drawer. |
-| [(app)/grupuri/[id]/page.tsx](frontend/src/app/%28app%29/grupuri/[id]/page.tsx) | Un grup: soldul comun, membrii cu drepturile lor si conversatia. |
+| [(app)/grupuri/[id]/page.tsx](frontend/src/app/%28app%29/grupuri/[id]/page.tsx) | Un grup: soldul comun, membrii cu drepturile lor si conversatia. Containerul poarta clasa temei grupului, deci tot ce e dedesubt se recoloreaza singur. |
 | [(app)/grupuri/page.tsx](frontend/src/app/%28app%29/grupuri/page.tsx) | Lista grupurilor din care faci parte. |
 | [(app)/istoric/page.tsx](frontend/src/app/%28app%29/istoric/page.tsx) | _(fără descriere proprie în fișier)_ |
 | [(app)/layout.tsx](frontend/src/app/%28app%29/layout.tsx) | Cadrul comun al ecranelor autentificate (dashboard, istoric, transfer, carduri, beneficiari, setari): verifica sesiunea o singura data, monteaza navigarea de jos si ascultatorul de realtime. |
@@ -734,6 +734,8 @@ Un rând per fișier sursă, cu descrierea pe care și-o dă el însuși.
 | [grupuri/intra-in-grup-drawer.tsx](frontend/src/components/grupuri/intra-in-grup-drawer.tsx) | Intrarea intr-un grup cu cod de acces. |
 | [grupuri/lista-grupuri.tsx](frontend/src/components/grupuri/lista-grupuri.tsx) | Grupurile utilizatorului, cu soldul comun si numarul de membri. |
 | [grupuri/partajeaza-grup-drawer.tsx](frontend/src/components/grupuri/partajeaza-grup-drawer.tsx) | Invitatia intr-un grup: codul de acces si linkul care il contine. |
+| [grupuri/fundal-grup.tsx](frontend/src/components/grupuri/fundal-grup.tsx) | Tapetul din spatele paginii unui grup: un strat fix, opac, intre cerul aplicatiei si continut. |
+| [grupuri/setari-grup-drawer.tsx](frontend/src/components/grupuri/setari-grup-drawer.tsx) | Setarile de aspect ale grupului: culoarea de accent, emblema si fundalul, deschise de orice membru si vazute de toti. |
 | [grupuri/vizibilitate-tranzactii.tsx](frontend/src/components/grupuri/vizibilitate-tranzactii.tsx) | Comutatorul creatorului pentru vizibilitatea miscarilor de bani in conversatia grupului. |
 | [istoric/filtre-drawer.tsx](frontend/src/components/istoric/filtre-drawer.tsx) | _(fără descriere proprie în fișier)_ |
 | [istoric/lista-tranzactii.tsx](frontend/src/components/istoric/lista-tranzactii.tsx) | _(fără descriere proprie în fișier)_ |
@@ -809,7 +811,7 @@ Un rând per fișier sursă, cu descrierea pe care și-o dă el însuși.
 | [credite.ts](frontend/src/lib/data/credite.ts) | Citirile de creditare. |
 | [curs-valutar.ts](frontend/src/lib/data/curs-valutar.ts) | Aducerea cursurilor valutare si scrierea lor in public.curs_valutar (0013_schimb_valutar.sql). |
 | [dispozitive.ts](frontend/src/lib/data/dispozitive.ts) | Evidenta dispozitivelor de pe care s-a intrat in cont. |
-| [grupuri.ts](frontend/src/lib/data/grupuri.ts) | Grupul, membrii lui si drepturile fiecaruia asupra soldului comun. |
+| [grupuri.ts](frontend/src/lib/data/grupuri.ts) | Grupul, membrii lui si drepturile fiecaruia asupra soldului comun. Tot aici, tema si emblema grupului (0054). |
 | [notificari.ts](frontend/src/lib/data/notificari.ts) | Mesajele bancii pentru clientul curent. |
 | [plati.ts](frontend/src/lib/data/plati.ts) | Platile proprii care inca asteapta un raspuns, cea mai veche prima. |
 | [popriri.ts](frontend/src/lib/data/popriri.ts) | Poprirea, asa cum o vede clientul. |
@@ -854,6 +856,7 @@ Un rând per fișier sursă, cu descrierea pe care și-o dă el însuși.
 | [plati.ts](frontend/src/lib/plati.ts) | Vocabularul comun al platilor: stari, forma randului si maparea catre interfata. |
 | [stari-cerere.ts](frontend/src/lib/stari-cerere.ts) | Starile unei cereri decise de banca, si cum arata ele pe ecran. |
 | [stil-card.ts](frontend/src/lib/stil-card.ts) | Gradientul vizual pentru fiecare tematica de card. |
+| [tema-grup.ts](frontend/src/lib/tema-grup.ts) | Aspectul unui grup: clasa de culoare, iconita emblemei si clasa modelului de fundal. Doar mapari, ca stil-card.ts — rampele si modelele stau in globals.css. |
 | [tema.ts](frontend/src/lib/tema.ts) | Normalizeaza valoarea bruta a cookie-ului la o tema valida. |
 | [tipuri-admin.ts](frontend/src/lib/tipuri-admin.ts) | Formele de date ale zonei de administrare, si etichetele lor. |
 | [utils.ts](frontend/src/lib/utils.ts) | Compune clase Tailwind, ultima castiga in caz de conflict. |
@@ -919,6 +922,8 @@ Un rând per fișier sursă, cu descrierea pe care și-o dă el însuși.
 | [0042_notificari_tip_valid.sql](supabase/migrations/0042_notificari_tip_valid.sql) | 0042 — Notificarile deciziilor foloseau un `tip` care nu exista CAUZA, gasita tot ruland fluxul cap-coada, nu citind codul: ERROR: 23514 new row for relation "notificari" violates check constraint |
 | [0047_poprire.sql](supabase/migrations/0047_poprire.sql) | 0047 — Poprirea: se indisponibilizeaza o SUMA, nu tot contul 0030 a dat bancii un intrerupator: `blocat_administrativ`, pornit sau oprit, si din contul blocat nu mai iese niciun ban. |
 | [0053_drepturi_grup.sql](supabase/migrations/0053_drepturi_grup.sql) | 0053 — drepturile membrilor intr-un grup, decise de creator: daca un membru poate scoate bani din soldul comun, plafonul lui lunar, si daca miscarile de bani se vad intre membri. |
+| [0054_tema_grup.sql](supabase/migrations/0054_tema_grup.sql) | 0054 — tema grupului: culoarea de accent, emblema si fundalul, salvate pe grup si schimbate de orice membru. Numele presetarii, nu un hex — rampa si modelele sunt in globals.css. |
+| [0055_fundaluri_grup_noi.sql](supabase/migrations/0055_fundaluri_grup_noi.sql) | 0055 — inca opt modele de fundal (inimioare, nori, stele, frunze, triunghiuri, zigzag, confetti, cercuri). Cele cu forma proprie vin dintr-un SVG folosit ca masca, ca sa urmeze tot accentul grupului. |
 | [0048_poprire_stornare.sql](supabase/migrations/0048_poprire_stornare.sql) | 0048 — Stornarea unei incasari din poprire: banii virati se intorc 0047 avea o gaura de operare, scrisa chiar in comentariile ei: „banii deja virati NU se intorc automat — au plecat catre creditor". |
 
 ### Teste

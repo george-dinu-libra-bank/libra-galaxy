@@ -83,6 +83,93 @@ Nimic altceva. Textul pe hero: alb (`#FFFFFF`) pentru titlu, `primary-100` pentr
 - Nu se folosește `primary-400` sau mai deschis pentru text pe alb.
 - Toate perechile text/fundal respectă minim **4.5:1** (WCAG AA); iconițele funcționale minim **3:1**.
 
+### 2.6 Rampe pe scope — temele de grup
+
+Singura excepție de la „un singur albastru dominant": un grup își alege culoarea de accent
+(`groups.tema`, vezi [0054](supabase/migrations/0054_tema_grup.sql)). Nu e o a doua paletă
+paralelă — e **aceeași rampă, cu alte valori, pe alt scope**:
+
+```css
+.tema-grup-smarald {
+  --color-primary-50: …;  /* … pana la 900 */
+  --color-halo: …;        /* 300-ul rampei */
+}
+```
+
+Clasa se pune pe containerul grupului, iar codul de dedesubt folosește exact aceleași clase ca
+peste tot (`bg-primary-600`, `text-primary-700`, `hero-gradient`, `focus-visible:ring`). Nicio
+componentă nu află ce culoare are grupul — același mecanism ca `.dark`.
+
+Sunt **două** clase, cu roluri diferite:
+
+| Clasă | Ce face |
+| --- | --- |
+| `.tema-grup` | Nuanțează suprafețele (`surface` 12%, `muted` 22%, `line` 40% spre accent), ca să se coloreze și *cardurile* din grup — lista de membri, panoul de conversație, câmpul de scris, drawerele. O poartă și `implicit`. |
+| `.tema-grup-<nume>` | Rescrie rampa `--color-primary-*`. `implicit` n-are: aceea e rampa din `@theme`. |
+
+Nuanțarea pleacă de la `--surface-baza` / `--muted-baza` / `--line-baza`, nu de la
+`--color-surface` — o proprietate custom nu se poate referi la ea însăși. Cele trei se schimbă
+odată cu tema, altfel un grup din tema întunecată și-ar amesteca accentul peste alb.
+
+**Procentele se aleg perceptual, nu după contrast.** Contrastul lasă loc berechet (`ink` pe
+`surface` rămâne peste 13:1 chiar și la 16%); ce contează sunt două diferențe măsurate în Lab:
+cardul față de fundalul paginii, și bula străină (`muted`) față de cardul pe care stă. O primă
+încercare la 4 / 9 / 14 trecea orice prag de contrast dar era **invizibilă** — ΔE 2,1 față de
+cardul alb, sub pragul la care ochiul vede ceva, iar bula se topea în card la ΔE 0,77. Limita de
+sus o dă numele autorului de pe bulă (`ink-soft` pe `muted`), care cade sub 4,5:1 pe la 28%.
+
+Reguli:
+
+1. **Hex-urile stau în `globals.css`**, ca orice token (§12). `lib/tema-grup.ts` ține doar numele
+   clasei, eticheta și iconița.
+2. **Fiecare presetare se verifică pe perechile pe care le desenează efectiv aplicația** —
+   alb/600, alb/700, alb/500 (soldul mare de pe hero), 700/50, 600/50, 600/alb, 900/100 — la
+   pragurile de mai sus, și nu are voie să fie mai slabă decât albastrul pe care îl înlocuiește.
+   Verdele, chihlimbarul și portocaliul se decalează: `emerald-600` sau `amber-600` din paletele
+   uzuale **nu** trec cu text alb, deci slotul 600 ia o valoare mai închisă și restul rampei
+   urmează. Aceeași problemă ca la cardul `gold` (§6.5, `lib/stil-card.ts`).
+3. **Drawerele nu moștenesc scope-ul**: vaul face portal în `document.body`. Pagina se învelește
+   în `<ScopTemaDrawer clasa={…}>` din [`components/ui/drawer.tsx`](frontend/src/components/ui/drawer.tsx)
+   — contextul React trece prin portal și `DrawerContent` își pune singur clasa.
+
+### 2.7 Fundaluri de grup
+
+A doua axă, independentă de culoare: `groups.fundal` alege un model (`.fundal-grup-*`), desenat
+peste cerul aplicației de un singur strat fix, opac, la `z-index: -9` — între `.fundal-spatial`
+(`-10`) și conținut. `implicit` nu randează nimic, deci acolo rămâne cerul.
+
+- Modelele se desenează **din rampa de accent a grupului** (`color-mix` peste `--color-primary-*`),
+  nu din culori proprii. Așa 16 modele × 8 culori dau 128 de fundaluri din 16 clase, și niciunul
+  nu poate ieși din paletă.
+- **Fără imagini.** Un JPEG n-ar urma culoarea aleasă, ar cere două variante (temă deschisă /
+  întunecată) și n-ar avea cine să-i garanteze contrastul cu textul de deasupra.
+- Modelul și poziționarea sunt **clase separate** (`.fundal-grup-<model>` vs `.fundal-grup-strat`):
+  aceleași modele se desenează și în miniaturile din selector, unde `position: fixed` ar fi greșit.
+- Modelele rămân discrete (12–30% opacitate peste `--color-bg`) — sub ele se citește text.
+
+**Forme pe care un gradient nu le poate desena** (inimioare, nori, stele, frunze, triunghiuri)
+își iau silueta dintr-un SVG inline, folosit ca **mască**, nu ca imagine:
+
+```css
+.fundal-grup-inimioare::before {
+  background-color: color-mix(in srgb, var(--color-primary-500) 26%, transparent);
+  mask-image: url("data:image/svg+xml,…");
+}
+```
+
+Într-un `background-image`, culoarea ar fi scrisă în interiorul SVG-ului și ar rămâne fixă — adică
+modelul n-ar mai urma accentul și ar trebui livrat în opt variante. Ca mască, forma vine din SVG
+iar culoarea din rampă. Două straturi de mască, al doilea decalat cu jumătate de dală, ca rândurile
+să fie întrețesute.
+
+`mask-image` nu are nevoie de prefix `-webkit-`: cere Safari 15.4, iar `color-mix` — folosit peste
+tot în teme — cere deja Safari 16.2. Orice browser care randează temele suportă și masca.
+
+**Capcană:** `::before` e `position: absolute`, deci clasa trebuie pusă pe un element poziționat, iar
+conținutul care trebuie să rămână deasupra are nevoie de `relative` (un pseudo-element poziționat se
+pictează peste conținutul nepoziționat). Clasele nu-și declară singure `position`, fiindcă ar
+suprascrie `fixed`-ul stratului.
+
 ---
 
 ## 3. Tipografie

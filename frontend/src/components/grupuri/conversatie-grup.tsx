@@ -154,11 +154,18 @@ export function ConversatieGrup({
                   >
                     {/* Numele apare la fiecare mesaj, si la ale mele: intr-un
                         grup de mai multi oameni, cine a scris conteaza mai mult
-                        decat economia de un rand. */}
+                        decat economia de un rand.
+
+                        Pe bula straina numele era `text-primary-700`, ceea ce in
+                        tema intunecata dadea 1.4-2.1:1 pe `bg-muted` — practic
+                        ilizibil. Cauza: `muted` se intuneca la .dark, dar rampa
+                        primara nu, deci perechea diverge. `ink-soft` se
+                        intuneca odata cu tema, deci tine in amandoua (5.6-6.3
+                        la toate cele 8 culori de grup). */}
                     <p
                       className={cn(
                         "text-[12.5px] font-medium",
-                        mesaj.alMeu ? "text-primary-100" : "text-primary-700",
+                        mesaj.alMeu ? "text-primary-100" : "text-ink-soft",
                       )}
                     >
                       {mesaj.autor?.nume ?? "Fost membru"}

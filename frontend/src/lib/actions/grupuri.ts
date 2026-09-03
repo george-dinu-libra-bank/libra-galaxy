@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { contEsteBlocat, MESAJ_CONT_BLOCAT } from "@/lib/cont-blocat";
+import type { EmblemaGrup, FundalGrup, TemaGrup } from "@/lib/tema-grup";
 
 export type RezultatGrupNou = { id?: number; nume?: string; token?: string; eroare?: string };
 export type RezultatIntrare = { id?: number; nume?: string; eroare?: string };
@@ -16,6 +17,7 @@ export type RezultatPreviziune = {
 export type RezultatMesaj = { eroare?: string };
 export type RezultatInvitatie = { eroare?: string };
 export type RezultatDrepturi = { eroare?: string };
+export type RezultatTema = { eroare?: string };
 
 /**
  * Mesajele pentru utilizator, dupa codul ridicat de functiile din
@@ -64,6 +66,13 @@ const MESAJE_GRUPURI: Record<string, string> = {
   LIMITA_INVALIDA:
     "Plafonul lunar trebuie să fie mai mare decât 0. Lasă câmpul gol pentru „fără plafon”.",
   DREPT_INVALID: "Nu am putut salva drepturile. Încearcă din nou.",
+
+  // Ridicate de seteaza_tema_grup (0054_tema_grup.sql). Nu ar trebui sa ajunga
+  // la om: selectorul ofera doar presetari valide. Daca apar, e semn ca lista
+  // din baza a divergat de cea din lib/tema-grup.ts.
+  TEMA_INVALIDA: "Alege una dintre culorile disponibile.",
+  EMBLEMA_INVALIDA: "Alege una dintre emblemele disponibile.",
+  FUNDAL_INVALID: "Alege unul dintre fundalurile disponibile.",
 };
 
 
@@ -470,6 +479,50 @@ export async function seteazaVizibilitateaTranzactiilor(
   }
 
   revalidatePath(`/grupuri/${idGrup}`);
+
+  return {};
+}
+
+/**
+ * Schimba aspectul grupului: culoarea de accent, emblema si fundalul.
+ *
+ * Spre deosebire de drepturi si de vizibilitate, asta NU e rezervat creatorului
+ * — o poate face orice membru, si o vad toti. Bariera (apartenenta la grup) e in
+ * seteaza_tema_grup (0054_tema_grup.sql); aici raman doar traducerea erorii si
+ * invalidarea cache-ului.
+ *
+ * Se revalideaza si lista, nu doar pagina grupului: randul din /grupuri poarta
+ * aceeasi culoare si aceeasi emblema. Fundalul nu se vede acolo — e un tapet pe
+ * tot ecranul — dar celelalte doua da.
+ */
+export async function seteazaTemaGrup(input: {
+  idGrup: number;
+  tema: TemaGrup;
+  emblema: EmblemaGrup;
+  fundal: FundalGrup;
+}): Promise<RezultatTema> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { eroare: "Trebuie sa fii autentificat." };
+
+  const { error } = await supabase.rpc("seteaza_tema_grup", {
+    p_id_group: input.idGrup,
+    p_tema: input.tema,
+    p_emblema: input.emblema,
+    p_fundal: input.fundal,
+  });
+
+  if (error) {
+    if (!MESAJE_GRUPURI[error.message]) console.error("ERROR seteazaTemaGrup:", error);
+    return { eroare: mesajPentru(error.message, "Nu am putut salva tema. Încearcă din nou.") };
+  }
+
+  revalidatePath("/grupuri");
+  revalidatePath(`/grupuri/${input.idGrup}`);
 
   return {};
 }
